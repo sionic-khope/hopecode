@@ -31,3 +31,12 @@ export function formatPercent(n: number | null | undefined): string {
   if (n === null || n === undefined) return '–';
   return `${Math.round(n)}%`;
 }
+
+/** `/Users/me/src/app` -> `~/src/app` when under `home`; other paths unchanged. */
+export function tildePath(path: string, home: string | null | undefined): string {
+  if (!home) return path;
+  const base = home.replace(/\/+$/, '');
+  if (!base) return path;
+  if (path === base) return '~';
+  return path.startsWith(`${base}/`) ? `~${path.slice(base.length)}` : path;
+}

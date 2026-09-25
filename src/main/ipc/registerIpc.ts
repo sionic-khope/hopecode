@@ -2,11 +2,12 @@
 // `IpcMainLike` mirrors the slice of `Electron.IpcMain` this module needs, so registerIpc can be
 // exercised in plain Node tests with a fake — no Electron runtime import here.
 // Service *construction and wiring* (DI) happens in Wave 3 (src/main/index.ts); this module only
-// maps each of the 25 invoke channels onto the service methods it's given, validating input and
+// maps each invoke channel onto the service methods it's given, validating input and
 // performing the small bits of orchestration (project/thread CRUD, pin) that no single Wave 1/2
 // service owns.
 import { randomUUID } from 'node:crypto';
-import { basename } from 'node:path';
+import { homedir } from 'node:os';
+import { basename, isAbsolute, relative } from 'node:path';
 import { INVOKE_CHANNELS, type InvokeChannel, type InvokeResponse } from '../../shared/ipc';
 import type {
   AccountPool,
@@ -22,11 +23,13 @@ import type {
   WorktreeManager,
 } from '../contracts';
 import type { SyncTranscriptFn } from '../session/transcriptSync';
-import { USAGE_HISTORY_RETENTION_MS } from '../../shared/constants';
-import type { AccountPatch, PermissionDecision, Project, Thread } from '../../shared/types';
+import { DEFAULT_THREAD_TITLE, USAGE_HISTORY_RETENTION_MS } from '../../shared/constants';
+import { deriveThreadTitle } from '../../core/threadTitle';
+import type { AccountPatch, ChatSendResult, EffortLevel, PermissionDecision, Project, Thread } from '../../shared/types';
 import {
   assertReq,
   isBoolean,
+  isEffortLevel,
   isFiniteNumber,
   isNonEmptyString,
   isNullableString,
@@ -82,6 +85,14 @@ function safeInitialMode(mode: Thread['permissionMode']): Thread['permissionMode
   return mode === 'bypassPermissions' ? 'default' : mode;
 }
 
+/** `@`-mention for a picked file: relative to `base` when inside it, quoted when it contains whitespace. */
+export function mentionPath(file: string, base: string): string {
+  const rel = relative(base, file);
+  const inside = rel.length > 0 && !rel.startsWith('..') && !isAbsolute(rel);
+  const path = inside ? rel : file;
+  return /\s/.test(path) ? `@"${path}"` : `@${path}`;
+}
+
 function buildHandlers(s: RegisterIpcServices): Handlers {
   const {
     store,
@@ -110,6 +121,48 @@ function buildHandlers(s: RegisterIpcServices): Handlers {
     return project as Project;
   }
 
+  /** New idle thread in `project` (git worktree when the folder is a repo). Not stored or broadcast. */
+  async function createThreadRecord(
+    project: Project,
+    opts: {
+      title: string;
+      model?: string;
+      permissionMode: Thread['permissionMode'];
+      effort?: EffortLevel | null;
+      pinnedAccountId?: string | null;
+    },
+  ): Promise<Thread> {
+    const id = randomUUID();
+    const shortId = id.slice(0, 8);
+    const { cwd, worktree } = await worktreeManager.create(project.path, shortId, { trusted: project.trusted });
+    const settings = store.get().settings;
+    const now = Date.now();
+    return {
+      id,
+      projectId: project.id,
+      title: opts.title,
+      cwd,
+      ...(worktree ? { worktree } : {}),
+      model: opts.model ?? settings.defaultModel,
+      resolvedModel: null,
+      permissionMode: opts.permissionMode,
+      effort: opts.effort ?? null,
+      pinnedAccountId: opts.pinnedAccountId ?? null,
+      pinned: false,
+      archived: false,
+      lastAccountId: null,
+      activeAccountId: null,
+      sdkSessionId: null,
+      status: 'idle',
+      waitingUntil: null,
+      pendingPrompt: null,
+      sessionStartedAt: null,
+      ctxPercent: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
   return {
     'app:bootstrap': async () => {
       const state = store.get();
@@ -120,6 +173,7 @@ function buildHandlers(s: RegisterIpcServices): Handlers {
         pool: usagePoller.getSnapshot(),
         settings: state.settings,
         appVersion: s.appVersion,
+        homeDir: homedir(),
         pendingPermissions: sessionManager.pendingPermissions(),
       };
     },
@@ -207,40 +261,82 @@ function buildHandlers(s: RegisterIpcServices): Handlers {
         'invalid permissionMode',
       );
       const project = requireProject('thread:create', projectId);
-
-      const id = randomUUID();
-      const shortId = id.slice(0, 8);
-      const { cwd, worktree } = await worktreeManager.create(project.path, shortId, { trusted: project.trusted });
-      const settings = store.get().settings;
-      const now = Date.now();
-      const thread: Thread = {
-        id,
-        projectId,
-        title: title ?? 'New thread',
-        cwd,
-        ...(worktree ? { worktree } : {}),
-        model: model ?? settings.defaultModel,
-        resolvedModel: null,
+      const thread = await createThreadRecord(project, {
+        title: title ?? DEFAULT_THREAD_TITLE,
+        model,
         permissionMode: safeInitialMode(
-          (permissionMode as Thread['permissionMode'] | undefined) ?? settings.defaultPermissionMode,
+          (permissionMode as Thread['permissionMode'] | undefined) ?? store.get().settings.defaultPermissionMode,
         ),
-        pinnedAccountId: null,
-        lastAccountId: null,
-        activeAccountId: null,
-        sdkSessionId: null,
-        status: 'idle',
-        waitingUntil: null,
-        pendingPrompt: null,
-        sessionStartedAt: null,
-        ctxPercent: null,
-        createdAt: now,
-        updatedAt: now,
-      };
+      });
       store.update((draft) => {
         draft.threads.push(thread);
       });
       broadcaster.emit('thread:updated', thread);
       return thread;
+    },
+
+    'thread:start': async (req) => {
+      const channel = 'thread:start';
+      assertReq(channel, isPlainObject(req), 'request object required');
+      const r = req as Record<string, unknown>;
+      assertReq(channel, isNonEmptyString(r.projectId), 'projectId required');
+      assertReq(channel, isNonEmptyString(r.text) && r.text.trim().length > 0, 'text required');
+      assertReq(channel, isOptionalString(r.model), 'model must be a string');
+      assertReq(channel, r.permissionMode === undefined || isUiPermissionMode(r.permissionMode), 'invalid permissionMode');
+      assertReq(channel, r.effort === undefined || r.effort === null || isEffortLevel(r.effort), 'invalid effort');
+      assertReq(
+        channel,
+        r.pinnedAccountId === undefined || isNullableString(r.pinnedAccountId),
+        'pinnedAccountId must be a string or null',
+      );
+      const project = requireProject(channel, r.projectId);
+      const text = r.text as string;
+      const pinnedAccountId = (r.pinnedAccountId as string | null | undefined) ?? null;
+      assertReq(channel, pinnedAccountId === null || !!accountPool.get(pinnedAccountId), `account not found: ${pinnedAccountId}`);
+
+      // A draft may ask for bypassPermissions; it is only granted through the same native warning.
+      let mode = (r.permissionMode as Thread['permissionMode'] | undefined) ?? store.get().settings.defaultPermissionMode;
+      if (mode === 'bypassPermissions' && !(await dialogs.confirmBypassPermissions())) mode = 'default';
+
+      const thread = await createThreadRecord(project, {
+        title: deriveThreadTitle(text),
+        model: r.model as string | undefined,
+        permissionMode: mode,
+        effort: (r.effort as EffortLevel | null | undefined) ?? null,
+        pinnedAccountId,
+      });
+      store.update((draft) => {
+        draft.threads.push(thread);
+      });
+
+      // Not broadcast yet: a refused first send rolls everything back, so the renderer never sees the thread.
+      const rollback = async () => {
+        await sessionManager.closeThread(thread.id).catch((err: unknown) => console.error('[ipc] closeThread failed', err));
+        await threadLog.remove(thread.id).catch((err: unknown) => console.error('[ipc] threadLog.remove failed', err));
+        if (thread.worktree) {
+          await worktreeManager
+            .remove(project.path, thread.worktree, { force: true })
+            .catch((err: unknown) => console.error('[ipc] worktree remove failed', err));
+        }
+        store.update((draft) => {
+          draft.threads = draft.threads.filter((t) => t.id !== thread.id);
+        });
+      };
+
+      let send: ChatSendResult;
+      try {
+        send = await sessionManager.send(thread.id, text);
+      } catch (err) {
+        await rollback();
+        throw err;
+      }
+      if (!send.accepted) {
+        await rollback();
+        return { ok: false, reason: send.reason ?? 'no-accounts' };
+      }
+      const current = { ...(store.getThread(thread.id) ?? thread) };
+      broadcaster.emit('thread:updated', current);
+      return { ok: true, thread: current, send };
     },
 
     'thread:rename': async (req) => {
@@ -253,6 +349,43 @@ function buildHandlers(s: RegisterIpcServices): Handlers {
       requireThread('thread:rename', threadId);
       const patched = store.patchThread(threadId, { title });
       broadcaster.emit('thread:updated', patched);
+    },
+
+    'thread:setPinned': async (req) => {
+      assertReq(
+        'thread:setPinned',
+        isPlainObject(req) && isNonEmptyString(req.threadId) && isBoolean(req.pinned),
+        'threadId/pinned required',
+      );
+      const { threadId, pinned } = req as { threadId: string; pinned: boolean };
+      requireThread('thread:setPinned', threadId);
+      broadcaster.emit('thread:updated', { ...store.patchThread(threadId, { pinned }) });
+    },
+
+    'thread:setArchived': async (req) => {
+      assertReq(
+        'thread:setArchived',
+        isPlainObject(req) && isNonEmptyString(req.threadId) && isBoolean(req.archived),
+        'threadId/archived required',
+      );
+      const { threadId, archived } = req as { threadId: string; archived: boolean };
+      requireThread('thread:setArchived', threadId);
+      // An archived thread leaves the pinned section too; unarchiving does not re-pin it.
+      const patch: Partial<Thread> = archived ? { archived, pinned: false } : { archived };
+      broadcaster.emit('thread:updated', { ...store.patchThread(threadId, patch) });
+    },
+
+    'thread:setEffort': async (req) => {
+      assertReq(
+        'thread:setEffort',
+        isPlainObject(req) && isNonEmptyString(req.threadId) && (req.effort === null || isEffortLevel(req.effort)),
+        'threadId/effort required',
+      );
+      const { threadId, effort } = req as { threadId: string; effort: EffortLevel | null };
+      requireThread('thread:setEffort', threadId);
+      await sessionManager.setEffort(threadId, effort);
+      const current = store.getThread(threadId);
+      if (current) broadcaster.emit('thread:updated', { ...current });
     },
 
     'thread:delete': async (req) => {
@@ -367,6 +500,19 @@ function buildHandlers(s: RegisterIpcServices): Handlers {
 
     'models:list': async () => sessionManager.listModels(),
 
+    'dialog:pickFiles': async (req) => {
+      assertReq(
+        'dialog:pickFiles',
+        isPlainObject(req) && isOptionalString(req.threadId) && isOptionalString(req.projectId),
+        'threadId/projectId must be strings',
+      );
+      const { threadId, projectId } = req as { threadId?: string; projectId?: string };
+      assertReq('dialog:pickFiles', !!threadId || !!projectId, 'threadId or projectId required');
+      const base = threadId ? requireThread('dialog:pickFiles', threadId).cwd : requireProject('dialog:pickFiles', projectId).path;
+      const files = await dialogs.pickFiles(base);
+      return files.filter((f) => typeof f === 'string' && isAbsolute(f)).map((f) => mentionPath(f, base));
+    },
+
     'account:loginStart': async (req) => {
       assertReq(
         'account:loginStart',
@@ -430,7 +576,7 @@ function buildHandlers(s: RegisterIpcServices): Handlers {
       if (dependents.length > 0 && !heir) {
         return {
           ok: false,
-          error: `${account.alias} holds the conversation history of ${dependents.length} thread(s). Add or enable another account before removing it.`,
+          error: `${account.alias} 계정에 스레드 ${dependents.length}개의 대화 기록이 있습니다. 다른 계정을 추가하거나 활성화한 뒤 제거하세요.`,
         };
       }
 
@@ -452,7 +598,7 @@ function buildHandlers(s: RegisterIpcServices): Handlers {
               if (wasEnabled) accountPool.update(accountId, { enabled: true });
               return {
                 ok: false,
-                error: `Could not move the conversation history of "${thread.title}" to ${heir.alias}: ${err instanceof Error ? err.message : String(err)}. ${account.alias} was not removed.`,
+                error: `"${thread.title}"의 대화 기록을 ${heir.alias}(으)로 옮기지 못했습니다: ${err instanceof Error ? err.message : String(err)}. ${account.alias} 계정은 제거되지 않았습니다.`,
               };
             }
           }
@@ -467,7 +613,7 @@ function buildHandlers(s: RegisterIpcServices): Handlers {
       try {
         await accountPool.remove(accountId, deleteConfigDir);
       } catch (err) {
-        return { ok: false, error: `Failed to remove ${account.alias}: ${err instanceof Error ? err.message : String(err)}` };
+        return { ok: false, error: `${account.alias} 계정을 제거하지 못했습니다: ${err instanceof Error ? err.message : String(err)}` };
       }
       return { ok: true };
     },

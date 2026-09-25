@@ -1,6 +1,7 @@
 // Scripted fake of the SDK `query()` (plan 4.2 fixtures). Used by 2A unit tests and by
 // `HOPECODE_FIXTURES=1` fixture mode / e2e. Implements the Query subset ThreadRunner uses:
-// async iteration, interrupt, close, setPermissionMode, setModel, supportedModels, getContextUsage.
+// async iteration, interrupt, close, setPermissionMode, setModel, applyFlagSettings (effortLevel), supportedModels,
+// getContextUsage.
 import { appendFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
@@ -54,6 +55,8 @@ export interface FakeTurnContext {
   model: string | undefined;
   /** Permission mode in effect for this turn (`options.permissionMode`, updated by `setPermissionMode()`). */
   permissionMode: string;
+  /** Effort in effect (`options.effort`, updated by `applyFlagSettings({effortLevel})`); undefined = model default. */
+  effort: string | undefined;
 }
 
 /** Steps for one turn. A success `result` is appended unless the steps contain a `result`. */
@@ -70,6 +73,8 @@ export interface FakeCall {
   prompts: string[];
   permissionModes: string[];
   models: (string | undefined)[];
+  /** `applyFlagSettings({effortLevel})` values, in order (null = back to the model default). */
+  efforts: (string | null)[];
   interrupts: number;
   /** canUseTool results returned by the host, in order. */
   permissionResults: PermissionResult[];
@@ -98,9 +103,27 @@ export interface FakeQueryController {
 }
 
 export const FAKE_MODELS: ModelInfo[] = [
-  { value: 'default', displayName: 'Default', description: 'Recommended model' },
-  { value: 'fable', displayName: 'Fable', description: 'Most capable' },
-  { value: 'sonnet', displayName: 'Sonnet', description: 'Fast everyday model' },
+  {
+    value: 'default',
+    displayName: 'Default',
+    description: 'Recommended model',
+    supportsEffort: true,
+    supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+  },
+  {
+    value: 'fable',
+    displayName: 'Fable',
+    description: 'Most capable',
+    supportsEffort: true,
+    supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+  },
+  {
+    value: 'sonnet',
+    displayName: 'Sonnet',
+    description: 'Fast everyday model',
+    supportsEffort: true,
+    supportedEffortLevels: ['low', 'medium', 'high'],
+  },
 ];
 
 export function defaultFakeScenario(): FakeStep[] {
@@ -202,6 +225,7 @@ export function createFakeQuery(opts: FakeQueryOptions = {}): FakeQueryControlle
       prompts: [],
       permissionModes: [],
       models: [],
+      efforts: [],
       interrupts: 0,
       permissionResults: [],
       closed: false,
@@ -228,6 +252,7 @@ export function createFakeQuery(opts: FakeQueryOptions = {}): FakeQueryControlle
     let turnIndex = 0;
     let currentModel = options.model;
     let currentPermissionMode: string = options.permissionMode ?? 'default';
+    let currentEffort: string | undefined = typeof options.effort === 'string' ? options.effort : undefined;
     let initSent = false;
     let interruptTurn: (() => void) | null = null;
     let finished = false;
@@ -256,6 +281,7 @@ export function createFakeQuery(opts: FakeQueryOptions = {}): FakeQueryControlle
         options,
         model: currentModel,
         permissionMode: currentPermissionMode,
+        effort: currentEffort,
       });
       let interrupted = false;
       const interruptPromise = new Promise<void>((resolve) => {
@@ -449,6 +475,12 @@ export function createFakeQuery(opts: FakeQueryOptions = {}): FakeQueryControlle
         call.models.push(model);
         currentModel = model;
       },
+      async applyFlagSettings(settings: { effortLevel?: string | null }) {
+        if ('effortLevel' in settings) {
+          call.efforts.push(settings.effortLevel ?? null);
+          currentEffort = settings.effortLevel ?? undefined;
+        }
+      },
       async supportedModels() {
         return models;
       },
@@ -491,13 +523,14 @@ export const FIXTURE_EDIT_PATCH: StructuredPatchHunk[] = [
  * - `[text]`: streaming text only.
  * - `[exhaust]`: the first two attempts are rejected (five_hour, resets in 10s, no output) so a pool with one
  *   exhausted account ends up waiting; the attempt after the reset succeeds.
- * - `[whoami]`: replies `model=<model> resume=<sid|none> account=<config dir name> permissionMode=<mode>` (e2e assertions).
+ * - `[whoami]`: replies `model=<model> resume=<sid|none> account=<config dir name> permissionMode=<mode>
+ *   effort=<level|default>` (e2e assertions).
  * - otherwise: streaming text, an Edit tool_use that asks for permission (structuredPatch), closing text.
  */
 export function createFixtureScenario(): FakeScenario {
   const rejectedOnce = new Set<string>();
   const exhaustRejections = new Map<string, number>();
-  return ({ prompt, options, configDir, model, permissionMode }) => {
+  return ({ prompt, options, configDir, model, permissionMode, effort }) => {
     const resetsAt = Math.floor(Date.now() / 1000) + 3600;
     if (prompt.includes('[exhaust]') && (exhaustRejections.get(prompt) ?? 0) < 2) {
       exhaustRejections.set(prompt, (exhaustRejections.get(prompt) ?? 0) + 1);
@@ -515,7 +548,7 @@ export function createFixtureScenario(): FakeScenario {
       return [
         {
           type: 'text',
-          text: `model=${model ?? 'default'} resume=${options.resume ?? 'none'} account=${account} permissionMode=${permissionMode}`,
+          text: `model=${model ?? 'default'} resume=${options.resume ?? 'none'} account=${account} permissionMode=${permissionMode} effort=${effort ?? 'default'}`,
         },
       ];
     }

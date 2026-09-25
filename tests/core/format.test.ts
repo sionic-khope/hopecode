@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatPercent, formatResetCountdown, formatSessionDuration } from '../../src/core/format';
+import { formatPercent, formatResetCountdown, formatSessionDuration, tildePath } from '../../src/core/format';
 
 const HOUR_MS = 60 * 60_000;
 const DAY_MS = 24 * HOUR_MS;
@@ -68,5 +68,14 @@ describe('formatPercent', () => {
 
   it('returns an em dash for undefined', () => {
     expect(formatPercent(undefined)).toBe('–');
+  });
+});
+
+describe('tildePath', () => {
+  it('abbreviates the home directory only at a path boundary', () => {
+    expect(tildePath('/Users/me/src/app', '/Users/me')).toBe('~/src/app');
+    expect(tildePath('/Users/me', '/Users/me/')).toBe('~');
+    expect(tildePath('/Users/meow/app', '/Users/me')).toBe('/Users/meow/app');
+    expect(tildePath('/tmp/x', null)).toBe('/tmp/x');
   });
 });

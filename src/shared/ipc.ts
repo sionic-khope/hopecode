@@ -6,12 +6,15 @@ import type {
   ChatEvent,
   ChatItem,
   ChatSendResult,
+  EffortLevel,
   ModelOption,
   PermissionDecision,
   PermissionRequest,
   PoolSnapshot,
   Project,
   Thread,
+  ThreadStartRequest,
+  ThreadStartResult,
   UiPermissionMode,
   UsageSample,
 } from './types';
@@ -27,7 +30,18 @@ export interface InvokeMap {
     req: { projectId: string; title?: string; model?: string; permissionMode?: UiPermissionMode };
     res: Thread;
   };
+  /**
+   * Draft -> real thread in one step: creates the thread (+ worktree) in `projectId`, titles it from `text` and
+   * sends `text` as its first message. Nothing is created when the send is refused (`ok: false`).
+   * `bypassPermissions` goes through the same native confirm as `thread:setPermissionMode`.
+   */
+  'thread:start': { req: ThreadStartRequest; res: ThreadStartResult };
   'thread:rename': { req: { threadId: string; title: string }; res: void };
+  'thread:setPinned': { req: { threadId: string; pinned: boolean }; res: void };
+  /** Archived threads are hidden from the project lists; nothing is deleted. */
+  'thread:setArchived': { req: { threadId: string; archived: boolean }; res: void };
+  /** `null` = the model's default effort. Applied to the live Query (applyFlagSettings) and every later one. */
+  'thread:setEffort': { req: { threadId: string; effort: EffortLevel | null }; res: void };
   /**
    * `removeWorktree` with a dirty worktree and no `force` deletes nothing and returns `worktree-dirty`;
    * the renderer confirms with the user and re-sends with `force: true`.
@@ -48,6 +62,11 @@ export interface InvokeMap {
     res: void;
   };
   'models:list': { req: void; res: ModelOption[] };
+  /**
+   * Native file picker for "파일 첨부". Returns `@`-mention paths: relative to the thread cwd (or the project
+   * folder for a draft) when inside it, absolute otherwise. `[]` when cancelled.
+   */
+  'dialog:pickFiles': { req: { threadId?: string; projectId?: string }; res: string[] };
   'account:loginStart': { req: { alias: string; color: string }; res: { loginId: string; accountId: string } };
   'account:loginInput': { req: { loginId: string; data: string }; res: void };
   'account:loginCancel': { req: { loginId: string }; res: void };
@@ -79,8 +98,10 @@ export interface EventMap {
   'pty:exit': { threadId: string; code: number };
   /** Menu View > Toggle Terminal (⌘J); the renderer has no keydown handler for it. */
   'ui:toggleTerminal': void;
-  /** Menu File > New Thread (⌘N). */
+  /** Menu File > New Chat (⌘N). */
   'ui:newThread': void;
+  /** Menu View > Toggle Sidebar (⌘B). */
+  'ui:toggleSidebar': void;
 }
 
 export type InvokeChannel = keyof InvokeMap;
@@ -96,7 +117,11 @@ export const INVOKE_CHANNELS = [
   'project:remove',
   'project:setTrusted',
   'thread:create',
+  'thread:start',
   'thread:rename',
+  'thread:setPinned',
+  'thread:setArchived',
+  'thread:setEffort',
   'thread:delete',
   'thread:setModel',
   'thread:setPermissionMode',
@@ -106,6 +131,7 @@ export const INVOKE_CHANNELS = [
   'chat:interrupt',
   'permission:respond',
   'models:list',
+  'dialog:pickFiles',
   'account:loginStart',
   'account:loginInput',
   'account:loginCancel',
@@ -132,6 +158,7 @@ export const EVENT_CHANNELS = [
   'pty:exit',
   'ui:toggleTerminal',
   'ui:newThread',
+  'ui:toggleSidebar',
 ] as const satisfies readonly EventChannel[];
 
 type Missing<All, Listed> = Exclude<All, Listed>;

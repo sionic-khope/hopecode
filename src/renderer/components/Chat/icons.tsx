@@ -215,3 +215,92 @@ const TOOL_ICONS: Record<string, (props: IconProps) => ReactElement> = {
 export function iconForTool(toolName: string): (props: IconProps) => ReactElement {
   return TOOL_ICONS[toolName] ?? ToolGenericIcon;
 }
+
+// ---------------------------------------------------------------------------
+// Composer controls (20-unit grid, drawn to sit on the 13px control text)
+// ---------------------------------------------------------------------------
+
+function ctl(props: IconProps, children: ReactNode) {
+  const { width = 15, height = 15, ...rest } = props;
+  return (
+    <svg
+      width={width}
+      height={height}
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.6}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      {...rest}
+    >
+      {children}
+    </svg>
+  );
+}
+
+export function PlusIcon(props: IconProps) {
+  return ctl(props, <path d="M10 4v12M4 10h12" />);
+}
+
+export function PaperclipIcon(props: IconProps) {
+  return ctl(
+    props,
+    <path d="m15.5 9.6-5.3 5.3a3.6 3.6 0 0 1-5.1-5.1l5.6-5.6a2.4 2.4 0 0 1 3.4 3.4l-5.6 5.6a1.2 1.2 0 0 1-1.7-1.7l5.1-5.1" />,
+  );
+}
+
+export function FolderIcon(props: IconProps) {
+  return ctl(props, <path d="M3 6.25a1.5 1.5 0 0 1 1.5-1.5h3.2l1.6 1.9h6.2a1.5 1.5 0 0 1 1.5 1.5v6.6a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 14.75v-8.5Z" />);
+}
+
+export function FolderOpenIcon(props: IconProps) {
+  return ctl(
+    props,
+    <>
+      <path d="M3 14.5V6.25a1.5 1.5 0 0 1 1.5-1.5h3.2l1.6 1.9h5.2a1.5 1.5 0 0 1 1.5 1.5v.6" />
+      <path d="M3 14.5 5 9.4a1.3 1.3 0 0 1 1.2-.85h10.1a.9.9 0 0 1 .85 1.2l-1.85 4.9a1.3 1.3 0 0 1-1.2.85H4.2A1.2 1.2 0 0 1 3 14.5Z" />
+    </>,
+  );
+}
+
+export function ShieldIcon(props: IconProps) {
+  return ctl(props, <path d="M10 2.75 15.75 5v4.6c0 3.55-2.4 6.3-5.75 7.65C6.65 15.9 4.25 13.15 4.25 9.6V5L10 2.75Z" />);
+}
+
+export function ShieldAlertIcon(props: IconProps) {
+  return ctl(
+    props,
+    <>
+      <path d="M10 2.75 15.75 5v4.6c0 3.55-2.4 6.3-5.75 7.65C6.65 15.9 4.25 13.15 4.25 9.6V5L10 2.75Z" />
+      <path d="M10 6.9v3.4M10 12.9v.05" />
+    </>,
+  );
+}
+
+export function BoltIcon(props: IconProps) {
+  return ctl(props, <path d="M11.1 2.75 4.6 11.1h5l-.7 6.15 6.5-8.35h-5l.7-6.15Z" />);
+}
+
+export function ArrowUpIcon(props: IconProps) {
+  return ctl(props, <path d="M10 15.5v-11M5.25 9.25 10 4.5l4.75 4.75" />);
+}
+
+export function CheckIcon(props: IconProps) {
+  return ctl(props, <path d="m4.75 10.25 3.5 3.5 7-7.5" />);
+}
+
+export function PersonIcon(props: IconProps) {
+  return ctl(
+    props,
+    <>
+      <circle cx="10" cy="7" r="3" />
+      <path d="M4.5 16.25c.55-2.8 2.75-4.5 5.5-4.5s4.95 1.7 5.5 4.5" />
+    </>,
+  );
+}
+
+export function ChevronDownSmallIcon(props: IconProps) {
+  return ctl({ width: 11, height: 11, ...props }, <path d="m5.5 8 4.5 4.5L14.5 8" />);
+}

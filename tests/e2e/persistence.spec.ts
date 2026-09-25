@@ -2,13 +2,13 @@
 // next send resumes the same SDK session.
 import { expect, test, type Page } from '@playwright/test';
 import {
-  addProjectAndThread,
   bootstrapState,
   createSandbox,
   launch,
   menuShortcut,
   screenshot,
   sendMessage,
+  startThread,
   type Sandbox,
 } from './helpers';
 
@@ -20,8 +20,8 @@ test('terminal shell state is kept per thread across thread switches', async () 
   const sandbox = createSandbox();
   const { app, page } = await launch(sandbox);
   try {
-    await addProjectAndThread(page);
-    await addProjectAndThread(page);
+    await startThread(page, sandbox, '[text] thread A');
+    await startThread(page, sandbox, '[text] thread B');
     const threads = page.getByTestId('sidebar').locator('.hc-thread');
     await expect(threads).toHaveCount(2);
 
@@ -55,8 +55,7 @@ test('threads and transcript survive a restart; the next send resumes the sessio
     let sessionId: string | null = null;
     {
       const { app, page } = await launch(sandbox);
-      await addProjectAndThread(page);
-      await sendMessage(page, '[text] remember this');
+      await startThread(page, sandbox, '[text] remember this');
       await expect(page.locator('.hc-messages')).toContainText('Streaming reply from the fixture session.');
       const state = (await bootstrapState(page)) as unknown as { threads: { sdkSessionId: string | null }[] };
       sessionId = state.threads[0].sdkSessionId;

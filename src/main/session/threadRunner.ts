@@ -18,6 +18,7 @@ import type {
   ChatItem,
   ChatReducerState,
   ChatSendResult,
+  EffortLevel,
   PendingPrompt,
   RateLimitInfoLite,
   SystemNoticeItem,
@@ -116,22 +117,22 @@ class InputQueue implements AsyncIterable<SDKUserMessage> {
   }
 }
 
-const ALL_AUTH_FAILED_TEXT = 'Every account needs to log in again (authentication failed). Re-login on the Accounts page.';
+const ALL_AUTH_FAILED_TEXT = '모든 계정의 인증이 만료되었습니다. 계정 화면에서 다시 로그인하세요.';
 
 function switchReasonLabel(from: SwitchedFrom): string {
-  if (from.reason === 'auth') return 'authentication failed';
+  if (from.reason === 'auth') return '인증 실패';
   switch (from.info?.rateLimitType) {
     case 'five_hour':
-      return '5h limit reached';
+      return '5시간 한도 도달';
     case 'seven_day':
     case 'seven_day_opus':
     case 'seven_day_sonnet':
     case 'seven_day_overage_included':
-      return 'weekly limit reached';
+      return '주간 한도 도달';
     case 'overage':
-      return 'extra usage blocked';
+      return '추가 사용량 차단';
     default:
-      return 'rate limit reached';
+      return '사용 한도 도달';
   }
 }
 
@@ -210,8 +211,8 @@ export class ThreadRunner {
         this.notice(
           'error',
           decision.reason === 'auth'
-            ? `${ALL_AUTH_FAILED_TEXT} Waiting was cancelled.`
-            : 'No enabled account is available. Waiting was cancelled.',
+            ? `${ALL_AUTH_FAILED_TEXT} 대기를 취소했습니다.`
+            : '사용할 수 있는 계정이 없어 대기를 취소했습니다.',
         );
       }
       return;
@@ -275,7 +276,7 @@ export class ThreadRunner {
       this.clearIdleTimer();
       await this.closeQuery();
       if (cut) {
-        if (!this.closed) this.notice('warn', `Interrupted: account ${alias} was removed.`);
+        if (!this.closed) this.notice('warn', `중단됨: ${alias} 계정이 제거되었습니다.`);
         await work;
       }
     }
@@ -290,6 +291,12 @@ export class ThreadRunner {
     this.clearIdleTimer();
     this.active?.abort.abort();
     for (const q of this.closingQueries) q.abort.abort();
+  }
+
+  async setEffort(effort: EffortLevel | null): Promise<void> {
+    this.patch({ effort });
+    // `effortLevel: null` returns the live session to the model's default effort.
+    if (this.active) await this.active.q.applyFlagSettings({ effortLevel: effort });
   }
 
   async setModel(model: string): Promise<void> {
@@ -357,7 +364,7 @@ export class ThreadRunner {
       const auth = decision.reason === 'auth';
       if (switchedFrom) {
         this.patch({ status: 'idle', pendingPrompt: null });
-        this.notice('error', auth ? ALL_AUTH_FAILED_TEXT : `No other account is available (${switchReasonLabel(switchedFrom)}).`);
+        this.notice('error', auth ? ALL_AUTH_FAILED_TEXT : `전환할 다른 계정이 없습니다 (${switchReasonLabel(switchedFrom)}).`);
       }
       return { accepted: false, reason: auth ? 'auth' : 'no-accounts' };
     }
@@ -372,8 +379,8 @@ export class ThreadRunner {
       this.notice(
         'warn',
         switchedFrom
-          ? `All accounts are at their limit (${switchReasonLabel(switchedFrom)}). Resuming automatically after reset.`
-          : 'All accounts are at their limit. Resuming automatically after reset.',
+          ? `모든 계정이 한도에 도달했습니다 (${switchReasonLabel(switchedFrom)}). 초기화되면 자동으로 이어갑니다.`
+          : '모든 계정이 한도에 도달했습니다. 초기화되면 자동으로 이어갑니다.',
       );
       return { accepted: true, reason: 'waiting' };
     }
@@ -384,7 +391,7 @@ export class ThreadRunner {
     if (switchedFrom) {
       const from = this.account(switchedFrom.accountId)?.alias ?? switchedFrom.accountId;
       const to = this.account(accountId)?.alias ?? accountId;
-      this.notice('info', `Switched from ${from} → ${to} (${switchReasonLabel(switchedFrom)})`);
+      this.notice('info', `계정 전환: ${from} → ${to} (${switchReasonLabel(switchedFrom)})`);
     }
 
     let active: ActiveQuery | null;
@@ -397,7 +404,7 @@ export class ThreadRunner {
       if (this.closed) return { accepted: true };
       this.deps.log('[session] failed to open query', err);
       this.safePatch({ status: 'error', pendingPrompt: null });
-      this.reportError(`Failed to start Claude Code: ${errorText(err)}`);
+      this.reportError(`Claude Code를 시작하지 못했습니다: ${errorText(err)}`);
       return { accepted: true };
     } finally {
       if (this.preparing?.done === preparing) this.preparing = null;
@@ -409,7 +416,7 @@ export class ThreadRunner {
       const retried = await this.runTurn(prompt, new Set(tried).add(accountId), switchedFrom, null);
       if (!retried.accepted && !switchedFrom) {
         this.safePatch({ status: 'idle', activeAccountId: null, pendingPrompt: null });
-        this.notice('error', retried.reason === 'auth' ? ALL_AUTH_FAILED_TEXT : 'No enabled account is available.');
+        this.notice('error', retried.reason === 'auth' ? ALL_AUTH_FAILED_TEXT : '사용할 수 있는 계정이 없습니다.');
       }
       return retried;
     }
@@ -540,10 +547,10 @@ export class ThreadRunner {
           if (!this.usable(accountId)) return null;
         }
         if (found) resume = sessionId;
-        else this.notice('warn', 'Previous conversation transcript was not found; starting a new session.');
+        else this.notice('warn', '이전 대화 기록을 찾지 못해 새 세션으로 시작합니다.');
       }
     } else if (thread.sdkSessionId && !sessionId) {
-      this.notice('warn', 'Previous session id is invalid; starting a new session.');
+      this.notice('warn', '이전 세션 ID가 올바르지 않아 새 세션으로 시작합니다.');
     }
 
     return this.openQuery(account, resume, trusted);
@@ -566,6 +573,7 @@ export class ThreadRunner {
       cwd: thread.cwd,
       ...(thread.model && thread.model !== 'default' ? { model: thread.model } : {}),
       permissionMode: thread.permissionMode,
+      ...(thread.effort ? { effort: thread.effort } : {}),
       // Always set so the UI can switch to bypassPermissions at runtime via setPermissionMode.
       allowDangerouslySkipPermissions: true,
       includePartialMessages: true,
@@ -643,7 +651,7 @@ export class ThreadRunner {
       const turn = this.turn;
       if (turn && turn.active === active && !turn.ended) {
         if (unexpected && !turn.reason) {
-          this.reportError(failure ? `Claude Code stopped: ${failure}` : 'Claude Code exited unexpectedly.');
+          this.reportError(failure ? `Claude Code가 중지되었습니다: ${failure}` : 'Claude Code가 예기치 않게 종료되었습니다.');
         }
         this.endTurn(turn, turn.reason ?? 'error');
       }
@@ -851,5 +859,5 @@ function resultErrorText(msg: Extract<SDKMessage, { type: 'result' }>): string {
     const text = m.errors.filter((e): e is string => typeof e === 'string' && e.trim() !== '').join('\n');
     if (text) return text;
   }
-  return `Claude Code reported an error (${m.subtype ?? 'unknown'}).`;
+  return `Claude Code 오류 (${m.subtype ?? 'unknown'}).`;
 }

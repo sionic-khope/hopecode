@@ -1,19 +1,24 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { concreteModelLabel, defaultModelLabelFrom } from '../core/modelDisplay';
 import './App.css';
 import { on } from './api';
 import { AccountsPage } from './components/Accounts/AccountsPage';
 import { AddAccountDialog, type LoginStatus } from './components/Accounts/AddAccountDialog';
-import { ChatView } from './components/Chat';
+import { ChatView, DraftView } from './components/Chat';
 import { NEEDS_FORCE } from './components/Sidebar/ItemMenu';
 import { Sidebar } from './components/Sidebar/Sidebar';
+import { IconCompose, IconSidebar } from './components/Sidebar/icons';
 import { StatusLine } from './components/StatusLine/StatusLine';
-import { BrandMark, Button } from './components/common';
+import { Button } from './components/common';
 import { TerminalPane } from './components/Terminal/TerminalPane';
 import { disposeTerminalEntry, resetTerminalEntry } from './components/Terminal/terminalRegistry';
 import { ipcErrorMessage } from './errors';
 import {
   initStoreEventSubscriptions,
   selectAccounts,
+  selectChatScrolled,
+  selectDraft,
+  selectHomeDir,
   selectModels,
   selectPoolSnapshot,
   selectProjects,
@@ -21,12 +26,13 @@ import {
   selectSelectedThread,
   selectPtyStatus,
   selectSelectedThreadId,
+  selectSidebarCollapsed,
   selectTerminalOpen,
   selectThreads,
   useAppStore,
 } from './store';
-import { ACCOUNT_COLORS, APP_NAME, DAY_MS, MINUTE_MS } from '../shared/constants';
-import type { ChatSendResult, PermissionDecision, UiPermissionMode, UsageSample } from '../shared/types';
+import { ACCOUNT_COLORS, DAY_MS, MINUTE_MS } from '../shared/constants';
+import type { ChatSendResult, EffortLevel, PermissionDecision, UiPermissionMode, UsageSample } from '../shared/types';
 
 const USAGE_HISTORY_RANGE_MS = 7 * DAY_MS;
 const USAGE_HISTORY_REFRESH_MS = 5 * MINUTE_MS;
@@ -39,31 +45,18 @@ function cachedUsageHistory(): Record<string, UsageSample[]> {
 /** Threads whose `chat:history` was requested in this renderer session. */
 const historyRequested = new Set<string>();
 
-function sendErrorMessage(result: ChatSendResult): string | null {
+function sendErrorMessage(result: ChatSendResult | { accepted: false; reason?: ChatSendResult['reason'] }): string | null {
   if (result.accepted) return null;
   switch (result.reason) {
     case 'busy':
-      return 'This thread is still running. Wait for the turn to finish or press Stop.';
+      return '이 스레드가 아직 실행 중입니다. 턴이 끝나기를 기다리거나 정지를 누르세요.';
     case 'no-accounts':
-      return 'No enabled account. Add or enable an account on the Accounts page.';
+      return '사용할 수 있는 계정이 없습니다. 계정 화면에서 계정을 추가하거나 활성화하세요.';
     case 'auth':
-      return 'Every account needs to log in again. Re-login on the Accounts page.';
+      return '모든 계정에 다시 로그인해야 합니다. 계정 화면에서 다시 로그인하세요.';
     default:
-      return 'The message was not sent.';
+      return '메시지를 보내지 못했습니다.';
   }
-}
-
-/** Creates a thread in the selected (or first) project; with no project, asks for a folder first. */
-async function newThread(): Promise<void> {
-  const s = useAppStore.getState();
-  const selected = selectSelectedThread(s);
-  let projectId = selected?.projectId ?? s.projects[0]?.id ?? null;
-  if (!projectId) {
-    const project = await s.addProject();
-    if (!project) return;
-    projectId = project.id;
-  }
-  await s.createThread(projectId);
 }
 
 function useNow(intervalMs: number): number {
@@ -75,7 +68,9 @@ function useNow(intervalMs: number): number {
   return now;
 }
 
-/** 3-pane shell: sidebar | chat or accounts | terminal (⌘J), bottom statusline. */
+const reportError = (label: string) => (err: unknown) => console.error(`[hopecode] ${label}`, err);
+
+/** Shell: sidebar (⌘B) | chat, draft or accounts | terminal (⌘J), bottom statusline. */
 export function App() {
   const projects = useAppStore(selectProjects);
   const threads = useAppStore(selectThreads);
@@ -84,25 +79,28 @@ export function App() {
   const models = useAppStore(selectModels);
   const route = useAppStore(selectRoute);
   const terminalOpen = useAppStore(selectTerminalOpen);
+  const sidebarCollapsed = useAppStore(selectSidebarCollapsed);
   const selectedThreadId = useAppStore(selectSelectedThreadId);
   const activeThread = useAppStore(selectSelectedThread);
+  const draft = useAppStore(selectDraft);
+  const homeDir = useAppStore(selectHomeDir);
+  const chatScrolled = useAppStore(selectChatScrolled);
+  const defaultModelLabel = useMemo(() => defaultModelLabelFrom(threads), [threads]);
 
   const [sendError, setSendError] = useState<string | null>(null);
 
-  // Store <-> main wiring, once per mount. ⌘N / ⌘J come only from the app menu (`ui:newThread`,
-  // `ui:toggleTerminal` in store/events.ts), so each shortcut runs exactly once.
+  // Store <-> main wiring, once per mount. ⌘N / ⌘B / ⌘J come only from the app menu (`ui:newThread`,
+  // `ui:toggleSidebar`, `ui:toggleTerminal` in store/events.ts), so each shortcut runs exactly once.
   useEffect(() => {
     const off = initStoreEventSubscriptions();
-    const offNewThread = on('ui:newThread', () => void newThread().catch((err: unknown) => console.error(err)));
     const offPtyExit = on('pty:exit', ({ threadId }) => resetTerminalEntry(threadId));
     void useAppStore
       .getState()
       .bootstrap()
       .then(() => useAppStore.getState().loadModels())
-      .catch((err: unknown) => console.error('[hopecode] bootstrap failed', err));
+      .catch(reportError('bootstrap failed'));
     return () => {
       off();
-      offNewThread();
       offPtyExit();
     };
   }, []);
@@ -131,7 +129,7 @@ export function App() {
       });
   }, [selectedThreadId]);
 
-  useEffect(() => setSendError(null), [selectedThreadId]);
+  useEffect(() => setSendError(null), [selectedThreadId, route]);
 
   const onSelectThread = useCallback((threadId: string) => {
     const s = useAppStore.getState();
@@ -144,28 +142,57 @@ export function App() {
     void useAppStore
       .getState()
       .sendMessage(threadId, text)
-      // `{accepted:true, reason:'waiting'}`: queued behind the pool reset; the thread shows Waiting.
+      // `{accepted:true, reason:'waiting'}`: queued behind the pool reset; the thread shows its countdown.
       .then((result) => setSendError(sendErrorMessage(result)))
-      .catch((err: unknown) => setSendError(`The message was not sent: ${ipcErrorMessage(err)}`));
+      .catch((err: unknown) => setSendError(`메시지를 보내지 못했습니다: ${ipcErrorMessage(err)}`));
   }, []);
 
-  const onNewThread = useCallback((projectId: string) => {
-    void useAppStore
-      .getState()
-      .createThread(projectId)
-      .catch((err: unknown) => console.error(err));
+  const onStartThread = useCallback(async (text: string) => {
+    setSendError(null);
+    try {
+      const result = await useAppStore.getState().startThread(text);
+      if (result.ok) {
+        // The thread exists and its history starts with this message (already streamed as chat:event).
+        historyRequested.add(result.thread.id);
+        setSendError(sendErrorMessage(result.send));
+        return true;
+      }
+      setSendError(sendErrorMessage({ accepted: false, reason: result.reason }));
+      return false;
+    } catch (err) {
+      setSendError(`채팅을 시작하지 못했습니다: ${ipcErrorMessage(err)}`);
+      return false;
+    }
   }, []);
 
+  const onNewChat = useCallback(() => useAppStore.getState().newDraft(), []);
+  const onNewChatIn = useCallback((projectId: string) => {
+    const s = useAppStore.getState();
+    s.newDraft();
+    s.setDraft({ projectId });
+  }, []);
+
+  const onPickFolder = useCallback(() => useAppStore.getState().addProject(), []);
   const onAddProject = useCallback(() => {
-    void useAppStore
-      .getState()
-      .addProject()
-      .catch((err: unknown) => console.error(err));
+    void useAppStore.getState().addProject().catch(reportError('add project failed'));
+  }, []);
+  const onDraftChange = useCallback((patch: Parameters<ReturnType<typeof useAppStore.getState>['setDraft']>[0]) => {
+    useAppStore.getState().setDraft(patch);
   }, []);
 
   const onOpenAccounts = useCallback(() => useAppStore.getState().setRoute('accounts'), []);
+  const onToggleSidebar = useCallback(() => useAppStore.getState().toggleSidebar(), []);
 
   const onRenameThread = useCallback((threadId: string, title: string) => useAppStore.getState().renameThread(threadId, title), []);
+  const onSetPinned = useCallback((threadId: string, pinned: boolean) => {
+    void useAppStore.getState().setThreadPinned(threadId, pinned).catch(reportError('pin failed'));
+  }, []);
+  const onSetArchived = useCallback((threadId: string, archived: boolean) => {
+    const s = useAppStore.getState();
+    void s.setThreadArchived(threadId, archived).catch(reportError('archive failed'));
+    // Archiving the open thread leaves it: the view returns to a new chat.
+    if (archived && s.selectedThreadId === threadId && s.route === 'chat') s.newDraft();
+  }, []);
 
   const onDeleteThread = useCallback(async (threadId: string, force: boolean) => {
     const result = await useAppStore.getState().deleteThread(threadId, force);
@@ -183,10 +210,7 @@ export function App() {
   }, []);
 
   const onSetProjectTrusted = useCallback((projectId: string, trusted: boolean) => {
-    void useAppStore
-      .getState()
-      .setProjectTrusted(projectId, trusted)
-      .catch((err: unknown) => console.error('[hopecode] trust change failed', err));
+    void useAppStore.getState().setProjectTrusted(projectId, trusted).catch(reportError('trust change failed'));
   }, []);
 
   const onInterrupt = useCallback((threadId: string) => void useAppStore.getState().interrupt(threadId), []);
@@ -194,32 +218,48 @@ export function App() {
     (requestId: string, decision: PermissionDecision) => void useAppStore.getState().respondPermission(requestId, decision),
     [],
   );
-  const onModelChange = useCallback(
-    (threadId: string, model: string) => void useAppStore.getState().setThreadModel(threadId, model),
-    [],
-  );
+  const onModelChange = useCallback((threadId: string, model: string) => {
+    void useAppStore.getState().setThreadModel(threadId, model).catch(reportError('model change failed'));
+  }, []);
+  const onEffortChange = useCallback((threadId: string, effort: EffortLevel | null) => {
+    void useAppStore.getState().setThreadEffort(threadId, effort).catch(reportError('effort change failed'));
+  }, []);
   const onPermissionModeChange = useCallback((threadId: string, mode: UiPermissionMode) => {
     setSendError(null);
     void useAppStore
       .getState()
       .setThreadPermissionMode(threadId, mode)
-      .catch((err: unknown) => setSendError(`Permission mode was not changed: ${ipcErrorMessage(err)}`));
+      .catch((err: unknown) => setSendError(`권한 모드를 바꾸지 못했습니다: ${ipcErrorMessage(err)}`));
   }, []);
-  const onPinAccountChange = useCallback(
-    (threadId: string, accountId: string | null) => void useAppStore.getState().pinAccount(threadId, accountId),
-    [],
-  );
+  const onPinAccountChange = useCallback((threadId: string, accountId: string | null) => {
+    void useAppStore.getState().pinAccount(threadId, accountId).catch(reportError('account pin failed'));
+  }, []);
+  const onAttachToThread = useCallback((threadId: string) => useAppStore.getState().pickFiles({ threadId }), []);
+  const onAttachToDraft = useCallback((projectId: string) => useAppStore.getState().pickFiles({ projectId }), []);
+
+  const draftActive = route === 'chat' && !activeThread;
+  // Statusline model: the thread's (resolved) model, or what the draft will start with.
+  const statusModel = activeThread
+    ? concreteModelLabel(activeThread.model, models, { resolvedModel: activeThread.resolvedModel, defaultLabel: defaultModelLabel })
+    : route === 'chat'
+      ? concreteModelLabel(draft.model, models, { defaultLabel: defaultModelLabel })
+      : null;
+  const activeProject = activeThread ? (projects.find((p) => p.id === activeThread.projectId) ?? null) : null;
+  const shellClass = [
+    'app',
+    terminalOpen ? 'app--terminal-open' : 'app--terminal-closed',
+    sidebarCollapsed ? 'app--sidebar-collapsed' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
-    <div className={`app ${terminalOpen ? 'app--terminal-open' : 'app--terminal-closed'}`}>
-      <aside className="app__sidebar" data-testid="sidebar">
-        <div className="app__titlebar drag-region">
-          <div className="app__brand" data-testid="brand">
-            <BrandMark size={18} />
-            <span className="app__wordmark">
-              Hope<span className="app__wordmark-code">code</span>
-            </span>
-          </div>
+    <div className={shellClass}>
+      <aside className="app__sidebar" data-testid="sidebar" aria-hidden={sidebarCollapsed} inert={sidebarCollapsed}>
+        <div className="app__titlebar app__titlebar--sidebar drag-region">
+          <WindowButton label="사이드바 숨기기 (⌘B)" onClick={onToggleSidebar}>
+            <IconSidebar />
+          </WindowButton>
         </div>
         <div className="app__body">
           <Sidebar
@@ -227,49 +267,84 @@ export function App() {
             threads={threads}
             accounts={accounts}
             selectedThreadId={route === 'chat' ? selectedThreadId : null}
+            draftActive={draftActive}
+            accountsActive={route === 'accounts'}
+            onNewChat={onNewChat}
+            onNewChatIn={onNewChatIn}
+            onOpenAccounts={onOpenAccounts}
+            onAddProject={onAddProject}
             onSelectThread={onSelectThread}
-            onNewThread={onNewThread}
             onRenameThread={onRenameThread}
+            onSetPinned={onSetPinned}
+            onSetArchived={onSetArchived}
             onDeleteThread={onDeleteThread}
             onRemoveProject={onRemoveProject}
             onSetProjectTrusted={onSetProjectTrusted}
-            onAddProject={onAddProject}
-            onOpenAccounts={onOpenAccounts}
-            accountsActive={route === 'accounts'}
           />
         </div>
       </aside>
       <main className="app__chat" data-testid="chat">
-        {/* The Accounts page has its own header; the bar stays an empty drag region there. */}
-        <div className="app__titlebar drag-region">{route === 'accounts' ? null : (activeThread?.title ?? APP_NAME)}</div>
+        <div
+          className={`app__titlebar app__titlebar--chat drag-region${route === 'chat' && activeThread && chatScrolled ? ' app__titlebar--scrolled' : ''}`}
+        >
+          {sidebarCollapsed ? (
+            <div className="app__window-actions">
+              <WindowButton label="사이드바 보기 (⌘B)" onClick={onToggleSidebar}>
+                <IconSidebar />
+              </WindowButton>
+              <WindowButton label="새 채팅 (⌘N)" onClick={onNewChat}>
+                <IconCompose />
+              </WindowButton>
+            </div>
+          ) : null}
+          {/* The Accounts page and the draft screen carry their own headings; the bar stays a drag region. */}
+          {route === 'chat' && activeThread ? (
+            <div className="app__thread-title">
+              <span className="app__thread-name">{activeThread.title}</span>
+              {activeProject ? <span className="app__thread-project">{activeProject.name}</span> : null}
+            </div>
+          ) : null}
+        </div>
         <div className="app__body app__body--fill">
           {route === 'accounts' ? (
             <AccountsRoute />
           ) : activeThread ? (
-            <>
-              <ChatView
-                key={activeThread.id}
-                thread={activeThread}
-                models={models}
-                accounts={accounts}
-                onSend={onSend}
-                onInterrupt={onInterrupt}
-                onPermissionDecision={onPermissionDecision}
-                onModelChange={onModelChange}
-                onPermissionModeChange={onPermissionModeChange}
-                onPinAccountChange={onPinAccountChange}
-              />
-              {sendError ? (
-                <div className="app__toast hc-notice hc-notice--error" role="alert" onClick={() => setSendError(null)}>
-                  {sendError}
-                </div>
-              ) : null}
-            </>
+            <ChatView
+              key={activeThread.id}
+              thread={activeThread}
+              project={activeProject}
+              models={models}
+              accounts={accounts}
+              onSend={onSend}
+              onInterrupt={onInterrupt}
+              onPermissionDecision={onPermissionDecision}
+              onModelChange={onModelChange}
+              onEffortChange={onEffortChange}
+              onPermissionModeChange={onPermissionModeChange}
+              onPinAccountChange={onPinAccountChange}
+              onAttachFiles={onAttachToThread}
+              defaultModelLabel={defaultModelLabel}
+              homeDir={homeDir}
+            />
           ) : (
-            <div className="app__empty">
-              {projects.length === 0 ? 'Add a project folder to start' : 'Select or create a thread (⌘N)'}
-            </div>
+            <DraftView
+              draft={draft}
+              projects={projects}
+              models={models}
+              accounts={accounts}
+              onDraftChange={onDraftChange}
+              onPickFolder={onPickFolder}
+              onStart={onStartThread}
+              onAttachFiles={onAttachToDraft}
+              defaultModelLabel={defaultModelLabel}
+              homeDir={homeDir}
+            />
           )}
+          {sendError && route === 'chat' ? (
+            <div className="app__toast hc-notice hc-notice--error" role="alert" onClick={() => setSendError(null)}>
+              {sendError}
+            </div>
+          ) : null}
         </div>
       </main>
       <section className="app__terminal" data-testid="terminal" aria-hidden={!terminalOpen}>
@@ -278,8 +353,16 @@ export function App() {
           {terminalOpen && activeThread ? <ThreadTerminal threadId={activeThread.id} /> : null}
         </div>
       </section>
-      <StatusLine pool={pool} accounts={accounts} activeThread={activeThread} models={models} />
+      <StatusLine pool={pool} accounts={accounts} activeThread={activeThread} models={models} modelText={statusModel} />
     </div>
+  );
+}
+
+function WindowButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+  return (
+    <button type="button" className="app__window-btn no-drag" aria-label={label} title={label} onClick={onClick}>
+      {children}
+    </button>
   );
 }
 
@@ -334,10 +417,10 @@ function ThreadTerminal({ threadId }: { threadId: string }) {
       />
       {exited ? (
         <div className="app__terminal-exited" role="status">
-          <span>Shell exited{pty.lastExitCode ? ` (code ${pty.lastExitCode})` : ''}</span>
+          <span>셸이 종료되었습니다{pty.lastExitCode ? ` (코드 ${pty.lastExitCode})` : ''}</span>
           <span aria-hidden>·</span>
           <Button variant="secondary" size="sm" onClick={() => setGeneration((g) => g + 1)}>
-            Restart
+            다시 시작
           </Button>
         </div>
       ) : null}

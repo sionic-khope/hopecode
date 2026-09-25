@@ -1,4 +1,4 @@
-import type { AppSettings, ModelOption, UiPermissionMode } from './types';
+import type { AppSettings, EffortLevel, ModelOption, UiPermissionMode } from './types';
 
 export const APP_NAME = 'Hopecode';
 /** Value prefix for CLAUDE_AGENT_SDK_CLIENT_APP (`hopecode/<version>`). */
@@ -14,13 +14,20 @@ export const UI_PERMISSION_MODES: readonly UiPermissionMode[] = [
   'bypassPermissions',
 ];
 
+export const EFFORT_LEVELS: readonly EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max'];
+
+/** Title of a thread before its first message names it. */
+export const DEFAULT_THREAD_TITLE = '새 채팅';
+/** Auto titles (first user message) are cut to this many characters. */
+export const THREAD_TITLE_MAX_CHARS = 40;
+
 /** Fallback model list when supportedModels() is unavailable. */
 export const FALLBACK_MODELS: readonly ModelOption[] = [
-  { value: 'default', label: 'Default' },
-  { value: 'fable', label: 'Fable' },
-  { value: 'opus', label: 'Opus' },
-  { value: 'sonnet', label: 'Sonnet' },
-  { value: 'haiku', label: 'Haiku' },
+  { value: 'default', label: 'Default', description: '권장 모델' },
+  { value: 'fable', label: 'Fable 5', description: '가장 뛰어난 성능' },
+  { value: 'opus', label: 'Opus 5.5', description: '복잡하고 긴 작업' },
+  { value: 'sonnet', label: 'Sonnet 5', description: '빠른 일상 작업' },
+  { value: 'haiku', label: 'Haiku 4.5', description: '가장 빠른 응답' },
 ];
 
 export const DEFAULT_SETTINGS: AppSettings = {

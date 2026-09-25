@@ -1,8 +1,8 @@
 // Minimal runtime type guards for IPC request payloads (plan 3.3 "입력 검증(최소 타입 가드)").
 // IPC input crosses a trust boundary (renderer), so every handler in registerIpc.ts narrows
 // `unknown` with these before touching a field, regardless of what the InvokeMap types claim.
-import { UI_PERMISSION_MODES } from '../../shared/constants';
-import type { PermissionDecision, UiPermissionMode } from '../../shared/types';
+import { EFFORT_LEVELS, UI_PERMISSION_MODES } from '../../shared/constants';
+import type { EffortLevel, PermissionDecision, UiPermissionMode } from '../../shared/types';
 
 export function isString(v: unknown): v is string {
   return typeof v === 'string';
@@ -38,6 +38,10 @@ export function isStringArray(v: unknown): v is string[] {
 
 export function isUiPermissionMode(v: unknown): v is UiPermissionMode {
   return typeof v === 'string' && (UI_PERMISSION_MODES as readonly string[]).includes(v);
+}
+
+export function isEffortLevel(v: unknown): v is EffortLevel {
+  return typeof v === 'string' && (EFFORT_LEVELS as readonly string[]).includes(v);
 }
 
 const PERMISSION_DECISIONS: readonly PermissionDecision[] = ['allow', 'allow-session', 'deny'];

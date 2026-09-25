@@ -12,15 +12,62 @@ import type {
   ChatEvent,
   ChatItem,
   ChatSendResult,
+  EffortLevel,
   ModelOption,
   PermissionDecision,
   PermissionRequest,
   PoolSnapshot,
   Project,
   Thread,
+  ThreadStartResult,
   UiPermissionMode,
   UsageSample,
 } from '../../shared/types';
+
+/** Settings of the unsent "new chat" (draft) the composer edits before `thread:start` creates the thread. */
+export interface DraftState {
+  projectId: string | null;
+  model: string;
+  permissionMode: UiPermissionMode;
+  effort: EffortLevel | null;
+  pinnedAccountId: string | null;
+}
+
+const SIDEBAR_COLLAPSED_KEY = 'hopecode.sidebarCollapsed';
+
+/** Per-viewer convenience only: storage may be unavailable (private mode, tests), so every access is guarded. */
+function readSidebarCollapsed(): boolean {
+  try {
+    return globalThis.localStorage?.getItem(SIDEBAR_COLLAPSED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeSidebarCollapsed(collapsed: boolean): void {
+  try {
+    globalThis.localStorage?.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? '1' : '0');
+  } catch {
+    // Not persisted; the toggle still works for this session.
+  }
+}
+
+/**
+ * Folder a new draft starts in: the project of the most recently active thread, else the newest project, else
+ * none (the composer then asks for a folder).
+ */
+export function defaultDraftProjectId(projects: readonly Project[], threads: readonly Thread[]): string | null {
+  const known = new Set(projects.map((p) => p.id));
+  let best: Thread | null = null;
+  for (const t of threads) {
+    if (!known.has(t.projectId)) continue;
+    if (!best || t.updatedAt > best.updatedAt) best = t;
+  }
+  if (best) return best.projectId;
+  let newest: Project | null = null;
+  for (const p of projects) if (!newest || p.createdAt >= newest.createdAt) newest = p;
+  return newest?.id ?? null;
+}
 
 export type Route = 'chat' | 'accounts';
 
@@ -90,6 +137,11 @@ function upsertChatItem(items: ChatItem[], item: ChatItem): ChatItem[] {
 
 const EMPTY_CHAT_ITEMS: ChatItem[] = [];
 
+/** A draft never starts in bypassPermissions (main confirms it when the thread starts). */
+function safeDraftMode(mode: UiPermissionMode): UiPermissionMode {
+  return mode === 'bypassPermissions' ? 'default' : mode;
+}
+
 /** Prefix of notices synthesized from `error` ChatEvents (not persisted, so never in `chat:history`). */
 const LOCAL_ERROR_PREFIX = 'local-error-';
 let localErrorSeq = 0;
@@ -128,11 +180,18 @@ export interface AppStoreState {
   pool: PoolSnapshot;
   settings: AppSettings;
   models: ModelOption[];
+  /** User home (bootstrap); paths are displayed with `~`. */
+  homeDir: string | null;
 
   // UI / routing
+  /** null (with route 'chat') shows the draft "new chat" screen. */
   selectedThreadId: string | null;
   route: Route;
   terminalOpen: boolean;
+  sidebarCollapsed: boolean;
+  draft: DraftState;
+  /** The open transcript is scrolled away from its top (the chat title bar shows its divider). */
+  chatScrolled: boolean;
 
   // per-thread chat state
   chatItemsByThread: Record<string, ChatItem[]>;
@@ -149,6 +208,18 @@ export interface AppStoreState {
   setRoute: (route: Route) => void;
   toggleTerminal: () => void;
   setTerminalOpen: (open: boolean) => void;
+  toggleSidebar: () => void;
+  setChatScrolled: (scrolled: boolean) => void;
+  /** Opens an empty draft (⌘N / "새 채팅") in the last used folder. */
+  newDraft: () => void;
+  setDraft: (patch: Partial<DraftState>) => void;
+  /** Draft -> thread: `thread:start` with the draft settings; selects the thread when it was created. */
+  startThread: (text: string) => Promise<ThreadStartResult>;
+  setThreadPinned: (threadId: string, pinned: boolean) => Promise<void>;
+  setThreadArchived: (threadId: string, archived: boolean) => Promise<void>;
+  setThreadEffort: (threadId: string, effort: EffortLevel | null) => Promise<void>;
+  /** Native file picker; resolves `@` mentions relative to the thread (or draft folder). */
+  pickFiles: (target: { threadId?: string; projectId?: string }) => Promise<string[]>;
 
   addProject: () => Promise<Project | null>;
   removeProject: (projectId: string) => Promise<void>;
@@ -211,10 +282,20 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
   pool: EMPTY_POOL,
   settings: EMPTY_SETTINGS,
   models: [],
+  homeDir: null,
 
   selectedThreadId: null,
   route: 'chat',
   terminalOpen: false,
+  sidebarCollapsed: readSidebarCollapsed(),
+  chatScrolled: false,
+  draft: {
+    projectId: null,
+    model: EMPTY_SETTINGS.defaultModel,
+    permissionMode: EMPTY_SETTINGS.defaultPermissionMode,
+    effort: null,
+    pinnedAccountId: null,
+  },
 
   chatItemsByThread: {},
   streamingItemIdByThread: {},
@@ -232,6 +313,62 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
   setRoute: (route) => set({ route }),
   toggleTerminal: () => set((s) => ({ terminalOpen: !s.terminalOpen })),
   setTerminalOpen: (open) => set({ terminalOpen: open }),
+  toggleSidebar: () =>
+    set((s) => {
+      writeSidebarCollapsed(!s.sidebarCollapsed);
+      return { sidebarCollapsed: !s.sidebarCollapsed };
+    }),
+
+  setChatScrolled: (scrolled) => {
+    if (get().chatScrolled !== scrolled) set({ chatScrolled: scrolled });
+  },
+
+  newDraft: () =>
+    set((s) => ({
+      selectedThreadId: null,
+      route: 'chat',
+      draft: { ...s.draft, projectId: defaultDraftProjectId(s.projects, s.threads) },
+    })),
+
+  setDraft: (patch) => set((s) => ({ draft: { ...s.draft, ...patch } })),
+
+  startThread: async (text) => {
+    const { draft } = get();
+    if (!draft.projectId) throw new Error('No folder selected for the new chat');
+    const result = await invoke('thread:start', {
+      projectId: draft.projectId,
+      text,
+      model: draft.model,
+      permissionMode: draft.permissionMode,
+      effort: draft.effort,
+      pinnedAccountId: draft.pinnedAccountId,
+    });
+    if (result.ok) {
+      get().applyThreadUpdated(result.thread);
+      set({ selectedThreadId: result.thread.id, route: 'chat' });
+    }
+    return result;
+  },
+
+  setThreadPinned: async (threadId, pinned) => {
+    await invoke('thread:setPinned', { threadId, pinned });
+    set((s) => ({ threads: patchThreadLocal(s.threads, threadId, { pinned }) }));
+  },
+
+  setThreadArchived: async (threadId, archived) => {
+    await invoke('thread:setArchived', { threadId, archived });
+    set((s) => ({
+      threads: patchThreadLocal(s.threads, threadId, archived ? { archived, pinned: false } : { archived }),
+    }));
+  },
+
+  // Applied value arrives via `thread:updated`; the local patch keeps the picker responsive meanwhile.
+  setThreadEffort: async (threadId, effort) => {
+    await invoke('thread:setEffort', { threadId, effort });
+    set((s) => ({ threads: patchThreadLocal(s.threads, threadId, { effort }) }));
+  },
+
+  pickFiles: async (target) => invoke('dialog:pickFiles', target),
 
   addProject: async () => {
     const project = await invoke('project:add');
@@ -256,6 +393,16 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
         streamingItemIdByThread,
         permissionRequests: s.permissionRequests.filter((r) => !removedIds.has(r.threadId)),
         selectedThreadId: s.selectedThreadId && removedIds.has(s.selectedThreadId) ? null : s.selectedThreadId,
+        draft:
+          s.draft.projectId === projectId
+            ? {
+                ...s.draft,
+                projectId: defaultDraftProjectId(
+                  s.projects.filter((p) => p.id !== projectId),
+                  s.threads.filter((t) => t.projectId !== projectId),
+                ),
+              }
+            : s.draft,
       };
     });
   },
@@ -424,9 +571,22 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
       pool: payload.pool,
       settings: payload.settings,
       appVersion: payload.appVersion,
+      homeDir: payload.homeDir ?? null,
       // Permission prompts still waiting in main survive a renderer reload (M7).
       permissionRequests: payload.pendingPermissions ?? [],
-      selectedThreadId: s.selectedThreadId ?? payload.threads[0]?.id ?? null,
+      // Launch opens a new chat (draft) in the last used folder; an explicit selection is kept on re-bootstrap.
+      selectedThreadId:
+        s.selectedThreadId && payload.threads.some((t) => t.id === s.selectedThreadId) ? s.selectedThreadId : null,
+      draft: {
+        ...s.draft,
+        projectId:
+          s.draft.projectId && payload.projects.some((p) => p.id === s.draft.projectId)
+            ? s.draft.projectId
+            : defaultDraftProjectId(payload.projects, payload.threads),
+        ...(s.bootstrapped
+          ? {}
+          : { model: payload.settings.defaultModel, permissionMode: safeDraftMode(payload.settings.defaultPermissionMode) }),
+      },
     })),
 
   applyThreadUpdated: (thread) => set((s) => ({ threads: upsertThread(s.threads, thread) })),

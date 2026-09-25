@@ -1,6 +1,6 @@
 .app {
   display: grid;
-  grid-template-columns: var(--sidebar-w) minmax(0, 1fr) var(--app-terminal-w, 0px);
+  grid-template-columns: var(--app-sidebar-w, var(--sidebar-w)) minmax(0, 1fr) var(--app-terminal-w, 0px);
   grid-template-rows: minmax(0, 1fr) var(--statusline-h);
   grid-template-areas:
     'sidebar chat terminal'
@@ -10,6 +10,9 @@
 }
 .app--terminal-open {
   --app-terminal-w: var(--terminal-w);
+}
+.app--sidebar-collapsed {
+  --app-sidebar-w: 0px;
 }
 
 .app__titlebar {
@@ -25,37 +28,43 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  overflow: hidden;
   background: var(--bg-sidebar);
-  border-right: 1px solid var(--separator);
+  border-right: 1px solid var(--sidebar-edge);
 }
-.app__sidebar .app__titlebar {
-  padding-left: var(--traffic-light-w);
+/* Short sidebar bar: the toggle sits right after the traffic lights (x 78), centred on them (y 25). */
+.app__titlebar--sidebar {
+  height: 38px;
+  align-items: flex-start;
+  padding: 11px var(--space-2) 0 var(--traffic-light-w);
 }
-/* Brand: sits in the titlebar row right of the traffic lights, optically centred on them (y = 18 + 6). */
-.app__brand {
+.app__window-actions {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-  margin-left: var(--space-2);
-  padding-bottom: var(--space-1);
-  pointer-events: none;
+  gap: 2px;
+  margin-right: var(--space-2);
 }
-.app__brand svg {
+.app__window-btn {
+  all: unset;
+  box-sizing: border-box;
   flex: none;
-  filter: drop-shadow(0 0.5px 1px rgba(11, 20, 40, 0.18));
-}
-.app__wordmark {
-  font-size: var(--text-md);
-  line-height: var(--lh-md);
-  font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-title);
-  color: var(--label);
-  white-space: nowrap;
-}
-.app__wordmark-code {
-  font-weight: var(--weight-regular);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  border-radius: var(--radius-menu-item);
   color: var(--label-secondary);
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+.app__window-btn:hover {
+  background: var(--bg-sidebar-hover);
+  color: var(--label);
+}
+.app__window-btn:focus-visible {
+  box-shadow: var(--focus-ring);
 }
 
 .app__sidebar .app__body {
@@ -72,11 +81,45 @@
   min-width: 0;
   background: var(--bg-window);
 }
-.app__chat .app__titlebar {
-  border-bottom: 1px solid var(--separator);
+.app--sidebar-collapsed .app__sidebar {
+  border-right: none;
+}
+/* Collapsed: the chat bar starts after the traffic lights and carries the toggle + new chat. */
+.app--sidebar-collapsed .app__titlebar--chat {
+  padding-left: var(--traffic-light-w);
+}
+.app__titlebar--chat {
+  gap: var(--space-2);
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+/* Divider only once the transcript scrolls under the title. */
+.app__titlebar--scrolled {
+  border-bottom-color: var(--separator);
+}
+.app__thread-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.app__thread-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-nav);
+  line-height: var(--lh-nav);
   font-weight: var(--weight-semibold);
-  font-size: var(--text-md);
   letter-spacing: var(--tracking-title);
+  color: var(--label);
+}
+.app__thread-project {
+  flex: none;
+  font-size: var(--text-sm);
+  line-height: var(--lh-nav);
+  color: var(--label-tertiary);
 }
 
 .app__terminal {
@@ -106,19 +149,11 @@
 .app__toast {
   position: absolute;
   left: 50%;
-  bottom: 96px;
+  bottom: 132px;
   transform: translateX(-50%);
   max-width: 80%;
   cursor: pointer;
   box-shadow: var(--shadow-popover, 0 4px 16px rgba(0, 0, 0, 0.12));
-}
-
-.app__empty {
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--label-tertiary);
 }
 
 .app__status {

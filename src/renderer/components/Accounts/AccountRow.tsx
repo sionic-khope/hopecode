@@ -28,10 +28,10 @@ interface StatusBadge {
 function statusBadge(usage: AccountUsage | undefined): StatusBadge | null {
   if (!usage) return null;
   if (usage.error === 'auth' || usage.error === 'token_expired') {
-    return { tone: 'warn', label: 'Needs re-login' };
+    return { tone: 'warn', label: '재로그인 필요' };
   }
   if (usage.extraUsageEnabled) {
-    return { tone: 'warn', label: 'Extra usage on' };
+    return { tone: 'warn', label: '추가 사용량 켜짐' };
   }
   return null;
 }
@@ -92,7 +92,7 @@ export function AccountRow({ account, usage, usageHistory, now, onUpdate, onRemo
         <button
           type="button"
           className="hc-acct-row__handle"
-          aria-label={`Reorder ${account.alias}`}
+          aria-label={`${account.alias} 순서 변경`}
           {...attributes}
           {...listeners}
         >
@@ -104,12 +104,12 @@ export function AccountRow({ account, usage, usageHistory, now, onUpdate, onRemo
             type="button"
             className="hc-acct-row__swatch"
             style={{ background: account.color }}
-            aria-label={`Change color for ${account.alias}`}
+            aria-label={`${account.alias} 색상 변경`}
             aria-expanded={colorPickerOpen}
             onClick={() => setColorPickerOpen((v) => !v)}
           />
           {colorPickerOpen ? (
-            <div className="hc-acct-row__palette" role="listbox" aria-label="Account color">
+            <div className="hc-acct-row__palette" role="listbox" aria-label="계정 색상">
               {ACCOUNT_COLORS.map((color) => (
                 <button
                   key={color}
@@ -147,12 +147,12 @@ export function AccountRow({ account, usage, usageHistory, now, onUpdate, onRemo
               }}
             />
           ) : (
-            <button type="button" className="hc-acct-row__alias" onClick={() => setEditingAlias(true)} title="Rename">
+            <button type="button" className="hc-acct-row__alias" onClick={() => setEditingAlias(true)} title="이름 변경">
               {account.alias}
             </button>
           )}
           <span className="hc-acct-row__sub">
-            {account.email ?? 'Not signed in'}
+            {account.email ?? '로그인 안 됨'}
             {account.plan ? ` · ${account.plan}` : ''}
           </span>
         </div>
@@ -161,7 +161,7 @@ export function AccountRow({ account, usage, usageHistory, now, onUpdate, onRemo
           {badge ? <Pill tone={badge.tone}>{badge.label}</Pill> : null}
         </div>
 
-        <Switch checked={account.enabled} onChange={(checked) => onUpdate({ enabled: checked })} aria-label={`Enable ${account.alias}`} />
+        <Switch checked={account.enabled} onChange={(checked) => onUpdate({ enabled: checked })} aria-label={`${account.alias} 활성화`} />
 
         {confirmingDelete ? (
           <div className="hc-acct-row__confirm">
@@ -173,10 +173,10 @@ export function AccountRow({ account, usage, usageHistory, now, onUpdate, onRemo
                 setRemoveError(null);
               }}
             >
-              Cancel
+              취소
             </Button>
             <Button variant="destructive" size="sm" disabled={removing} onClick={confirmRemove}>
-              {removing ? 'Removing…' : 'Remove'}
+              {removing ? '제거 중…' : '제거'}
             </Button>
           </div>
         ) : (
@@ -184,8 +184,8 @@ export function AccountRow({ account, usage, usageHistory, now, onUpdate, onRemo
             variant="plain"
             size="sm"
             icon
-            aria-label={`Remove ${account.alias}`}
-            title="Remove account"
+            aria-label={`${account.alias} 제거`}
+            title="계정 제거"
             onClick={() => setConfirmingDelete(true)}
           >
             <TrashIcon />
@@ -196,17 +196,17 @@ export function AccountRow({ account, usage, usageHistory, now, onUpdate, onRemo
       {confirmingDelete ? (
         <div className={`hc-acct-row__remove-note${removeError ? ' hc-acct-row__remove-note--error' : ''}`} role={removeError ? 'alert' : undefined}>
           {removeError
-            ? `Could not remove ${account.alias}: ${removeError}`
-            : `Remove ${account.alias}? Its running sessions are closed and its conversations move to another account. The account's sign-in and config folder are deleted.`}
+            ? `${account.alias} 계정을 제거하지 못했습니다: ${removeError}`
+            : `${account.alias} 계정을 제거할까요? 실행 중인 세션은 닫히고 대화 기록은 다른 계정으로 옮겨집니다. 로그인 정보와 설정 폴더는 삭제됩니다.`}
         </div>
       ) : null}
 
       {showReLoginHint ? (
         <div className="hc-acct-row__hint">
-          Run <code>claude auth login --claudeai</code> for this account, then refresh.
+          이 계정으로 <code>claude auth login --claudeai</code>를 실행한 뒤 새로 고치세요.
           {onReLogin ? (
             <Button variant="secondary" size="sm" onClick={onReLogin}>
-              Re-login
+              다시 로그인
             </Button>
           ) : null}
         </div>

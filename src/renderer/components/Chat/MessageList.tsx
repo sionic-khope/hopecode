@@ -13,6 +13,8 @@ export interface MessageListProps {
   permissionRequests: PermissionRequest[];
   onPermissionDecision: (requestId: string, decision: PermissionDecision) => void;
   emptyLabel?: string;
+  /** Reports whether the list is scrolled away from its top (title bar divider). */
+  onScrolledChange?: (scrolled: boolean) => void;
 }
 
 const NEAR_BOTTOM_PX = 96;
@@ -23,7 +25,8 @@ export function MessageList({
   streamingItemId = null,
   permissionRequests,
   onPermissionDecision,
-  emptyLabel = 'No messages yet',
+  emptyLabel = '아직 메시지가 없습니다',
+  onScrolledChange,
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
@@ -32,12 +35,16 @@ export function MessageList({
     const el = scrollRef.current;
     if (!el || !stickToBottom.current) return;
     el.scrollTop = el.scrollHeight;
-  }, [items, streamingItemId, permissionRequests]);
+    onScrolledChange?.(el.scrollTop > 0);
+  }, [items, streamingItemId, permissionRequests, onScrolledChange]);
+
+  useEffect(() => () => onScrolledChange?.(false), [onScrolledChange]);
 
   const onScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
     stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+    onScrolledChange?.(el.scrollTop > 0);
   };
 
   const byToolUseId = new Map(permissionRequests.map((r) => [r.toolUseId, r]));

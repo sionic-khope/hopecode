@@ -14,6 +14,8 @@ export interface StatusLineProps {
   activeThread: Thread | null;
   /** Model options (`models:list`) whose labels replace raw ids. */
   models?: ModelOption[];
+  /** Display name of the model in use (thread) or about to be used (draft); overrides the id-derived label. */
+  modelText?: string | null;
 }
 
 /** Ticks so the session/reset countdowns stay live without a global clock. */
@@ -34,7 +36,7 @@ function Divider() {
  * Bottom-fixed statusline (plan 6, spec Usage Statusline). Text values only; percent/reset math
  * comes from core/poolSummary + core/format, never recomputed here. Click opens AccountsPopover.
  */
-export const StatusLine = memo(function StatusLine({ pool, accounts, activeThread, models = [] }: StatusLineProps) {
+export const StatusLine = memo(function StatusLine({ pool, accounts, activeThread, models = [], modelText: modelTextProp }: StatusLineProps) {
   const now = useNow();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
@@ -45,7 +47,7 @@ export const StatusLine = memo(function StatusLine({ pool, accounts, activeThrea
   const availLevel = total === 0 ? 'ok' : available === 0 ? 'crit' : available < total ? 'warn' : 'ok';
 
   const modelId = activeThread ? (activeThread.resolvedModel ?? activeThread.model) : null;
-  const modelText = modelId ? modelLabel(modelId, models) : '–';
+  const modelText = modelTextProp ?? (modelId ? modelLabel(modelId, models) : '–');
 
   let sessionLabel = '–';
   if (activeThread?.sessionStartedAt != null) {

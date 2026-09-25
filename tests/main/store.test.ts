@@ -16,7 +16,10 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     model: 'default',
     resolvedModel: null,
     permissionMode: 'default',
+    effort: null,
     pinnedAccountId: null,
+    pinned: false,
+    archived: false,
     lastAccountId: null,
     activeAccountId: null,
     sdkSessionId: null,
@@ -147,5 +150,38 @@ describe('store', () => {
     });
 
     expect(seen).toEqual([1]);
+  });
+  it('load() gives threads saved before pinned / archived / effort their defaults', async () => {
+    const legacy = makeThread({ id: 'old' }) as Partial<Thread>;
+    delete legacy.pinned;
+    delete legacy.archived;
+    delete legacy.effort;
+    const odd = { ...makeThread({ id: 'odd' }), pinned: 'yes', archived: 1, effort: 'extreme' };
+    await writeFile(
+      filePath,
+      JSON.stringify({ version: 1, projects: [], threads: [legacy, odd], accounts: [], settings: DEFAULT_SETTINGS }),
+      'utf8',
+    );
+    const state = await createStore(filePath).load();
+    for (const t of state.threads) {
+      expect(t).toMatchObject({ pinned: false, archived: false, effort: null });
+    }
+  });
+
+  it('pinned / archived / effort survive a save and reload', async () => {
+    const store = createStore(filePath);
+    await store.load();
+    store.update((draft) => {
+      draft.threads.push(makeThread({ id: 'a' }), makeThread({ id: 'b' }));
+    });
+    store.patchThread('a', { pinned: true, effort: 'xhigh' });
+    store.patchThread('b', { archived: true });
+    await store.flush();
+
+    const reloaded = await createStore(filePath).load();
+    expect(reloaded.threads.map((t) => [t.id, t.pinned, t.archived, t.effort])).toEqual([
+      ['a', true, false, 'xhigh'],
+      ['b', false, true, null],
+    ]);
   });
 });

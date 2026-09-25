@@ -22,6 +22,8 @@ export function initStoreEventSubscriptions(): () => void {
     on('login:exit', ({ loginId, ok, account, error }) => useAppStore.getState().applyLoginExit(loginId, ok, account, error)),
     on('pty:exit', ({ threadId, code }) => useAppStore.getState().applyPtyExit(threadId, code)),
     on('ui:toggleTerminal', () => useAppStore.getState().toggleTerminal()),
+    on('ui:toggleSidebar', () => useAppStore.getState().toggleSidebar()),
+    on('ui:newThread', () => useAppStore.getState().newDraft()),
   ];
 
   return () => {

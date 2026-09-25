@@ -70,8 +70,8 @@ export async function launch(sandbox: Sandbox): Promise<Launched> {
   return { app, page };
 }
 
-export async function screenshot(page: Page, name: string): Promise<void> {
-  mkdirSync(SCREENSHOT_DIR, { recursive: true });
+export async function screenshot(page: Page, name: string, dir: string = SCREENSHOT_DIR): Promise<void> {
+  mkdirSync(dir, { recursive: true });
   // Let finite enter animations (popover fade/scale) settle so the capture shows the resting state.
   await page.evaluate(() =>
     Promise.all(
@@ -81,20 +81,40 @@ export async function screenshot(page: Page, name: string): Promise<void> {
         .map((a) => a.finished.catch(() => undefined)),
     ),
   );
-  await page.screenshot({ path: join(SCREENSHOT_DIR, `${name}.png`) });
+  await page.screenshot({ path: join(dir, `${name}.png`) });
 }
 
-/** Add the fixture project (dialog seam) and create a thread in it. */
-export async function addProjectAndThread(page: Page): Promise<void> {
-  const sidebar = page.getByTestId('sidebar');
-  if ((await sidebar.locator('.hc-project').count()) === 0) {
-    await sidebar.getByRole('button', { name: 'Add project', exact: true }).click();
-    await expect(sidebar.locator('.hc-project')).toHaveCount(1);
-  }
-  const before = await sidebar.locator('.hc-thread').count();
-  await sidebar.getByRole('button', { name: 'New thread', exact: true }).click();
-  await expect(sidebar.locator('.hc-thread')).toHaveCount(before + 1);
-  await expect(page.locator('.hc-composer__textarea')).toBeVisible();
+/** Opens a new chat (draft) from the sidebar's "새 채팅" entry. */
+export async function openDraft(page: Page): Promise<void> {
+  await page.getByTestId('sidebar').getByRole('button', { name: /^새 채팅/ }).click();
+  await expect(page.getByTestId('draft')).toBeVisible();
+}
+
+/**
+ * Draft folder chip -> "다른 폴더 선택…" (the dialog seam answers HOPECODE_FIXTURE_PROJECT and trusts it). No-op
+ * when the draft already points at a folder.
+ */
+export async function chooseFixtureFolder(page: Page, sandbox: Sandbox): Promise<void> {
+  const draft = page.getByTestId('draft');
+  const name = sandbox.project.split('/').pop()!;
+  const chip = draft.locator('.hc-chip--folder');
+  if ((await chip.textContent())?.includes(name)) return;
+  await chip.click();
+  await page.getByRole('menuitem', { name: '다른 폴더 선택…' }).click();
+  await expect(chip).toContainText(name);
+}
+
+/**
+ * New chat in the fixture folder: ⌘N-equivalent draft, folder chip, first message. The thread (and its worktree)
+ * exists only after this send (thread:start).
+ */
+export async function startThread(page: Page, sandbox: Sandbox, text: string): Promise<void> {
+  await openDraft(page);
+  await chooseFixtureFolder(page, sandbox);
+  const before = await page.getByTestId('sidebar').locator('.hc-thread').count();
+  await sendMessage(page, text);
+  await expect(page.getByTestId('sidebar').locator('.hc-thread')).toHaveCount(before + 1);
+  await expect(page.locator('.hc-messages .hc-msg-user__bubble').last()).toHaveText(text);
 }
 
 export async function sendMessage(page: Page, text: string): Promise<void> {
@@ -104,16 +124,34 @@ export async function sendMessage(page: Page, text: string): Promise<void> {
 }
 
 /** Threads as main sees them (via the preload bridge). */
-export async function bootstrapState(page: Page): Promise<{ threads: { id: string; cwd: string; title: string }[] }> {
+export interface ThreadState {
+  id: string;
+  cwd: string;
+  title: string;
+  projectId: string;
+  pinned: boolean;
+  archived: boolean;
+  effort: string | null;
+  permissionMode: string;
+  sdkSessionId: string | null;
+  worktree?: { path: string; branch: string };
+}
+
+export async function bootstrapState(
+  page: Page,
+): Promise<{ threads: ThreadState[]; projects: { id: string; path: string; trusted: boolean }[] }> {
   return page.evaluate(() => window.hopecode.invoke('app:bootstrap')) as never;
 }
 
 /**
- * ⌘J / ⌘N live only in the app menu (the renderer has no keydown handler, so a shortcut runs once).
+ * ⌘J / ⌘N / ⌘B live only in the app menu (the renderer has no keydown handler, so a shortcut runs once).
  * Playwright's synthetic key events never reach native menu accelerators, so specs click the menu item that
  * owns the accelerator — the same code path a real keypress takes.
  */
-export async function menuShortcut(app: ElectronApplication, accelerator: 'CmdOrCtrl+J' | 'CmdOrCtrl+N'): Promise<void> {
+export async function menuShortcut(
+  app: ElectronApplication,
+  accelerator: 'CmdOrCtrl+J' | 'CmdOrCtrl+N' | 'CmdOrCtrl+B',
+): Promise<void> {
   await app.evaluate(({ Menu, BrowserWindow }, acc) => {
     type Item = { accelerator?: string | null; submenu?: { items: Item[] } | null; click: (...args: unknown[]) => void };
     const find = (items: Item[]): Item | undefined => {

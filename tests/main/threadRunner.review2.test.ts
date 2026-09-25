@@ -111,7 +111,7 @@ describe('ThreadRunner review round 2', () => {
     expect(h.fake.calls[0]!.ended).toBe(true);
     expect(h.thread('t1').status).toBe('idle');
     const notices = logItems(h.threadLog).filter((i) => i.type === 'notice');
-    expect(notices.map((n) => (n as { text: string }).text)).toContain('Interrupted: account A was removed.');
+    expect(notices.map((n) => (n as { text: string }).text)).toContain('중단됨: A 계정이 제거되었습니다.');
     // Other accounts' runners are untouched.
     await h.manager.closeAccount('B');
     expect(h.fake.calls).toHaveLength(1);

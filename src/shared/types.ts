@@ -10,6 +10,9 @@ export type UiPermissionMode = 'default' | 'plan' | 'acceptEdits' | 'bypassPermi
 
 export type LimitKind = 'fiveHour' | 'sevenDay' | 'fable';
 
+/** Reasoning effort (SDK `EffortLevel`, Options.effort / applyFlagSettings({effortLevel})). */
+export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
 /** Model-scoped weekly limit buckets (SDK `seven_day_<model>` rate limit types). */
 export type ModelLimitKind = 'fable' | 'opus' | 'sonnet';
 
@@ -99,7 +102,13 @@ export interface Thread {
   /** Actual model reported by SDK init message. */
   resolvedModel: string | null;
   permissionMode: UiPermissionMode;
+  /** Reasoning effort for this thread's Queries; null = the model's default. */
+  effort: EffortLevel | null;
   pinnedAccountId: string | null;
+  /** Shown in the sidebar's "pinned threads" section. */
+  pinned: boolean;
+  /** Hidden from the project thread lists (not deleted). */
+  archived: boolean;
   /** Account holding the freshest transcript copy (received >= 1 output). */
   lastAccountId: string | null;
   /** Account of the currently open / last used Query. */
@@ -273,6 +282,11 @@ export interface ModelOption {
   value: string;
   label: string;
   description?: string;
+  /**
+   * Effort levels the model accepts (SDK ModelInfo.supportedEffortLevels). `[]` = no effort support;
+   * undefined = unknown (the fallback list before a live Query reported its models).
+   */
+  effortLevels?: EffortLevel[];
 }
 
 export interface UsageSample {
@@ -326,6 +340,29 @@ export interface BootstrapPayload {
   pool: PoolSnapshot;
   settings: AppSettings;
   appVersion: string;
+  /** User home directory (paths are shown with `~`). */
+  homeDir: string;
   /** Permission requests still awaiting an answer (renderer reload re-shows the cards). */
   pendingPermissions: PermissionRequest[];
 }
+
+// ---------------------------------------------------------------------------
+// Thread start (draft -> first send)
+// ---------------------------------------------------------------------------
+
+export interface ThreadStartRequest {
+  projectId: string;
+  text: string;
+  model?: string;
+  permissionMode?: UiPermissionMode;
+  effort?: EffortLevel | null;
+  pinnedAccountId?: string | null;
+}
+
+/**
+ * `ok: false` means nothing was created (no thread, no worktree): the first message could not be sent, and the
+ * renderer keeps the draft text.
+ */
+export type ThreadStartResult =
+  | { ok: true; thread: Thread; send: ChatSendResult }
+  | { ok: false; reason: NonNullable<ChatSendResult['reason']> };

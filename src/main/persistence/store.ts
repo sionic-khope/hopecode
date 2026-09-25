@@ -5,8 +5,8 @@
 import { randomUUID } from 'node:crypto';
 import { copyFile, open, readFile, rename, rm } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { DEFAULT_SETTINGS } from '../../shared/constants';
-import type { PersistedState, Thread } from '../../shared/types';
+import { DEFAULT_SETTINGS, EFFORT_LEVELS } from '../../shared/constants';
+import type { EffortLevel, PersistedState, Thread } from '../../shared/types';
 import type { Store, Unsubscribe } from '../contracts';
 import { PRIVATE_FILE_MODE, mkdirPrivate } from './jsonl';
 
@@ -20,6 +20,13 @@ function defaultState(): PersistedState {
   return { version: 1, projects: [], threads: [], accounts: [], settings: { ...DEFAULT_SETTINGS } };
 }
 
+/** Fields added after the first release (pinned / archived / effort) get their defaults. */
+function migrateThread(raw: Thread): Thread {
+  const t = raw as Partial<Thread> & Thread;
+  const effort = (EFFORT_LEVELS as readonly unknown[]).includes(t.effort) ? (t.effort as EffortLevel) : null;
+  return { ...t, pinned: t.pinned === true, archived: t.archived === true, effort };
+}
+
 /** Best-effort migration: unknown/missing fields fall back to defaults rather than throwing. */
 function migrate(raw: unknown): PersistedState {
   if (!raw || typeof raw !== 'object') return defaultState();
@@ -28,7 +35,7 @@ function migrate(raw: unknown): PersistedState {
     version: 1,
     // `trusted` was added later: projects saved before it are untrusted until the user confirms.
     projects: Array.isArray(obj.projects) ? obj.projects.map((p) => ({ ...p, trusted: p.trusted === true })) : [],
-    threads: Array.isArray(obj.threads) ? obj.threads : [],
+    threads: Array.isArray(obj.threads) ? obj.threads.map(migrateThread) : [],
     accounts: Array.isArray(obj.accounts) ? obj.accounts : [],
     settings: { ...DEFAULT_SETTINGS, ...(obj.settings ?? {}) },
   };

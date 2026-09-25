@@ -252,3 +252,106 @@
     transform: none;
   }
 }
+
+/* ---------- Menu (composer chips, sidebar context menus) ---------- */
+.hc-popover:has(> .hc-mnu) {
+  border-radius: var(--radius-menu);
+}
+.hc-mnu {
+  display: flex;
+  flex-direction: column;
+  padding: 5px;
+  outline: none;
+}
+.hc-mnu__title {
+  padding: 6px 10px 4px;
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+  font-weight: var(--weight-medium);
+  color: var(--label-tertiary);
+}
+.hc-mnu__sep {
+  height: 1px;
+  margin: 5px 6px;
+  background: var(--separator);
+}
+.hc-mnu__item {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 10px;
+  border-radius: var(--radius-menu-item);
+  color: var(--label);
+  font-size: var(--text-md);
+  line-height: var(--lh-md);
+  cursor: default;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+.hc-mnu__item:hover:not(:disabled),
+.hc-mnu__item:focus-visible {
+  background: var(--bg-menu-hover);
+}
+.hc-mnu__item:focus-visible {
+  box-shadow: inset 0 0 0 1.5px rgba(0, 122, 255, 0.45);
+}
+.hc-mnu__item:disabled {
+  color: var(--label-tertiary);
+}
+.hc-mnu__item--warn,
+.hc-mnu__item--warn .hc-mnu__icon {
+  color: var(--warn-text);
+}
+.hc-mnu__item--danger,
+.hc-mnu__item--danger .hc-mnu__icon {
+  color: var(--crit-text);
+}
+.hc-mnu__icon {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  color: var(--label-secondary);
+}
+.hc-mnu__item:disabled .hc-mnu__icon {
+  color: var(--label-tertiary);
+}
+.hc-mnu__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.hc-mnu__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hc-mnu__desc {
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+  color: var(--label-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hc-mnu__item--warn .hc-mnu__desc {
+  color: color-mix(in srgb, var(--warn-text) 70%, transparent);
+}
+.hc-mnu__meta {
+  flex: none;
+  font-size: var(--text-xs);
+  color: var(--label-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.hc-mnu__check {
+  flex: none;
+  display: flex;
+  width: 14px;
+  color: var(--label);
+}

@@ -32,12 +32,12 @@ export interface AddAccountDialogProps {
 }
 
 const STATUS_LABEL: Record<LoginStatus, string> = {
-  form: 'New account',
-  starting: 'Starting login…',
-  running: 'Waiting for sign-in…',
-  success: 'Signed in',
-  error: 'Login failed',
-  cancelled: 'Cancelled',
+  form: '새 계정',
+  starting: '로그인 시작 중…',
+  running: '로그인 대기 중…',
+  success: '로그인됨',
+  error: '로그인 실패',
+  cancelled: '취소됨',
 };
 
 /**
@@ -93,22 +93,22 @@ export function AddAccountDialog({
 
   return createPortal(
     <div className="hc-dialog-overlay" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && canDismiss && onClose()}>
-      <div className="hc-dialog" role="dialog" aria-modal="true" aria-label="Add account">
+      <div className="hc-dialog" role="dialog" aria-modal="true" aria-label="계정 추가">
         <div className="hc-dialog__header">
-          <h2 className="hc-dialog__title">Add Account</h2>
+          <h2 className="hc-dialog__title">계정 추가</h2>
           <span className={`hc-dialog__status hc-dialog__status--${status}`}>{STATUS_LABEL[status]}</span>
         </div>
 
         {status === 'form' ? (
           <div className="hc-dialog__body">
             <label className="hc-field">
-              <span className="hc-field__label">Alias</span>
+              <span className="hc-field__label">별칭</span>
               <input
                 ref={aliasInputRef}
                 className="hc-field__input"
                 value={alias}
                 maxLength={40}
-                placeholder="e.g. Work"
+                placeholder="예: 회사"
                 onChange={(e) => onAliasChange(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && alias.trim()) onStart();
@@ -116,8 +116,8 @@ export function AddAccountDialog({
               />
             </label>
             <div className="hc-field">
-              <span className="hc-field__label">Color</span>
-              <div className="hc-dialog__palette" role="listbox" aria-label="Account color">
+              <span className="hc-field__label">색상</span>
+              <div className="hc-dialog__palette" role="listbox" aria-label="계정 색상">
                 {ACCOUNT_COLORS.map((c) => (
                   <button
                     key={c}
@@ -137,25 +137,25 @@ export function AddAccountDialog({
         {inProgress ? (
           <div className="hc-dialog__body">
             <p className="hc-dialog__notice">
-              A browser window will open for sign-in. Complete it there, then return to Hopecode.
+              로그인용 브라우저 창이 열립니다. 로그인을 마친 뒤 Hopecode로 돌아오세요.
             </p>
-            <pre ref={outputRef} className="hc-dialog__output" aria-label="Login output">
+            <pre ref={outputRef} className="hc-dialog__output" aria-label="로그인 출력">
               {output || '…'}
             </pre>
             <label className="hc-field">
-              <span className="hc-field__label">Paste code (if prompted)</span>
+              <span className="hc-field__label">코드 붙여넣기 (요청된 경우)</span>
               <div className="hc-dialog__paste-row">
                 <input
                   className="hc-field__input"
                   value={loginInputValue}
-                  placeholder="Paste the code from the browser"
+                  placeholder="브라우저에 표시된 코드를 붙여넣으세요"
                   onChange={(e) => onLoginInputChange(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && loginInputValue.trim()) onSubmitInput();
                   }}
                 />
                 <Button variant="secondary" size="sm" disabled={!loginInputValue.trim()} onClick={onSubmitInput}>
-                  Send
+                  보내기
                 </Button>
               </div>
             </label>
@@ -180,7 +180,7 @@ export function AddAccountDialog({
         {status === 'error' || status === 'cancelled' ? (
           <div className="hc-dialog__body">
             <div className="hc-dialog__result hc-dialog__result--error">
-              {status === 'cancelled' ? 'Login cancelled.' : (errorMessage ?? 'Login failed.')}
+              {status === 'cancelled' ? '로그인을 취소했습니다.' : (errorMessage ?? '로그인에 실패했습니다.')}
             </div>
           </div>
         ) : null}
@@ -189,31 +189,31 @@ export function AddAccountDialog({
           {status === 'form' ? (
             <>
               <Button variant="plain" size="sm" onClick={onClose}>
-                Cancel
+                취소
               </Button>
               <Button variant="primary" size="sm" disabled={!alias.trim()} onClick={onStart}>
-                Start
+                시작
               </Button>
             </>
           ) : null}
           {inProgress ? (
             <Button variant="destructive" size="sm" onClick={onCancel}>
-              Cancel login
+              로그인 취소
             </Button>
           ) : null}
           {status === 'success' ? (
             <Button variant="primary" size="sm" onClick={onClose}>
-              Done
+              완료
             </Button>
           ) : null}
           {(status === 'error' || status === 'cancelled') ? (
             <>
               <Button variant="plain" size="sm" onClick={onClose}>
-                Close
+                닫기
               </Button>
               {onRetry ? (
                 <Button variant="primary" size="sm" onClick={onRetry}>
-                  Try again
+                  다시 시도
                 </Button>
               ) : null}
             </>

@@ -110,6 +110,9 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManagerIm
     setPermissionMode(threadId, mode) {
       return runner(threadId).setPermissionMode(mode);
     },
+    setEffort(threadId, effort) {
+      return runner(threadId).setEffort(effort);
+    },
     respondPermission(requestId, decision, message) {
       broker.respond(requestId, decision, message);
     },
@@ -120,7 +123,16 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManagerIm
         if (!q) continue;
         try {
           const models = await q.supportedModels();
-          cachedModels = models.map((m) => ({ value: m.value, label: m.displayName, description: m.description }));
+          cachedModels = models.map((m) => ({
+            value: m.value,
+            label: m.displayName,
+            description: m.description,
+            ...(m.supportsEffort === false
+              ? { effortLevels: [] }
+              : m.supportedEffortLevels
+                ? { effortLevels: [...m.supportedEffortLevels] }
+                : {}),
+          }));
           break;
         } catch (err) {
           log('[session] supportedModels failed', err);

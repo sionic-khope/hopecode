@@ -56,3 +56,8 @@ export const selectLoginSession = (s: AppStoreState, loginId: string): LoginSess
 
 export const selectPtyStatus = (s: AppStoreState, threadId: string): PtyStatus | undefined =>
   s.ptyStatusByThread[threadId];
+
+export const selectSidebarCollapsed = (s: AppStoreState): boolean => s.sidebarCollapsed;
+export const selectDraft = (s: AppStoreState) => s.draft;
+export const selectHomeDir = (s: AppStoreState): string | null => s.homeDir;
+export const selectChatScrolled = (s: AppStoreState): boolean => s.chatScrolled;

@@ -9,6 +9,7 @@ import type {
   ChatItem,
   ChatSendResult,
   ChildEnvInject,
+  EffortLevel,
   ModelOption,
   PermissionDecision,
   PermissionRequest,
@@ -188,6 +189,8 @@ export interface SessionManager {
   interrupt(threadId: string): Promise<void>;
   setModel(threadId: string, model: string): Promise<void>;
   setPermissionMode(threadId: string, mode: UiPermissionMode): Promise<void>;
+  /** Persist the thread's effort and apply it to the live Query (null = model default). */
+  setEffort(threadId: string, effort: EffortLevel | null): Promise<void>;
   respondPermission(requestId: string, decision: PermissionDecision, message?: string): void;
   listModels(): Promise<ModelOption[]>;
   /** Close Query and drop runner (thread deleted). */
@@ -222,5 +225,7 @@ export interface Dialogs {
   confirmTrustProject(path: string): Promise<TrustChoice>;
   /** Warning before enabling bypassPermissions; Cancel is the default button. */
   confirmBypassPermissions(): Promise<boolean>;
+  /** Multi-select file picker ("파일 첨부"), opened at `defaultPath`. Absolute paths; `[]` when cancelled. */
+  pickFiles(defaultPath: string): Promise<string[]>;
 }
 

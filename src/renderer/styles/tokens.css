@@ -10,6 +10,7 @@
   --text-sm: 13px;     --lh-sm: 18px;
   --text-md: 14px;     --lh-md: 20px;   /* sidebar, controls, default body */
   --text-chat: 15px;   --lh-chat: 24px; /* conversation body */
+  --text-nav: 15px;    --lh-nav: 20px;   /* sidebar nav + thread rows (Codex-scale) */
   --text-lg: 16px;     --lh-lg: 22px;
   --text-xl: 22px;     --lh-xl: 28px;
   --text-status: 13px; --lh-status: 18px;
@@ -38,10 +39,13 @@
 
   /* Backgrounds */
   --bg-window: #ffffff;
-  --bg-sidebar: transparent;
+  /* Translucent tint over the window vibrancy; on an opaque backdrop (hidden e2e capture) it reads as #F3F3F5. */
+  --bg-sidebar: rgba(236, 236, 240, 0.62);
+  --sidebar-edge: rgba(0, 0, 0, 0.055);
   --bg-sidebar-hover: rgba(0, 0, 0, 0.05);
   --bg-sidebar-sel-inactive: rgba(0, 0, 0, 0.08);
-  --bg-sidebar-sel: var(--accent-subtle);
+  --bg-sidebar-sel: rgba(0, 0, 0, 0.075);
+  --bg-menu-hover: rgba(0, 0, 0, 0.055);
   --bg-elevated: #ffffff;
   --bg-control: rgba(0, 0, 0, 0.04);
   --bg-control-hover: rgba(0, 0, 0, 0.07);
@@ -79,11 +83,18 @@
   --radius-popover: 10px;
   --radius-dialog: 12px;
   --radius-capsule: 999px;
+  --radius-menu: 14px;
+  --radius-menu-item: 8px;
+  --radius-composer: 22px;
+  --radius-row: 9px;
 
   /* Elevation */
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.06), 0 0 0 0.5px rgba(0, 0, 0, 0.1);
   --shadow-popover: 0 8px 28px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.12);
   --shadow-control: 0 0.5px 1px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.12);
+  /* Composer card: hairline + soft lift, deepens on focus. */
+  --shadow-composer: 0 0 0 1px rgba(0, 0, 0, 0.07), 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px -8px rgba(0, 0, 0, 0.1);
+  --shadow-composer-focus: 0 0 0 1px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.05), 0 12px 32px -10px rgba(0, 0, 0, 0.16);
 
   /* Control + row heights (scaled with the type ramp) */
   --control-h-sm: 22px;
@@ -92,15 +103,15 @@
   --seg-h: 24px;
   --seg-h-sm: 22px;
   --pill-h: 20px;
-  --row-h: 32px;       /* sidebar thread row, footer entry */
-  --row-h-sm: 28px;    /* sidebar project header */
+  --row-h: 36px;       /* sidebar nav + thread row */
+  --row-h-sm: 32px;    /* sidebar project header */
   --toolbar-h: 40px;
   --sidebar-header-h: 40px;
 
   /* Layout */
   --titlebar-h: 52px;
   --traffic-light-w: 78px;
-  --sidebar-w: 260px;
+  --sidebar-w: 280px;
   --sidebar-min-w: 200px;
   --sidebar-max-w: 320px;
   --terminal-w: 460px;
@@ -113,6 +124,11 @@
   --ease-out: ease-out;
   --dur-pane: 200ms;
   --ease-pane: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Composer */
+  --bg-composer: #ffffff;
+  --composer-max-w: 760px;
+  --send-size: 32px;
 
   /* Account palette */
   --account-1: #007aff;

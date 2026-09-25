@@ -181,7 +181,7 @@ describe('ThreadRunner review fixes', () => {
     await manager.send('t1', 'hi');
     await manager.whenSettled('t1');
     const errs = broadcaster.of('chat:event').filter((e) => e.event.type === 'error');
-    expect(errs.map((e) => e.event)).toEqual([{ type: 'error', message: 'Failed to start Claude Code: spawn claude ENOENT' }]);
+    expect(errs.map((e) => e.event)).toEqual([{ type: 'error', message: 'Claude Code를 시작하지 못했습니다: spawn claude ENOENT' }]);
     expect(store.getThread('t1')!.status).toBe('error');
   });
 

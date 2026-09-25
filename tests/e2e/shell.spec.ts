@@ -22,7 +22,7 @@ test('3-pane layout, ⌘J toggles the terminal pane', async () => {
   await expect(page.getByTestId('sidebar')).toBeVisible();
   await expect(page.getByTestId('chat')).toBeVisible();
   await expect(page.getByTestId('statusline')).toBeVisible();
-  await expect(page.getByTestId('sidebar').getByRole('button', { name: 'Accounts' })).toBeVisible();
+  await expect(page.getByTestId('sidebar').getByRole('button', { name: /^계정/ })).toBeVisible();
   const app = page.locator('.app');
   await expect(app).toHaveClass(/app--terminal-closed/);
   await screenshot(page, '01-shell-empty');
@@ -93,7 +93,7 @@ test('statusline click opens the per-account popover with an exhausted badge', a
     await expect(pop.locator('.hc-accounts-pop__alias', { hasText: alias })).toBeVisible();
   }
   const work = pop.locator('.hc-accounts-pop__row').filter({ hasText: 'Work' });
-  await expect(work.locator('.hc-accounts-pop__badge')).toContainText('Exhausted');
+  await expect(work.locator('.hc-accounts-pop__badge')).toContainText('소진');
   // 100% meter uses the crit level color.
   await expect(work.locator('.hc-meter__fill--crit').first()).toBeVisible();
   await screenshot(page, '03-accounts-popover');

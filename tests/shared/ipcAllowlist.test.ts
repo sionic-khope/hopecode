@@ -9,7 +9,8 @@ import {
 } from '../../src/main/ipc/registerIpc';
 import { createBroadcaster, type BroadcastTarget } from '../../src/main/ipc/broadcaster';
 import { InvalidIpcRequestError } from '../../src/main/ipc/guards';
-import type { Account, PermissionRequest, PersistedState, PoolSnapshot, Project, Thread } from '../../src/shared/types';
+import { mentionPath } from '../../src/main/ipc/registerIpc';
+import type { Account, PermissionRequest, PersistedState, PoolSnapshot, Project, Thread, ThreadStartResult } from '../../src/shared/types';
 import { DEFAULT_SETTINGS } from '../../src/shared/constants';
 
 // ---------------------------------------------------------------------------
@@ -100,7 +101,10 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     model: 'default',
     resolvedModel: null,
     permissionMode: 'default',
+    effort: null,
     pinnedAccountId: null,
+    pinned: false,
+    archived: false,
     lastAccountId: null,
     activeAccountId: null,
     sdkSessionId: null,
@@ -175,6 +179,7 @@ function makeFakeServices(overrides: Partial<RegisterIpcServices> = {}): { servi
       async interrupt() {},
       async setModel() {},
       async setPermissionMode() {},
+      async setEffort() {},
       respondPermission() {},
       async listModels() {
         return [];
@@ -266,6 +271,9 @@ function makeFakeServices(overrides: Partial<RegisterIpcServices> = {}): { servi
       },
       async confirmBypassPermissions() {
         return true;
+      },
+      async pickFiles() {
+        return [];
       },
     },
     broadcaster: {
@@ -495,6 +503,7 @@ describe('registerIpc review fixes', () => {
         pickProjectFolder: async () => `/tmp/proj${++picked}`,
         confirmTrustProject: async () => answers[n++]!,
         confirmBypassPermissions: async () => true,
+        pickFiles: async () => [],
       },
     });
     registerIpc(ipcMain, services);
@@ -511,7 +520,7 @@ describe('registerIpc review fixes', () => {
     const ipcMain = new FakeIpcMain();
     const confirm = vi.fn(async () => 'dont-trust' as const);
     const { services } = makeFakeServices({
-      dialogs: { pickProjectFolder: async () => null, confirmTrustProject: confirm, confirmBypassPermissions: async () => true },
+      dialogs: { pickProjectFolder: async () => null, confirmTrustProject: confirm, confirmBypassPermissions: async () => true, pickFiles: async () => [] },
     });
     services.store.get().projects.push(project());
     registerIpc(ipcMain, services);
@@ -543,7 +552,7 @@ describe('registerIpc review fixes', () => {
     let confirm = false;
     const applied: string[] = [];
     const { services, emitted } = makeFakeServices({
-      dialogs: { pickProjectFolder: async () => null, confirmTrustProject: async () => 'trust', confirmBypassPermissions: async () => confirm },
+      dialogs: { pickProjectFolder: async () => null, confirmTrustProject: async () => 'trust', confirmBypassPermissions: async () => confirm, pickFiles: async () => [] },
     });
     services.sessionManager.setPermissionMode = async (threadId, mode) => {
       applied.push(mode);
@@ -670,7 +679,7 @@ describe('registerIpc review fixes', () => {
         error?: string;
       };
       expect(res.ok).toBe(false);
-      expect(res.error).toMatch(/another account/);
+      expect(res.error).toMatch(/다른 계정/);
       expect(order).toEqual([]);
     });
 
@@ -699,6 +708,211 @@ describe('registerIpc review fixes', () => {
       expect(await ipcMain.invoke('account:remove', { accountId: 'a1', deleteConfigDir: false })).toEqual({ ok: true });
       expect(order).toContain('remove:a1:false');
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Draft -> thread:start, pin / archive / effort, file mentions
+// ---------------------------------------------------------------------------
+
+describe('thread:start', () => {
+  function project(over: Partial<Project> = {}): Project {
+    return { id: 'p1', name: 'proj', path: '/tmp/proj', trusted: true, createdAt: 0, ...over };
+  }
+
+  function setup(opts: { sendResult?: { accepted: boolean; reason?: 'waiting' | 'no-accounts' | 'busy' | 'auth' }; bypassOk?: boolean } = {}) {
+    const ipcMain = new FakeIpcMain();
+    const created: string[] = [];
+    const removed: string[] = [];
+    const sent: [string, string][] = [];
+    const bypassAsked: number[] = [];
+    const { services, emitted } = makeFakeServices({
+      worktreeManager: {
+        create: async (_path, shortId) => {
+          created.push(shortId);
+          return { cwd: `/wt/${shortId}`, worktree: { path: `/wt/${shortId}`, branch: `hopecode/${shortId}` } };
+        },
+        isDirty: async () => false,
+        remove: async (_p, w) => void removed.push(w.path),
+      },
+      dialogs: {
+        pickProjectFolder: async () => null,
+        confirmTrustProject: async () => 'trust',
+        confirmBypassPermissions: async () => {
+          bypassAsked.push(1);
+          return opts.bypassOk ?? false;
+        },
+        pickFiles: async () => [],
+      },
+    });
+    services.store.get().threads.length = 0;
+    services.store.get().projects.push(project());
+    services.sessionManager.send = async (threadId, text) => {
+      sent.push([threadId, text]);
+      return opts.sendResult ?? { accepted: true };
+    };
+    registerIpc(ipcMain, services);
+    return { ipcMain, services, emitted, created, removed, sent, bypassAsked };
+  }
+
+  it('creates the thread + worktree, titles it from the first message and sends it', async () => {
+    const { ipcMain, services, emitted, created, sent } = setup();
+    const text = '  README의 인사말을 바꾸고 테스트를 추가해 주세요. 그리고 CHANGELOG도 업데이트해 주세요\n두 번째 줄';
+    const res = (await ipcMain.invoke('thread:start', {
+      projectId: 'p1',
+      text,
+      model: 'sonnet',
+      permissionMode: 'plan',
+      effort: 'max',
+    })) as ThreadStartResult;
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(created).toHaveLength(1);
+    expect(res.thread).toMatchObject({
+      projectId: 'p1',
+      model: 'sonnet',
+      permissionMode: 'plan',
+      effort: 'max',
+      pinned: false,
+      archived: false,
+      cwd: `/wt/${created[0]}`,
+      worktree: { branch: `hopecode/${created[0]}` },
+    });
+    expect(res.thread.title).toBe('README의 인사말을 바꾸고 테스트를 추가해 주세요. 그리고 CHANG…');
+    expect(sent).toEqual([[res.thread.id, text]]);
+    expect(services.store.get().threads.map((t) => t.id)).toEqual([res.thread.id]);
+    expect(emitted.filter(([ch]) => ch === 'thread:updated')).toHaveLength(1);
+  });
+
+  it('rolls everything back when the first send is refused', async () => {
+    const { ipcMain, services, emitted, created, removed } = setup({ sendResult: { accepted: false, reason: 'no-accounts' } });
+    const res = await ipcMain.invoke('thread:start', { projectId: 'p1', text: 'hello' });
+    expect(res).toEqual({ ok: false, reason: 'no-accounts' });
+    expect(services.store.get().threads).toEqual([]);
+    expect(removed).toEqual([`/wt/${created[0]}`]);
+    expect(emitted.filter(([ch]) => ch === 'thread:updated')).toEqual([]);
+  });
+
+  it('keeps a thread whose first message is queued behind the pool reset', async () => {
+    const { ipcMain, services } = setup({ sendResult: { accepted: true, reason: 'waiting' } });
+    const res = (await ipcMain.invoke('thread:start', { projectId: 'p1', text: 'hello' })) as ThreadStartResult;
+    expect(res).toMatchObject({ ok: true, send: { accepted: true, reason: 'waiting' } });
+    expect(services.store.get().threads).toHaveLength(1);
+  });
+
+  it('grants bypassPermissions only through the native confirm', async () => {
+    const declined = setup({ bypassOk: false });
+    const r1 = (await declined.ipcMain.invoke('thread:start', {
+      projectId: 'p1',
+      text: 'x',
+      permissionMode: 'bypassPermissions',
+    })) as ThreadStartResult;
+    expect(declined.bypassAsked).toHaveLength(1);
+    expect(r1.ok && r1.thread.permissionMode).toBe('default');
+
+    const accepted = setup({ bypassOk: true });
+    const r2 = (await accepted.ipcMain.invoke('thread:start', {
+      projectId: 'p1',
+      text: 'x',
+      permissionMode: 'bypassPermissions',
+    })) as ThreadStartResult;
+    expect(r2.ok && r2.thread.permissionMode).toBe('bypassPermissions');
+  });
+
+  it('validates the request before creating anything', async () => {
+    const { ipcMain, created, sent } = setup();
+    const bad: unknown[] = [
+      undefined,
+      { text: 'x' },
+      { projectId: 'p1' },
+      { projectId: 'p1', text: '   ' },
+      { projectId: 'p1', text: 'x', permissionMode: 'yolo' },
+      { projectId: 'p1', text: 'x', effort: 'extreme' },
+      { projectId: 'p1', text: 'x', model: 42 },
+      { projectId: 'p1', text: 'x', pinnedAccountId: 'ghost' },
+      { projectId: 'nope', text: 'x' },
+      // A raw folder path is not accepted: folders only enter through project:add (dialog + trust question).
+      { projectPath: '/etc', text: 'x' },
+    ];
+    for (const req of bad) {
+      await expect(ipcMain.invoke('thread:start', req)).rejects.toBeInstanceOf(InvalidIpcRequestError);
+    }
+    expect(created).toEqual([]);
+    expect(sent).toEqual([]);
+  });
+
+  it('refuses an untrusted sender', () => {
+    const { ipcMain } = setup();
+    expect(() => ipcMain.invoke('thread:start', { projectId: 'p1', text: 'x' }, 'https://evil.example/')).toThrow(
+      UntrustedSenderError,
+    );
+  });
+});
+
+describe('thread pin / archive / effort', () => {
+  it('setPinned and setArchived persist and broadcast; archiving unpins', async () => {
+    const ipcMain = new FakeIpcMain();
+    const { services, emitted } = makeFakeServices();
+    registerIpc(ipcMain, services);
+
+    await ipcMain.invoke('thread:setPinned', { threadId: 't1', pinned: true });
+    expect(services.store.getThread('t1')).toMatchObject({ pinned: true, archived: false });
+    expect(emitted.at(-1)).toEqual(['thread:updated', expect.objectContaining({ id: 't1', pinned: true })]);
+
+    await ipcMain.invoke('thread:setArchived', { threadId: 't1', archived: true });
+    expect(services.store.getThread('t1')).toMatchObject({ pinned: false, archived: true });
+    await ipcMain.invoke('thread:setArchived', { threadId: 't1', archived: false });
+    expect(services.store.getThread('t1')).toMatchObject({ pinned: false, archived: false });
+
+    await expect(ipcMain.invoke('thread:setPinned', { threadId: 't1', pinned: 'yes' })).rejects.toBeInstanceOf(InvalidIpcRequestError);
+    await expect(ipcMain.invoke('thread:setArchived', { threadId: 'ghost', archived: true })).rejects.toBeInstanceOf(
+      InvalidIpcRequestError,
+    );
+  });
+
+  it('setEffort goes through the session manager and reports the applied value', async () => {
+    const ipcMain = new FakeIpcMain();
+    const { services, emitted } = makeFakeServices();
+    const applied: (string | null)[] = [];
+    services.sessionManager.setEffort = async (threadId, effort) => {
+      applied.push(effort);
+      services.store.patchThread(threadId, { effort });
+    };
+    registerIpc(ipcMain, services);
+    await ipcMain.invoke('thread:setEffort', { threadId: 't1', effort: 'low' });
+    await ipcMain.invoke('thread:setEffort', { threadId: 't1', effort: null });
+    expect(applied).toEqual(['low', null]);
+    expect(emitted.at(-1)).toEqual(['thread:updated', expect.objectContaining({ effort: null })]);
+    await expect(ipcMain.invoke('thread:setEffort', { threadId: 't1', effort: 'turbo' })).rejects.toBeInstanceOf(
+      InvalidIpcRequestError,
+    );
+  });
+});
+
+describe('dialog:pickFiles', () => {
+  it('turns picked files into @ mentions relative to the thread cwd', async () => {
+    const ipcMain = new FakeIpcMain();
+    const bases: string[] = [];
+    const { services } = makeFakeServices();
+    services.dialogs.pickFiles = async (base) => {
+      bases.push(base);
+      return [`${base}/src/app.ts`, '/other/place/notes.md', `${base}/docs/my file.md`];
+    };
+    registerIpc(ipcMain, services);
+    expect(await ipcMain.invoke('dialog:pickFiles', { threadId: 't1' })).toEqual([
+      '@src/app.ts',
+      '@/other/place/notes.md',
+      '@"docs/my file.md"',
+    ]);
+    expect(bases).toEqual(['/tmp/project']);
+    await expect(ipcMain.invoke('dialog:pickFiles', {})).rejects.toBeInstanceOf(InvalidIpcRequestError);
+    await expect(ipcMain.invoke('dialog:pickFiles', { projectId: 'ghost' })).rejects.toBeInstanceOf(InvalidIpcRequestError);
+  });
+
+  it('mentionPath keeps paths outside the base absolute', () => {
+    expect(mentionPath('/a/b/c.txt', '/a')).toBe('@b/c.txt');
+    expect(mentionPath('/ab/c.txt', '/a')).toBe('@/ab/c.txt');
+    expect(mentionPath('/a', '/a')).toBe('@/a');
   });
 });
 

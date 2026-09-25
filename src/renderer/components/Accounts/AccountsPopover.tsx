@@ -27,10 +27,10 @@ function accountStatusBadge(usage: AccountUsage | undefined, now: number): Statu
   if (!usage) return null;
 
   if (usage.error === 'auth' || usage.error === 'token_expired') {
-    return { tone: 'warn', label: 'Needs re-login' };
+    return { tone: 'warn', label: '재로그인 필요' };
   }
   if (usage.error === 'no_credentials') {
-    return { tone: 'warn', label: 'Not signed in' };
+    return { tone: 'warn', label: '로그인 안 됨' };
   }
 
   const rejected = usage.rejectedUntil;
@@ -41,7 +41,7 @@ function accountStatusBadge(usage: AccountUsage | undefined, now: number): Statu
     } catch {
       countdown = null;
     }
-    return { tone: 'crit', label: countdown ? `Overage · ${countdown}` : 'Overage' };
+    return { tone: 'crit', label: countdown ? `추가 사용량 · ${countdown}` : '추가 사용량' };
   }
   // Exhausted = 5h/wk blocked by an SDK rejection or polled at 100% (until its reset).
   const blockers = [rejected?.fiveHour, rejected?.sevenDay].filter(
@@ -61,14 +61,14 @@ function accountStatusBadge(usage: AccountUsage | undefined, now: number): Statu
     } catch {
       countdown = null;
     }
-    return { tone: 'crit', label: countdown ? `Exhausted · ${countdown}` : 'Exhausted' };
+    return { tone: 'crit', label: countdown ? `소진 · ${countdown}` : '소진' };
   }
 
   if (usage.extraUsageEnabled) {
-    return { tone: 'warn', label: 'Extra usage on' };
+    return { tone: 'warn', label: '추가 사용량 켜짐' };
   }
   if (usage.stale) {
-    return { tone: 'neutral', label: 'Stale' };
+    return { tone: 'neutral', label: '오래된 데이터' };
   }
   return null;
 }
@@ -79,16 +79,16 @@ export function AccountsPopover({ open, onClose, anchorRef, accounts, usageById,
   const enabledCount = accounts.filter((a) => a.enabled).length;
 
   return (
-    <Popover open={open} onClose={onClose} anchorRef={anchorRef} placement="top-end" width={360} aria-label="Accounts">
+    <Popover open={open} onClose={onClose} anchorRef={anchorRef} placement="top-end" width={360} aria-label="계정">
       <div className="hc-accounts-pop">
         <div className="hc-accounts-pop__header">
-          <span>Accounts</span>
+          <span>계정</span>
           <span className="hc-accounts-pop__count">
-            {enabledCount}/{accounts.length} enabled
+            {enabledCount}/{accounts.length} 활성
           </span>
         </div>
         {ordered.length === 0 ? (
-          <div className="hc-accounts-pop__empty">No accounts yet</div>
+          <div className="hc-accounts-pop__empty">아직 계정이 없습니다</div>
         ) : (
           <ul className="hc-accounts-pop__list">
             {ordered.map((account) => {
@@ -105,10 +105,10 @@ export function AccountsPopover({ open, onClose, anchorRef, accounts, usageById,
                     <span className="hc-accounts-pop__alias">{account.alias}</span>
                     {inUse ? (
                       <Pill tone="accent" capsule>
-                        In use
+                        사용 중
                       </Pill>
                     ) : null}
-                    {!account.enabled ? <Pill>Disabled</Pill> : null}
+                    {!account.enabled ? <Pill>비활성</Pill> : null}
                   </div>
                   {account.email || account.plan ? (
                     <div className="hc-accounts-pop__sub">

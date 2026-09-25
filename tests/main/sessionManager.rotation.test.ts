@@ -102,7 +102,7 @@ describe('SessionManager rotation (plan 7.2)', () => {
       [h.accounts[0]!.configDir, h.accounts[2]!.configDir],
     ]);
     expect(h.usage.reports[0]).toMatchObject({ accountId: 'A', info: { status: 'rejected' } });
-    expect(notices(h)).toContain('Switched from A → B (5h limit reached)');
+    expect(notices(h)).toContain('계정 전환: A → B (5시간 한도 도달)');
 
     const t = h.thread('t1');
     expect(t.lastAccountId).toBe('B');
@@ -364,11 +364,32 @@ describe('SessionManager rotation (plan 7.2)', () => {
     expect(h.fake.calls[0]!.models).toEqual(['fable']);
     expect(h.thread('t1').permissionMode).toBe('bypassPermissions');
     expect(h.thread('t1').model).toBe('fable');
+    const all = ['low', 'medium', 'high', 'xhigh', 'max'];
     expect(await h.manager.listModels()).toEqual([
-      { value: 'default', label: 'Default', description: 'Recommended model' },
-      { value: 'fable', label: 'Fable', description: 'Most capable' },
-      { value: 'sonnet', label: 'Sonnet', description: 'Fast everyday model' },
+      { value: 'default', label: 'Default', description: 'Recommended model', effortLevels: all },
+      { value: 'fable', label: 'Fable', description: 'Most capable', effortLevels: all },
+      { value: 'sonnet', label: 'Sonnet', description: 'Fast everyday model', effortLevels: ['low', 'medium', 'high'] },
     ]);
+  });
+
+  it('effort: next Query options when idle, applyFlagSettings on the live Query, null back to default', async () => {
+    const h = setup({ accounts: ['A'] });
+    await h.manager.setEffort('t1', 'xhigh');
+    expect(h.thread('t1').effort).toBe('xhigh');
+    await h.manager.send('t1', 'hi');
+    await h.manager.whenSettled('t1');
+    expect(h.fake.calls[0]!.options.effort).toBe('xhigh');
+
+    await h.manager.setEffort('t1', 'low');
+    await h.manager.setEffort('t1', null);
+    expect(h.fake.calls[0]!.efforts).toEqual(['low', null]);
+    expect(h.thread('t1').effort).toBeNull();
+
+    // A new Query after the effort was cleared carries no effort option at all.
+    const h2 = setup({ accounts: ['A'] });
+    await h2.manager.send('t1', 'hi');
+    await h2.manager.whenSettled('t1');
+    expect('effort' in h2.fake.calls[0]!.options).toBe(false);
   });
 
   it('busy while running; user interrupt ends the turn as interrupted', async () => {
@@ -398,7 +419,7 @@ describe('SessionManager rotation (plan 7.2)', () => {
     await h.manager.send('t1', 'hi');
     await h.manager.whenSettled('t1');
     expect(h.fake.calls[0]!.resume).toBeUndefined();
-    expect(notices(h).some((n) => n.includes('not found'))).toBe(true);
+    expect(notices(h).some((n) => n.includes('찾지 못해'))).toBe(true);
     expect(h.thread('t1').sdkSessionId).toBe(h.fake.calls[0]!.sessionId);
   });
 

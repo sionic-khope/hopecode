@@ -2,13 +2,13 @@
 // T6 per-thread model, U1 ctx from getContextUsage, R1 terminal cwd = worktree.
 import { expect, test } from '@playwright/test';
 import {
-  addProjectAndThread,
   bootstrapState,
   createSandbox,
   launch,
   menuShortcut,
   screenshot,
   sendMessage,
+  startThread,
   type Launched,
   type Sandbox,
 } from './helpers';
@@ -28,9 +28,9 @@ test.afterAll(async () => {
   sandbox?.cleanup();
 });
 
-test('add project (dialog seam) -> group -> thread in a git worktree under HOPECODE_HOME', async () => {
+test('draft + folder chip (dialog seam) -> first send -> thread in a git worktree under HOPECODE_HOME', async () => {
   const { page } = run;
-  await addProjectAndThread(page);
+  await startThread(page, sandbox, 'Please update the README greeting');
   const sidebar = page.getByTestId('sidebar');
   await expect(sidebar.locator('.hc-project__name')).toHaveText(sandbox.project.split('/').pop()!);
   // Expanded group: chevron is not in the collapsed (pointing right) state.
@@ -42,10 +42,8 @@ test('add project (dialog seam) -> group -> thread in a git worktree under HOPEC
   await screenshot(page, '04-thread-created');
 });
 
-test('send: streaming text, Edit tool card, permission Allow, diff lines, ctx from getContextUsage', async () => {
+test('first turn: streaming text, Edit tool card, permission 허용, diff lines, ctx from getContextUsage', async () => {
   const { page } = run;
-  await sendMessage(page, 'Please update the README greeting');
-
   const messages = page.locator('.hc-messages');
   await expect(messages.locator('.hc-msg-user__bubble')).toHaveText('Please update the README greeting');
   await expect(messages).toContainText('I will update the README greeting.');
@@ -54,7 +52,7 @@ test('send: streaming text, Edit tool card, permission Allow, diff lines, ctx fr
   await expect(permission).toBeVisible();
   await expect(permission).toContainText('Edit');
   await screenshot(page, '05-permission-card');
-  await permission.getByRole('button', { name: 'Allow', exact: true }).click();
+  await permission.getByRole('button', { name: '허용', exact: true }).click();
   await expect(permission).toHaveCount(0);
 
   await expect(messages).toContainText('Done. The greeting now says "Hello Hopecode".');
@@ -71,9 +69,11 @@ test('send: streaming text, Edit tool card, permission Allow, diff lines, ctx fr
 
 test('per-thread model selection reaches the session', async () => {
   const { page } = run;
-  await page.locator('.hc-toolbar .hc-picker').first().click();
-  await page.getByRole('option', { name: /Sonnet/ }).click();
-  await expect(page.locator('.hc-toolbar .hc-picker').first()).toContainText('Sonnet');
+  const model = page.locator('.hc-composer .hc-chip--model');
+  await model.click();
+  await page.getByRole('menu', { name: '모델' }).getByRole('menuitemradio', { name: /^Sonnet/ }).click();
+  await page.keyboard.press('Escape');
+  await expect(model).toContainText('Sonnet');
   await sendMessage(page, '[whoami] model check');
   await expect(page.locator('.hc-messages')).toContainText('model=sonnet');
 });

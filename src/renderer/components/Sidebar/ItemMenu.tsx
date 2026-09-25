@@ -1,5 +1,5 @@
 import { useState, type RefObject } from 'react';
-import { Button, Popover } from '../common';
+import { Button, Menu, Popover } from '../common';
 import { ipcErrorMessage } from '../../errors';
 
 /** `onConfirm` result asking for a second, forced confirmation (e.g. a worktree with uncommitted changes). */
@@ -26,24 +26,26 @@ export function ActionMenu({
   label: string;
 }) {
   return (
-    <Popover open={open} onClose={onClose} anchorRef={anchorRef} placement="bottom-end" width={180} aria-label={label}>
-      <div className="hc-menu" role="menu" aria-label={label}>
-        {actions.map((a) => (
-          <button
-            key={a.label}
-            type="button"
-            role="menuitem"
-            className={`hc-menu__item${a.destructive ? ' hc-menu__item--destructive' : ''}`}
-            onClick={() => {
-              onClose();
-              a.onSelect();
-            }}
-          >
-            {a.label}
-          </button>
-        ))}
-      </div>
-    </Popover>
+    <Menu
+      open={open}
+      onClose={onClose}
+      anchorRef={anchorRef}
+      placement="bottom-end"
+      width={196}
+      label={label}
+      sections={[
+        {
+          key: 'actions',
+          kind: 'action',
+          items: actions.map((a) => ({
+            key: a.label,
+            label: a.label,
+            tone: a.destructive ? ('danger' as const) : ('default' as const),
+            onSelect: a.onSelect,
+          })),
+        },
+      ]}
+    />
   );
 }
 
@@ -102,11 +104,9 @@ export function ConfirmDeletePopover({
   };
 
   return (
-    <Popover open={open} onClose={close} anchorRef={anchorRef} placement="bottom-start" width={260} aria-label={label}>
+    <Popover open={open} onClose={close} anchorRef={anchorRef} placement="bottom-start" width={280} aria-label={label}>
       <div className="hc-confirm">
-        <p className="hc-confirm__text">
-          {stage === 'force' ? forceMessage : message}
-        </p>
+        <p className="hc-confirm__text">{stage === 'force' ? forceMessage : message}</p>
         {error ? (
           <p className="hc-confirm__error" role="alert">
             {error}
@@ -114,10 +114,10 @@ export function ConfirmDeletePopover({
         ) : null}
         <div className="hc-confirm__actions">
           <Button variant="plain" size="sm" onClick={close}>
-            Cancel
+            취소
           </Button>
           <Button variant="destructive" size="sm" disabled={busy} onClick={() => run(stage === 'force')}>
-            {stage === 'force' ? 'Force Delete' : confirmLabel}
+            {stage === 'force' ? '강제 삭제' : confirmLabel}
           </Button>
         </div>
       </div>

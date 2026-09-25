@@ -116,7 +116,7 @@ interface Services {
   forceStop(): Promise<void>;
 }
 
-const INTERRUPTED_NOTICE = 'Interrupted: Hopecode quit while this turn was running.';
+const INTERRUPTED_NOTICE = '중단됨: 이 턴이 실행 중일 때 Hopecode가 종료되었습니다.';
 
 function focusedWindow(): BrowserWindow | undefined {
   return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
@@ -131,7 +131,7 @@ async function showMessage(opts: Electron.MessageBoxOptions): Promise<number> {
 const nativeDialogs: Dialogs = {
   async pickProjectFolder() {
     const win = focusedWindow();
-    const opts: Electron.OpenDialogOptions = { properties: ['openDirectory', 'createDirectory'] };
+    const opts: Electron.OpenDialogOptions = { title: '폴더 선택', buttonLabel: '선택', properties: ['openDirectory', 'createDirectory'] };
     const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
     return res.canceled ? null : (res.filePaths[0] ?? null);
   },
@@ -139,24 +139,35 @@ const nativeDialogs: Dialogs = {
     const choices: TrustChoice[] = ['trust', 'dont-trust', 'cancel'];
     const response = await showMessage({
       type: 'question',
-      buttons: ['Trust', "Don't Trust", 'Cancel'],
+      buttons: ['신뢰', '신뢰하지 않음', '취소'],
       defaultId: 1,
       cancelId: 2,
-      message: 'Do you trust this folder?',
-      detail: `${path}\n\nIf you trust it, the repository's .claude settings (hooks, permissions) are applied to sessions in this project. Hooks can run arbitrary commands.`,
+      message: '이 폴더를 신뢰하시겠습니까?',
+      detail: `${path}\n\n신뢰하면 이 저장소의 .claude 설정(hooks, 권한)이 이 프로젝트의 세션에 적용됩니다. hooks는 임의의 명령을 실행할 수 있습니다.`,
     });
     return choices[response] ?? 'cancel';
   },
   async confirmBypassPermissions() {
     const response = await showMessage({
       type: 'warning',
-      buttons: ['Cancel', 'Bypass Permissions'],
+      buttons: ['취소', '전체 액세스 허용'],
       defaultId: 0,
       cancelId: 0,
-      message: 'Bypass all permission checks?',
-      detail: 'Claude will run every tool, including shell commands and file edits, without asking. Only use this in a sandboxed or disposable environment.',
+      message: '모든 권한 확인을 건너뛸까요?',
+      detail: 'Claude가 셸 명령과 파일 편집을 포함한 모든 도구를 묻지 않고 실행합니다. 샌드박스나 버려도 되는 환경에서만 사용하세요.',
     });
     return response === 1;
+  },
+  async pickFiles(defaultPath) {
+    const win = focusedWindow();
+    const opts: Electron.OpenDialogOptions = {
+      title: '파일 첨부',
+      buttonLabel: '첨부',
+      defaultPath,
+      properties: ['openFile', 'multiSelections'],
+    };
+    const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
+    return res.canceled ? [] : res.filePaths;
   },
 };
 
@@ -305,7 +316,7 @@ function buildMenu(broadcaster: Broadcaster): Menu {
     {
       label: 'File',
       submenu: [
-        { label: 'New Thread', accelerator: 'CmdOrCtrl+N', click: () => broadcaster.emit('ui:newThread', undefined) },
+        { label: '새 채팅', accelerator: 'CmdOrCtrl+N', click: () => broadcaster.emit('ui:newThread', undefined) },
         { type: 'separator' },
         { role: 'close' },
       ],
@@ -315,7 +326,12 @@ function buildMenu(broadcaster: Broadcaster): Menu {
       label: 'View',
       submenu: [
         {
-          label: 'Toggle Terminal',
+          label: '사이드바 보기/숨기기',
+          accelerator: 'CmdOrCtrl+B',
+          click: () => broadcaster.emit('ui:toggleSidebar', undefined),
+        },
+        {
+          label: '터미널 보기/숨기기',
           accelerator: 'CmdOrCtrl+J',
           click: () => broadcaster.emit('ui:toggleTerminal', undefined),
         },
@@ -367,7 +383,7 @@ if (smoke) {
       services = await startServices();
     } catch (err) {
       console.error('[hopecode] failed to start services', err);
-      if (!headless) dialog.showErrorBox('Hopecode failed to start', String(err));
+      if (!headless) dialog.showErrorBox('Hopecode를 시작하지 못했습니다', String(err));
       app.exit(1);
       return;
     }

@@ -23,7 +23,10 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     model: 'default',
     resolvedModel: null,
     permissionMode: 'default',
+    effort: null,
     pinnedAccountId: null,
+    pinned: false,
+    archived: false,
     lastAccountId: null,
     activeAccountId: null,
     sdkSessionId: null,
@@ -68,7 +71,7 @@ beforeEach(() => {
 });
 
 describe('bootstrap', () => {
-  it('applyBootstrap seeds projects/threads/accounts/pool/settings and selects the first thread', () => {
+  it('applyBootstrap seeds projects/threads/accounts/pool/settings and opens a draft in the last used folder', () => {
     const project: Project = { id: 'p1', name: 'proj', path: '/tmp/proj', trusted: false, createdAt: Date.now() };
     const thread = makeThread();
     const account = makeAccount();
@@ -80,6 +83,7 @@ describe('bootstrap', () => {
       pool: EMPTY_POOL,
       settings: { idleCloseMinutes: 10, defaultModel: 'default', defaultPermissionMode: 'default', tosNoticeAcknowledged: false },
       appVersion: '1.2.3',
+      homeDir: '/Users/me',
       pendingPermissions: [],
     });
 
@@ -89,7 +93,8 @@ describe('bootstrap', () => {
     expect(s.threads).toEqual([thread]);
     expect(s.accounts).toEqual([account]);
     expect(s.appVersion).toBe('1.2.3');
-    expect(s.selectedThreadId).toBe('t1');
+    expect(s.selectedThreadId).toBeNull();
+    expect(s.draft.projectId).toBe('p1');
   });
 
   it('bootstrap() calls invoke("app:bootstrap") and applies the result', async () => {
@@ -100,6 +105,7 @@ describe('bootstrap', () => {
       pool: EMPTY_POOL,
       settings: { idleCloseMinutes: 10, defaultModel: 'default', defaultPermissionMode: 'default' as const, tosNoticeAcknowledged: false },
       appVersion: '0.1.0',
+      homeDir: '/Users/me',
       pendingPermissions: [],
     };
     invoke.mockResolvedValueOnce(payload);
@@ -122,6 +128,7 @@ describe('bootstrap', () => {
       pool: EMPTY_POOL,
       settings: { idleCloseMinutes: 10, defaultModel: 'default', defaultPermissionMode: 'default', tosNoticeAcknowledged: false },
       appVersion: null as unknown as string,
+      homeDir: '/Users/me',
       pendingPermissions: [],
     });
     expect(useAppStore.getState().selectedThreadId).toBe('t2');
@@ -362,6 +369,7 @@ describe('review fixes', () => {
       pool: EMPTY_POOL,
       settings,
       appVersion: '1',
+      homeDir: '/Users/me',
       pendingPermissions: [req],
     });
     expect(selectors.selectPendingPermissions(useAppStore.getState(), 't1')).toEqual([req]);
@@ -467,5 +475,90 @@ describe('review fixes', () => {
       ['a2', 0],
       ['a1', 1],
     ]);
+  });
+});
+
+describe('draft / new chat', () => {
+  const settings = { idleCloseMinutes: 10, defaultModel: 'default', defaultPermissionMode: 'default' as const, tosNoticeAcknowledged: false };
+
+  it('defaultDraftProjectId prefers the project of the most recent thread, then the newest project', async () => {
+    const { defaultDraftProjectId } = await import('../../src/renderer/store/appStore');
+    const p1: Project = { id: 'p1', name: 'a', path: '/a', trusted: true, createdAt: 1 };
+    const p2: Project = { id: 'p2', name: 'b', path: '/b', trusted: true, createdAt: 2 };
+    expect(defaultDraftProjectId([], [])).toBeNull();
+    expect(defaultDraftProjectId([p1, p2], [])).toBe('p2');
+    expect(defaultDraftProjectId([p1, p2], [makeThread({ projectId: 'p1', updatedAt: 10 })])).toBe('p1');
+    // A thread of a removed project does not count.
+    expect(defaultDraftProjectId([p2], [makeThread({ projectId: 'p1', updatedAt: 10 })])).toBe('p2');
+  });
+
+  it('newDraft deselects the thread and points the draft at the last used folder', () => {
+    const p1: Project = { id: 'p1', name: 'a', path: '/a', trusted: true, createdAt: 1 };
+    useAppStore.setState({ projects: [p1], threads: [makeThread()], selectedThreadId: 't1', route: 'accounts' });
+    useAppStore.getState().newDraft();
+    const s = useAppStore.getState();
+    expect(s.selectedThreadId).toBeNull();
+    expect(s.route).toBe('chat');
+    expect(s.draft.projectId).toBe('p1');
+  });
+
+  it('startThread sends the draft settings through thread:start and selects the new thread', async () => {
+    useAppStore.getState().applyBootstrap({
+      projects: [{ id: 'p1', name: 'a', path: '/a', trusted: true, createdAt: 1 }],
+      threads: [],
+      accounts: [],
+      pool: EMPTY_POOL,
+      settings,
+      appVersion: '1',
+      homeDir: '/Users/me',
+      pendingPermissions: [],
+    });
+    useAppStore.getState().setDraft({ model: 'sonnet', effort: 'high', permissionMode: 'plan' });
+    const thread = makeThread({ id: 'new', title: 'hello' });
+    invoke.mockResolvedValueOnce({ ok: true, thread, send: { accepted: true } });
+    const result = await useAppStore.getState().startThread('hello');
+    expect(invoke).toHaveBeenCalledWith('thread:start', {
+      projectId: 'p1',
+      text: 'hello',
+      model: 'sonnet',
+      permissionMode: 'plan',
+      effort: 'high',
+      pinnedAccountId: null,
+    });
+    expect(result.ok).toBe(true);
+    expect(useAppStore.getState().selectedThreadId).toBe('new');
+    expect(useAppStore.getState().threads.map((t) => t.id)).toEqual(['new']);
+  });
+
+  it('startThread refused by main leaves the draft open; without a folder it never calls main', async () => {
+    useAppStore.setState({ draft: { ...useAppStore.getState().draft, projectId: 'p1' } });
+    invoke.mockResolvedValueOnce({ ok: false, reason: 'no-accounts' });
+    expect(await useAppStore.getState().startThread('hi')).toEqual({ ok: false, reason: 'no-accounts' });
+    expect(useAppStore.getState().selectedThreadId).toBeNull();
+
+    invoke.mockReset();
+    useAppStore.setState({ draft: { ...useAppStore.getState().draft, projectId: null } });
+    await expect(useAppStore.getState().startThread('hi')).rejects.toThrow(/folder/);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('pin / archive / effort invoke main and patch locally; archiving unpins', async () => {
+    useAppStore.setState({ threads: [makeThread()] });
+    invoke.mockResolvedValue(undefined);
+    await useAppStore.getState().setThreadPinned('t1', true);
+    expect(invoke).toHaveBeenCalledWith('thread:setPinned', { threadId: 't1', pinned: true });
+    expect(useAppStore.getState().threads[0]).toMatchObject({ pinned: true });
+    await useAppStore.getState().setThreadArchived('t1', true);
+    expect(invoke).toHaveBeenCalledWith('thread:setArchived', { threadId: 't1', archived: true });
+    expect(useAppStore.getState().threads[0]).toMatchObject({ pinned: false, archived: true });
+    await useAppStore.getState().setThreadEffort('t1', 'max');
+    expect(invoke).toHaveBeenCalledWith('thread:setEffort', { threadId: 't1', effort: 'max' });
+    expect(useAppStore.getState().threads[0]?.effort).toBe('max');
+  });
+
+  it('toggleSidebar flips the collapsed state', () => {
+    const before = useAppStore.getState().sidebarCollapsed;
+    useAppStore.getState().toggleSidebar();
+    expect(useAppStore.getState().sidebarCollapsed).toBe(!before);
   });
 });

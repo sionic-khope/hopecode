@@ -121,7 +121,8 @@ export function createFixtureRunCommand(): RunCommandFn {
 
 /**
  * Native dialog seam for e2e: `project:add` returns HOPECODE_FIXTURE_PROJECT, the trust question answers
- * Trust and the bypassPermissions warning is confirmed, so no native dialog ever blocks a test.
+ * Trust, the bypassPermissions warning is confirmed and the file picker returns the folder's README.md, so no
+ * native dialog ever blocks a test.
  */
 export function createFixtureDialogs(projectPath: string | undefined): Dialogs {
   return {
@@ -133,6 +134,9 @@ export function createFixtureDialogs(projectPath: string | undefined): Dialogs {
     },
     async confirmBypassPermissions() {
       return true;
+    },
+    async pickFiles(defaultPath) {
+      return defaultPath ? [join(defaultPath, 'README.md')] : [];
     },
   };
 }

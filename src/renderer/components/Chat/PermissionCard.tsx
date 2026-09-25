@@ -33,20 +33,20 @@ export function PermissionCard({ request, onDecide }: PermissionCardProps) {
 
   return (
     <div className="hc-permission" role="alertdialog" aria-label={request.title ?? request.toolName}>
-      <div className="hc-permission__title">{request.title ?? `Run ${request.displayName ?? request.toolName}?`}</div>
+      <div className="hc-permission__title">{request.title ?? `${request.displayName ?? request.toolName} 실행을 허용할까요?`}</div>
       {request.description ? <div className="hc-permission__desc">{request.description}</div> : null}
       {inputPreview ? <pre className="hc-permission__input">{inputPreview}</pre> : null}
       <div className="hc-permission__actions">
         <Button ref={allowRef} variant="primary" size="sm" onClick={() => onDecide(request.requestId, 'allow')}>
-          Allow
+          허용
         </Button>
         {request.hasSessionSuggestion ? (
           <Button variant="secondary" size="sm" onClick={() => onDecide(request.requestId, 'allow-session')}>
-            Allow for session
+            이 세션 동안 허용
           </Button>
         ) : null}
         <Button ref={denyRef} variant="destructive" size="sm" onClick={() => onDecide(request.requestId, 'deny')}>
-          Deny
+          거부
         </Button>
       </div>
     </div>
