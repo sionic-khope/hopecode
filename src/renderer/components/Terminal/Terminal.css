@@ -16,7 +16,10 @@
 .hc-terminal .xterm {
   height: 100%;
 }
-.hc-terminal .xterm-viewport {
+.hc-terminal .xterm .xterm-viewport {
+  /* xterm's stylesheet paints the viewport #000; the grid rarely fills the pane exactly, so the leftover
+     strip under the last row would show as a black bar on this light theme. */
+  background-color: var(--bg-terminal);
   /* Match the app's thin overlay scrollbar treatment (global.css) instead of xterm's default. */
   scrollbar-width: thin;
 }

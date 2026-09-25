@@ -14,7 +14,7 @@
 
 .hc-statusline__divider {
   width: 1px;
-  height: 12px;
+  height: var(--lh-status);
   background: var(--separator);
   flex: none;
 }

@@ -10,6 +10,7 @@ asarUnpack:
   - "**/node_modules/node-pty/**"
   - "**/node_modules/@anthropic-ai/claude-agent-sdk-darwin-*/**"
 mac:
+  icon: build/icon.icns
   target:
     - target: dir
       arch:

@@ -47,8 +47,8 @@ export function resolveTerminalTheme(): ITheme {
 }
 
 /** Mirrors --font-mono (a literal stack, since xterm's canvas renderer can't resolve CSS vars). */
-export const TERMINAL_FONT_FAMILY = 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace';
-/** Mirrors --mono-sm (12px). */
-export const TERMINAL_FONT_SIZE = 12;
-/** Mirrors --lh-mono-sm / --mono-sm (18/12) -- xterm's lineHeight is a unitless multiplier. */
-export const TERMINAL_LINE_HEIGHT = 1.5;
+export const TERMINAL_FONT_FAMILY = '"Geist Mono", "Apple SD Gothic Neo", ui-monospace, "SF Mono", Menlo, monospace';
+/** Mirrors --mono-term (14px). */
+export const TERMINAL_FONT_SIZE = 14;
+/** Mirrors --lh-mono-term / --mono-term (20/14) -- xterm's lineHeight is a unitless multiplier. */
+export const TERMINAL_LINE_HEIGHT = 1.4;

@@ -2,16 +2,21 @@
 :root {
   color-scheme: light;
 
-  /* Typography */
-  --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
-  --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
-  --text-xs: 11px;   --lh-xs: 14px;
-  --text-sm: 12px;   --lh-sm: 16px;
-  --text-md: 13px;   --lh-md: 18px;
-  --text-chat: 14px; --lh-chat: 22px;
-  --text-lg: 15px;   --lh-lg: 20px;
-  --text-xl: 20px;   --lh-xl: 26px;
-  --mono-sm: 12px;   --lh-mono-sm: 18px;
+  /* Typography: Geist (UI) + Geist Mono (code, terminal, statusline), bundled locally (fonts.css).
+     Korean glyphs fall back to Apple SD Gothic Neo, then the system stack. */
+  --font-ui: 'Geist', 'Apple SD Gothic Neo', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  --font-mono: 'Geist Mono', 'Apple SD Gothic Neo', ui-monospace, 'SF Mono', Menlo, monospace;
+  --text-xs: 12px;     --lh-xs: 16px;
+  --text-sm: 13px;     --lh-sm: 18px;
+  --text-md: 14px;     --lh-md: 20px;   /* sidebar, controls, default body */
+  --text-chat: 15px;   --lh-chat: 24px; /* conversation body */
+  --text-lg: 16px;     --lh-lg: 22px;
+  --text-xl: 22px;     --lh-xl: 28px;
+  --text-status: 13px; --lh-status: 18px;
+  --mono-sm: 13px;     --lh-mono-sm: 20px; /* inline code, code blocks, diffs */
+  --mono-term: 14px;   --lh-mono-term: 20px; /* xterm (mirrored in terminalTheme.ts) */
+  --tracking-ui: -0.005em;
+  --tracking-title: -0.015em;
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-semibold: 600;
@@ -80,16 +85,28 @@
   --shadow-popover: 0 8px 28px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.12);
   --shadow-control: 0 0.5px 1px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.12);
 
+  /* Control + row heights (scaled with the type ramp) */
+  --control-h-sm: 22px;
+  --control-h: 26px;
+  --control-h-lg: 30px;
+  --seg-h: 24px;
+  --seg-h-sm: 22px;
+  --pill-h: 20px;
+  --row-h: 32px;       /* sidebar thread row, footer entry */
+  --row-h-sm: 28px;    /* sidebar project header */
+  --toolbar-h: 40px;
+  --sidebar-header-h: 40px;
+
   /* Layout */
   --titlebar-h: 52px;
   --traffic-light-w: 78px;
-  --sidebar-w: 240px;
+  --sidebar-w: 260px;
   --sidebar-min-w: 200px;
   --sidebar-max-w: 320px;
-  --terminal-w: 420px;
+  --terminal-w: 460px;
   --terminal-min-w: 280px;
   --terminal-max-w: 720px;
-  --statusline-h: 24px;
+  --statusline-h: 30px;
 
   /* Motion */
   --dur-fast: 150ms;

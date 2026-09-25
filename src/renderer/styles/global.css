@@ -1,3 +1,4 @@
+@import './fonts.css';
 @import './tokens.css';
 
 *,
@@ -25,8 +26,10 @@ body {
   font-family: var(--font-ui);
   font-size: var(--text-md);
   line-height: var(--lh-md);
+  letter-spacing: var(--tracking-ui);
   color: var(--label);
   -webkit-font-smoothing: antialiased;
+  font-optical-sizing: auto;
   -webkit-user-select: none;
   user-select: none;
   cursor: default;
@@ -39,6 +42,7 @@ samp {
   font-family: var(--font-mono);
   font-size: var(--mono-sm);
   line-height: var(--lh-mono-sm);
+  letter-spacing: 0;
 }
 
 button,

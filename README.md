@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/logo.png" width="128" alt="Hopecode"></p>
+
 # Hopecode
 
 A macOS desktop harness for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) sessions: threads in a native chat UI, a per-thread terminal, and a pool of subscription accounts that rotates automatically when a usage limit is reached.

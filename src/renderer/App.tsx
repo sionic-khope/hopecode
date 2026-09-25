@@ -7,7 +7,7 @@ import { ChatView } from './components/Chat';
 import { NEEDS_FORCE } from './components/Sidebar/ItemMenu';
 import { Sidebar } from './components/Sidebar/Sidebar';
 import { StatusLine } from './components/StatusLine/StatusLine';
-import { Button } from './components/common';
+import { BrandMark, Button } from './components/common';
 import { TerminalPane } from './components/Terminal/TerminalPane';
 import { disposeTerminalEntry, resetTerminalEntry } from './components/Terminal/terminalRegistry';
 import { ipcErrorMessage } from './errors';
@@ -213,7 +213,14 @@ export function App() {
   return (
     <div className={`app ${terminalOpen ? 'app--terminal-open' : 'app--terminal-closed'}`}>
       <aside className="app__sidebar" data-testid="sidebar">
-        <div className="app__titlebar drag-region" />
+        <div className="app__titlebar drag-region">
+          <div className="app__brand" data-testid="brand">
+            <BrandMark size={18} />
+            <span className="app__wordmark">
+              Hope<span className="app__wordmark-code">code</span>
+            </span>
+          </div>
+        </div>
         <div className="app__body">
           <Sidebar
             projects={projects}

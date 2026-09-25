@@ -72,6 +72,15 @@ export async function launch(sandbox: Sandbox): Promise<Launched> {
 
 export async function screenshot(page: Page, name: string): Promise<void> {
   mkdirSync(SCREENSHOT_DIR, { recursive: true });
+  // Let finite enter animations (popover fade/scale) settle so the capture shows the resting state.
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((a) => Number.isFinite(a.effect?.getComputedTiming().iterations ?? Infinity))
+        .map((a) => a.finished.catch(() => undefined)),
+    ),
+  );
   await page.screenshot({ path: join(SCREENSHOT_DIR, `${name}.png`) });
 }
 
