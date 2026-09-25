@@ -1,0 +1,517 @@
+/* Accounts page, row, chart and add-account dialog (plan 5 tokens only). Owned by lane 2B --
+   AccountsPopover.css is a separate, untouched file (owned by lane 1D). */
+
+/* ---------- Page ---------- */
+.hc-accounts-page {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--bg-window);
+  padding: var(--space-6);
+}
+
+.hc-accounts-page__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-5);
+}
+.hc-accounts-page__title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.hc-accounts-page__title {
+  font-size: var(--text-xl);
+  line-height: var(--lh-xl);
+  font-weight: var(--weight-semibold);
+  margin: 0;
+}
+.hc-accounts-page__count {
+  font-size: var(--text-sm);
+  color: var(--label-secondary);
+}
+
+.hc-accounts-page__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-8) var(--space-3);
+  text-align: center;
+  color: var(--label-secondary);
+}
+.hc-accounts-page__empty p {
+  margin: 0;
+}
+.hc-accounts-page__empty-sub {
+  color: var(--label-tertiary);
+  font-size: var(--text-sm);
+  max-width: 320px;
+}
+
+.hc-accounts-page__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 760px;
+}
+
+/* ---------- Account row ---------- */
+.hc-acct-row {
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-card);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-3);
+  transition:
+    opacity var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+.hc-acct-row--disabled {
+  opacity: 0.55;
+}
+.hc-acct-row--dragging {
+  box-shadow: var(--shadow-popover);
+  z-index: 10;
+}
+
+.hc-acct-row__main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.hc-acct-row__handle {
+  all: unset;
+  box-sizing: border-box;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 28px;
+  border-radius: var(--radius-control);
+  color: var(--label-tertiary);
+  cursor: grab;
+  touch-action: none;
+}
+.hc-acct-row__handle:hover {
+  background: var(--bg-sidebar-hover);
+  color: var(--label-secondary);
+}
+.hc-acct-row__handle:active {
+  cursor: grabbing;
+}
+
+.hc-acct-row__swatch-wrap {
+  position: relative;
+  flex: none;
+}
+.hc-acct-row__swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.12);
+  cursor: default;
+}
+.hc-acct-row__palette {
+  position: absolute;
+  top: 26px;
+  left: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  padding: var(--space-2);
+  border-radius: var(--radius-popover);
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: saturate(180%) blur(20px);
+  box-shadow: var(--shadow-popover);
+}
+.hc-acct-row__palette-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.12);
+  cursor: default;
+}
+.hc-acct-row__palette-swatch[aria-selected='true'] {
+  box-shadow:
+    0 0 0 2px var(--bg-elevated),
+    0 0 0 3.5px var(--accent);
+}
+
+.hc-acct-row__identity {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.hc-acct-row__alias {
+  all: unset;
+  box-sizing: border-box;
+  display: block;
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  color: var(--label);
+  border-radius: 4px;
+  padding: 1px 3px;
+  margin-left: -3px;
+  cursor: default;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: fit-content;
+}
+.hc-acct-row__alias:hover {
+  background: var(--bg-sidebar-hover);
+}
+.hc-acct-row__alias-input {
+  width: 160px;
+  padding: 1px 5px;
+  margin-left: -6px;
+  border: none;
+  border-radius: 4px;
+  background: var(--bg-control);
+  font: inherit;
+  font-weight: var(--weight-medium);
+  color: var(--label);
+}
+.hc-acct-row__alias-input:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+.hc-acct-row__sub {
+  font-size: var(--text-sm);
+  color: var(--label-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hc-acct-row__badges {
+  flex: none;
+  display: flex;
+  gap: 4px;
+}
+
+.hc-acct-row__confirm {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+  color: var(--crit-text);
+}
+
+.hc-acct-row__remove-note {
+  margin-top: var(--space-2);
+  padding: 6px var(--space-2);
+  border-radius: var(--radius-control);
+  background: var(--bg-control);
+  color: var(--label-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--lh-sm);
+}
+.hc-acct-row__remove-note--error {
+  background: rgba(255, 59, 48, 0.08);
+  color: var(--crit-text);
+}
+
+.hc-acct-row__hint {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: 6px var(--space-2);
+  border-radius: var(--radius-control);
+  background: rgba(255, 149, 0, 0.08);
+  color: var(--warn-text);
+  font-size: var(--text-sm);
+}
+.hc-acct-row__hint code {
+  font-family: var(--font-mono);
+  font-size: var(--mono-sm);
+  background: var(--bg-code);
+  color: var(--label);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+/* ---------- Usage chart ---------- */
+.hc-chart {
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--separator);
+}
+.hc-chart__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.hc-chart__legend {
+  display: flex;
+  gap: var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--label-secondary);
+}
+.hc-chart__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.hc-chart__legend-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+}
+.hc-chart__legend-value {
+  color: var(--label);
+  font-variant-numeric: tabular-nums;
+}
+.hc-chart__svg {
+  width: 100%;
+  height: 72px;
+  display: block;
+}
+.hc-chart__gridline {
+  stroke: var(--separator);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.hc-chart__line {
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.hc-chart__dot {
+  stroke: none;
+}
+.hc-chart__empty {
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--label-tertiary);
+  font-size: var(--text-xs);
+}
+
+.hc-chart__collecting {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  min-height: 72px;
+}
+.hc-chart__bar-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--label-secondary);
+}
+.hc-chart__bar-label {
+  flex: none;
+  width: 32px;
+}
+.hc-chart__bar-track {
+  flex: 1;
+  height: 6px;
+  border-radius: var(--radius-capsule);
+  background: var(--meter-track);
+  overflow: hidden;
+}
+.hc-chart__bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-capsule);
+}
+.hc-chart__collecting-note {
+  color: var(--label-tertiary);
+  font-size: var(--text-xs);
+}
+
+/* ---------- Add-account dialog ---------- */
+.hc-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.28);
+  animation: hc-dialog-fade-in var(--dur-fast) var(--ease-out);
+}
+@keyframes hc-dialog-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.hc-dialog {
+  width: 380px;
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  border-radius: var(--radius-dialog);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-popover);
+  animation: hc-dialog-in var(--dur-fast) var(--ease-out);
+}
+@keyframes hc-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.hc-dialog__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-4) var(--space-2);
+}
+.hc-dialog__title {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  margin: 0;
+}
+.hc-dialog__status {
+  font-size: var(--text-xs);
+  color: var(--label-secondary);
+}
+.hc-dialog__status--error {
+  color: var(--crit-text);
+}
+.hc-dialog__status--success {
+  color: var(--ok-text);
+}
+.hc-dialog__status--running,
+.hc-dialog__status--starting {
+  color: var(--accent);
+}
+
+.hc-dialog__body {
+  padding: 0 var(--space-4) var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.hc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.hc-field__label {
+  font-size: var(--text-sm);
+  color: var(--label-secondary);
+}
+.hc-field__input {
+  height: 26px;
+  padding: 0 var(--space-2);
+  border: none;
+  border-radius: var(--radius-control);
+  background: var(--bg-control);
+  color: var(--label);
+  font: inherit;
+}
+.hc-field__input:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+.hc-dialog__palette {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 6px;
+}
+.hc-dialog__palette-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: none;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.12);
+  cursor: default;
+}
+.hc-dialog__palette-swatch--selected {
+  box-shadow:
+    0 0 0 2px var(--bg-elevated),
+    0 0 0 3.5px var(--accent);
+}
+
+.hc-dialog__notice {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--label-secondary);
+}
+.hc-dialog__output {
+  margin: 0;
+  height: 120px;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3);
+  border-radius: 6px;
+  background: var(--bg-code);
+  color: var(--label);
+  font-family: var(--font-mono);
+  font-size: var(--mono-sm);
+  line-height: var(--lh-mono-sm);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.hc-dialog__paste-row {
+  display: flex;
+  gap: var(--space-2);
+}
+.hc-dialog__paste-row .hc-field__input {
+  flex: 1;
+}
+
+.hc-dialog__result {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-control);
+  background: var(--bg-control);
+}
+.hc-dialog__result--ok {
+  background: rgba(52, 199, 89, 0.1);
+}
+.hc-dialog__result--error {
+  background: rgba(255, 59, 48, 0.1);
+  color: var(--crit-text);
+  font-size: var(--text-sm);
+}
+.hc-dialog__swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  flex: none;
+}
+.hc-dialog__result-alias {
+  font-weight: var(--weight-medium);
+}
+.hc-dialog__result-sub {
+  font-size: var(--text-sm);
+  color: var(--label-secondary);
+}
+
+.hc-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--separator);
+}

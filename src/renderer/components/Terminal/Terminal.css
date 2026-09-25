@@ -1,0 +1,22 @@
+/* TerminalPane container (plan 5 tokens only). xterm.js draws its own canvas inside; colors/fonts for
+   that canvas come from terminalTheme.ts (resolved token values), not CSS. */
+
+.hc-terminal {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg-terminal);
+  padding: var(--space-2) 2px 2px var(--space-2);
+  overflow: hidden;
+}
+
+/* xterm's own root element, appended by TerminalPane via terminalRegistry. */
+.hc-terminal .xterm {
+  height: 100%;
+}
+.hc-terminal .xterm-viewport {
+  /* Match the app's thin overlay scrollbar treatment (global.css) instead of xterm's default. */
+  scrollbar-width: thin;
+}

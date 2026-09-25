@@ -1,0 +1,8 @@
+node_modules/
+out/
+dist/
+release/
+.omc/
+*.log
+.DS_Store
+*.tsbuildinfo

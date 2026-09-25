@@ -1,0 +1,254 @@
+/* Shared macOS-native controls. Uses tokens.css only. */
+
+/* ---------- Button ---------- */
+.hc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  height: 24px;
+  padding: 0 var(--space-3);
+  border: none;
+  border-radius: var(--radius-control);
+  font-size: var(--text-md);
+  line-height: 1;
+  font-weight: var(--weight-regular);
+  white-space: nowrap;
+  cursor: default;
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out);
+}
+.hc-btn--sm {
+  height: 20px;
+  padding: 0 var(--space-2);
+  font-size: var(--text-sm);
+}
+.hc-btn--lg {
+  height: 28px;
+  padding: 0 var(--space-4);
+}
+.hc-btn--primary {
+  background: var(--accent);
+  color: var(--label-on-accent);
+  box-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.18);
+}
+.hc-btn--primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+.hc-btn--primary:active:not(:disabled) {
+  background: var(--accent-pressed);
+}
+.hc-btn--secondary {
+  background: var(--bg-elevated);
+  color: var(--label);
+  box-shadow: var(--shadow-control);
+}
+.hc-btn--secondary:active:not(:disabled) {
+  background: var(--bg-control-pressed);
+}
+.hc-btn--plain {
+  background: transparent;
+  color: var(--label-secondary);
+}
+.hc-btn--plain:hover:not(:disabled) {
+  background: var(--bg-control-hover);
+  color: var(--label);
+}
+.hc-btn--plain:active:not(:disabled) {
+  background: var(--bg-control-pressed);
+}
+.hc-btn--destructive {
+  background: var(--bg-elevated);
+  color: var(--crit-text);
+  box-shadow: var(--shadow-control);
+}
+.hc-btn--destructive:active:not(:disabled) {
+  background: var(--diff-del-bg);
+}
+.hc-btn--icon {
+  width: 24px;
+  padding: 0;
+}
+.hc-btn--icon.hc-btn--sm {
+  width: 20px;
+}
+.hc-btn:disabled {
+  opacity: 0.4;
+}
+.hc-btn:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+/* ---------- Pill ---------- */
+.hc-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--radius-control);
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+  white-space: nowrap;
+  background: var(--bg-control);
+  color: var(--label-secondary);
+}
+.hc-pill--capsule {
+  border-radius: var(--radius-capsule);
+  padding: 0 8px;
+}
+.hc-pill--accent {
+  background: var(--accent-subtle);
+  color: var(--accent);
+}
+.hc-pill--ok {
+  background: rgba(52, 199, 89, 0.14);
+  color: var(--ok-text);
+}
+.hc-pill--warn {
+  background: rgba(255, 149, 0, 0.14);
+  color: var(--warn-text);
+}
+.hc-pill--crit {
+  background: rgba(255, 59, 48, 0.12);
+  color: var(--crit-text);
+}
+.hc-pill__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+}
+
+/* ---------- Switch ---------- */
+.hc-switch {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: 26px;
+  height: 15px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-capsule);
+  background: rgba(0, 0, 0, 0.12);
+  box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+  transition: background-color var(--dur-fast) var(--ease-out);
+  cursor: default;
+}
+.hc-switch[aria-checked='true'] {
+  background: var(--accent);
+}
+.hc-switch__thumb {
+  position: absolute;
+  top: 1.5px;
+  left: 1.5px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow:
+    0 0.5px 1.5px rgba(0, 0, 0, 0.25),
+    0 0 0 0.5px rgba(0, 0, 0, 0.06);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.hc-switch[aria-checked='true'] .hc-switch__thumb {
+  transform: translateX(11px);
+}
+.hc-switch--md {
+  width: 38px;
+  height: 22px;
+}
+.hc-switch--md .hc-switch__thumb {
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+}
+.hc-switch--md[aria-checked='true'] .hc-switch__thumb {
+  transform: translateX(16px);
+}
+.hc-switch:disabled {
+  opacity: 0.4;
+}
+
+/* ---------- Segmented ---------- */
+.hc-seg {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 2px;
+  height: 22px;
+  padding: 2px;
+  border-radius: var(--radius-control);
+  background: var(--bg-control);
+  box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.06);
+}
+.hc-seg--sm {
+  height: 20px;
+}
+.hc-seg__item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  padding: 0 var(--space-2);
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--label-secondary);
+  font-size: var(--text-sm);
+  line-height: 1;
+  white-space: nowrap;
+  cursor: default;
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+.hc-seg__item:hover:not([aria-checked='true']):not(:disabled) {
+  color: var(--label);
+}
+.hc-seg__item[aria-checked='true'] {
+  background: var(--bg-elevated);
+  color: var(--label);
+  box-shadow: var(--shadow-control);
+}
+.hc-seg__item:disabled {
+  opacity: 0.4;
+}
+/* Risky choice (e.g. Bypass permissions): warning tint, stronger when selected. */
+.hc-seg__item--danger {
+  color: var(--warn-text);
+}
+.hc-seg__item--danger:hover:not([aria-checked='true']):not(:disabled) {
+  color: var(--crit-text);
+}
+.hc-seg__item--danger[aria-checked='true'] {
+  background: var(--warn);
+  color: var(--label-on-accent);
+}
+
+/* ---------- Popover ---------- */
+.hc-popover {
+  position: fixed;
+  z-index: 1000;
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  border-radius: var(--radius-popover);
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: saturate(180%) blur(20px);
+  box-shadow: var(--shadow-popover);
+  color: var(--label);
+  font-size: var(--text-md);
+  animation: hc-popover-in var(--dur-fast) var(--ease-out);
+}
+@keyframes hc-popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--hc-popover-shift, 4px)) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

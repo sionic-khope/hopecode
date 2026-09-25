@@ -1,0 +1,540 @@
+// zustand app store (plan 4.4 `store/appStore.ts`): initialized from the `app:bootstrap` payload,
+// updated by main -> renderer broadcasts (wired in `store/events.ts`), and the single place
+// renderer components dispatch IPC actions from.
+import { create } from 'zustand';
+import { invoke } from '../api';
+import type { InvokeResponse } from '../../shared/ipc';
+import type {
+  Account,
+  AccountPatch,
+  AppSettings,
+  BootstrapPayload,
+  ChatEvent,
+  ChatItem,
+  ChatSendResult,
+  ModelOption,
+  PermissionDecision,
+  PermissionRequest,
+  PoolSnapshot,
+  Project,
+  Thread,
+  UiPermissionMode,
+  UsageSample,
+} from '../../shared/types';
+
+export type Route = 'chat' | 'accounts';
+
+export interface LoginSessionState {
+  output: string;
+  done: boolean;
+  ok: boolean | null;
+  account: Account | null;
+  error: string | null;
+}
+
+export interface PtyStatus {
+  ptyId: string | null;
+  running: boolean;
+  lastExitCode: number | null;
+}
+
+const EMPTY_POOL: PoolSnapshot = {
+  summary: {
+    avg: { fiveHour: null, sevenDay: null, fable: null },
+    earliestReset: { fiveHour: null, sevenDay: null, fable: null },
+    available: 0,
+    total: 0,
+  },
+  usageById: {},
+  at: 0,
+};
+
+const EMPTY_SETTINGS: AppSettings = {
+  idleCloseMinutes: 10,
+  defaultModel: 'default',
+  defaultPermissionMode: 'default',
+  tosNoticeAcknowledged: false,
+};
+
+function upsertThread(threads: Thread[], thread: Thread): Thread[] {
+  const idx = threads.findIndex((t) => t.id === thread.id);
+  if (idx === -1) return [...threads, thread];
+  const next = threads.slice();
+  next[idx] = thread;
+  return next;
+}
+
+function patchThreadLocal(threads: Thread[], threadId: string, patch: Partial<Thread>): Thread[] {
+  const idx = threads.findIndex((t) => t.id === threadId);
+  if (idx === -1) return threads;
+  const next = threads.slice();
+  next[idx] = { ...next[idx], ...patch, updatedAt: Date.now() };
+  return next;
+}
+
+function upsertAccount(accounts: Account[], account: Account): Account[] {
+  const idx = accounts.findIndex((a) => a.id === account.id);
+  if (idx === -1) return [...accounts, account];
+  const next = accounts.slice();
+  next[idx] = account;
+  return next;
+}
+
+function upsertChatItem(items: ChatItem[], item: ChatItem): ChatItem[] {
+  const idx = items.findIndex((i) => i.id === item.id);
+  if (idx === -1) return [...items, item];
+  const next = items.slice();
+  next[idx] = item;
+  return next;
+}
+
+const EMPTY_CHAT_ITEMS: ChatItem[] = [];
+
+/** Prefix of notices synthesized from `error` ChatEvents (not persisted, so never in `chat:history`). */
+const LOCAL_ERROR_PREFIX = 'local-error-';
+let localErrorSeq = 0;
+
+/** Persisted error notices supersede a locally synthesized one with the same text. */
+function dropSupersededLocalErrors(items: ChatItem[], incoming: readonly ChatItem[]): ChatItem[] {
+  const texts = new Set<string>();
+  for (const i of incoming) {
+    if (i.type === 'notice' && i.level === 'error' && !i.id.startsWith(LOCAL_ERROR_PREFIX)) texts.add(i.text);
+  }
+  if (texts.size === 0) return items;
+  return items.filter((i) => !(i.type === 'notice' && i.id.startsWith(LOCAL_ERROR_PREFIX) && texts.has(i.text)));
+}
+
+/**
+ * Merges a `chat:history` result into items already received live (L15): history order first, live
+ * items with an id missing from history appended after it. For an id present in both, the live copy wins
+ * (it may be newer than the log, e.g. a tool result that arrived after the read).
+ */
+export function mergeChatHistory(live: readonly ChatItem[], history: readonly ChatItem[]): ChatItem[] {
+  if (live.length === 0) return history.slice();
+  const liveById = new Map(live.map((i) => [i.id, i]));
+  const historyIds = new Set(history.map((i) => i.id));
+  const merged = history.map((i) => liveById.get(i.id) ?? i);
+  for (const item of live) if (!historyIds.has(item.id)) merged.push(item);
+  return dropSupersededLocalErrors(merged, history);
+}
+
+export interface AppStoreState {
+  // bootstrap-derived
+  bootstrapped: boolean;
+  appVersion: string | null;
+  projects: Project[];
+  threads: Thread[];
+  accounts: Account[];
+  pool: PoolSnapshot;
+  settings: AppSettings;
+  models: ModelOption[];
+
+  // UI / routing
+  selectedThreadId: string | null;
+  route: Route;
+  terminalOpen: boolean;
+
+  // per-thread chat state
+  chatItemsByThread: Record<string, ChatItem[]>;
+  streamingItemIdByThread: Record<string, string | null>;
+  permissionRequests: PermissionRequest[];
+
+  // account login pty + terminal pty (lightweight: raw byte stream stays component-local, see events.ts)
+  loginSessions: Record<string, LoginSessionState>;
+  ptyStatusByThread: Record<string, PtyStatus>;
+
+  // -- actions (invoke wrappers) --
+  bootstrap: () => Promise<void>;
+  selectThread: (threadId: string | null) => void;
+  setRoute: (route: Route) => void;
+  toggleTerminal: () => void;
+  setTerminalOpen: (open: boolean) => void;
+
+  addProject: () => Promise<Project | null>;
+  removeProject: (projectId: string) => Promise<void>;
+  setProjectTrusted: (projectId: string, trusted: boolean) => Promise<void>;
+  createThread: (
+    projectId: string,
+    opts?: { title?: string; model?: string; permissionMode?: UiPermissionMode },
+  ) => Promise<Thread>;
+  renameThread: (threadId: string, title: string) => Promise<void>;
+  /**
+   * Deletes the thread and its worktree. Resolves `{ok:false, reason:'worktree-dirty'}` (nothing deleted) when the
+   * worktree has uncommitted changes; `force` discards them.
+   */
+  deleteThread: (threadId: string, force?: boolean) => Promise<InvokeResponse<'thread:delete'>>;
+  setThreadModel: (threadId: string, model: string) => Promise<void>;
+  setThreadPermissionMode: (threadId: string, mode: UiPermissionMode) => Promise<void>;
+  pinAccount: (threadId: string, accountId: string | null) => Promise<void>;
+
+  loadChatHistory: (threadId: string) => Promise<void>;
+  sendMessage: (threadId: string, text: string) => Promise<ChatSendResult>;
+  interrupt: (threadId: string) => Promise<void>;
+  respondPermission: (requestId: string, decision: PermissionDecision, message?: string) => Promise<void>;
+
+  loadModels: () => Promise<void>;
+
+  startLogin: (alias: string, color: string) => Promise<{ loginId: string; accountId: string }>;
+  loginInput: (loginId: string, data: string) => Promise<void>;
+  cancelLogin: (loginId: string) => Promise<void>;
+  clearLoginSession: (loginId: string) => void;
+  updateAccount: (accountId: string, patch: AccountPatch) => Promise<Account>;
+  reorderAccounts: (orderedIds: string[]) => Promise<void>;
+  removeAccount: (accountId: string) => Promise<void>;
+
+  refreshUsage: (accountId?: string) => Promise<PoolSnapshot>;
+  fetchUsageHistory: (accountId: string, rangeMs: number) => Promise<UsageSample[]>;
+
+  openTerminal: (threadId: string, cols: number, rows: number) => Promise<{ ptyId: string; replay: string }>;
+  writeTerminal: (threadId: string, data: string) => Promise<void>;
+  resizeTerminal: (threadId: string, cols: number, rows: number) => Promise<void>;
+
+  // -- event application (also called directly by store/events.ts subscribers) --
+  applyBootstrap: (payload: BootstrapPayload) => void;
+  applyThreadUpdated: (thread: Thread) => void;
+  applyChatEvent: (threadId: string, event: ChatEvent) => void;
+  applyPermissionRequest: (req: PermissionRequest) => void;
+  applyPermissionCancel: (requestId: string) => void;
+  applyUsageUpdated: (pool: PoolSnapshot) => void;
+  applyAccountsUpdated: (accounts: Account[]) => void;
+  applyLoginData: (loginId: string, data: string) => void;
+  applyLoginExit: (loginId: string, ok: boolean, account?: Account, error?: string) => void;
+  applyPtyExit: (threadId: string, code: number) => void;
+}
+
+export const useAppStore = create<AppStoreState>()((set, get) => ({
+  bootstrapped: false,
+  appVersion: null,
+  projects: [],
+  threads: [],
+  accounts: [],
+  pool: EMPTY_POOL,
+  settings: EMPTY_SETTINGS,
+  models: [],
+
+  selectedThreadId: null,
+  route: 'chat',
+  terminalOpen: false,
+
+  chatItemsByThread: {},
+  streamingItemIdByThread: {},
+  permissionRequests: [],
+
+  loginSessions: {},
+  ptyStatusByThread: {},
+
+  bootstrap: async () => {
+    const payload = await invoke('app:bootstrap');
+    get().applyBootstrap(payload);
+  },
+
+  selectThread: (threadId) => set({ selectedThreadId: threadId }),
+  setRoute: (route) => set({ route }),
+  toggleTerminal: () => set((s) => ({ terminalOpen: !s.terminalOpen })),
+  setTerminalOpen: (open) => set({ terminalOpen: open }),
+
+  addProject: async () => {
+    const project = await invoke('project:add');
+    if (project) set((s) => ({ projects: s.projects.some((p) => p.id === project.id) ? s.projects : [...s.projects, project] }));
+    return project;
+  },
+
+  removeProject: async (projectId) => {
+    await invoke('project:remove', { projectId });
+    set((s) => {
+      const removedIds = new Set(s.threads.filter((t) => t.projectId === projectId).map((t) => t.id));
+      const chatItemsByThread = { ...s.chatItemsByThread };
+      const streamingItemIdByThread = { ...s.streamingItemIdByThread };
+      for (const id of removedIds) {
+        delete chatItemsByThread[id];
+        delete streamingItemIdByThread[id];
+      }
+      return {
+        projects: s.projects.filter((p) => p.id !== projectId),
+        threads: s.threads.filter((t) => t.projectId !== projectId),
+        chatItemsByThread,
+        streamingItemIdByThread,
+        permissionRequests: s.permissionRequests.filter((r) => !removedIds.has(r.threadId)),
+        selectedThreadId: s.selectedThreadId && removedIds.has(s.selectedThreadId) ? null : s.selectedThreadId,
+      };
+    });
+  },
+
+  // Trusting shows a native confirm in main; the returned project carries the value actually applied.
+  setProjectTrusted: async (projectId, trusted) => {
+    const project = await invoke('project:setTrusted', { projectId, trusted });
+    set((s) => ({ projects: s.projects.map((p) => (p.id === project.id ? project : p)) }));
+  },
+
+  createThread: async (projectId, opts) => {
+    const thread = await invoke('thread:create', { projectId, ...opts });
+    get().applyThreadUpdated(thread);
+    set({ selectedThreadId: thread.id, route: 'chat' });
+    return thread;
+  },
+
+  renameThread: async (threadId, title) => {
+    await invoke('thread:rename', { threadId, title });
+    set((s) => ({ threads: patchThreadLocal(s.threads, threadId, { title }) }));
+  },
+
+  deleteThread: async (threadId, force = false) => {
+    const result = await invoke('thread:delete', { threadId, removeWorktree: true, ...(force ? { force } : {}) });
+    if (!result.ok) return result;
+    set((s) => {
+      const chatItemsByThread = { ...s.chatItemsByThread };
+      delete chatItemsByThread[threadId];
+      const streamingItemIdByThread = { ...s.streamingItemIdByThread };
+      delete streamingItemIdByThread[threadId];
+      return {
+        threads: s.threads.filter((t) => t.id !== threadId),
+        chatItemsByThread,
+        streamingItemIdByThread,
+        permissionRequests: s.permissionRequests.filter((r) => r.threadId !== threadId),
+        selectedThreadId: s.selectedThreadId === threadId ? null : s.selectedThreadId,
+      };
+    });
+    return result;
+  },
+
+  setThreadModel: async (threadId, model) => {
+    await invoke('thread:setModel', { threadId, model });
+    set((s) => ({ threads: patchThreadLocal(s.threads, threadId, { model }) }));
+  },
+
+  // No optimistic patch: main may ask for confirmation (bypassPermissions) and reports the result via
+  // `thread:updated`.
+  setThreadPermissionMode: async (threadId, mode) => {
+    await invoke('thread:setPermissionMode', { threadId, mode });
+  },
+
+  pinAccount: async (threadId, accountId) => {
+    await invoke('thread:pinAccount', { threadId, accountId });
+    set((s) => ({ threads: patchThreadLocal(s.threads, threadId, { pinnedAccountId: accountId }) }));
+  },
+
+  loadChatHistory: async (threadId) => {
+    const history = await invoke('chat:history', { threadId });
+    set((s) => ({
+      chatItemsByThread: {
+        ...s.chatItemsByThread,
+        [threadId]: mergeChatHistory(s.chatItemsByThread[threadId] ?? EMPTY_CHAT_ITEMS, history),
+      },
+    }));
+  },
+
+  sendMessage: async (threadId, text) => invoke('chat:send', { threadId, text }),
+
+  interrupt: async (threadId) => {
+    await invoke('chat:interrupt', { threadId });
+  },
+
+  respondPermission: async (requestId, decision, message) => {
+    await invoke('permission:respond', { requestId, decision, message });
+    set((s) => ({ permissionRequests: s.permissionRequests.filter((r) => r.requestId !== requestId) }));
+  },
+
+  loadModels: async () => {
+    const models = await invoke('models:list');
+    set({ models });
+  },
+
+  startLogin: async (alias, color) => {
+    const result = await invoke('account:loginStart', { alias, color });
+    set((s) => ({
+      loginSessions: {
+        ...s.loginSessions,
+        [result.loginId]: { output: '', done: false, ok: null, account: null, error: null },
+      },
+    }));
+    return result;
+  },
+
+  loginInput: async (loginId, data) => {
+    await invoke('account:loginInput', { loginId, data });
+  },
+
+  cancelLogin: async (loginId) => {
+    await invoke('account:loginCancel', { loginId });
+  },
+
+  clearLoginSession: (loginId) =>
+    set((s) => {
+      const loginSessions = { ...s.loginSessions };
+      delete loginSessions[loginId];
+      return { loginSessions };
+    }),
+
+  updateAccount: async (accountId, patch) => {
+    const account = await invoke('account:update', { accountId, patch });
+    set((s) => ({ accounts: upsertAccount(s.accounts, account) }));
+    return account;
+  },
+
+  reorderAccounts: async (orderedIds) => {
+    await invoke('account:reorder', { orderedIds });
+    set((s) => {
+      const byId = new Map(s.accounts.map((a) => [a.id, a]));
+      const reordered = orderedIds.map((id) => byId.get(id)).filter((a): a is Account => !!a);
+      const remaining = s.accounts.filter((a) => !orderedIds.includes(a.id));
+      // Priority mirrors list order (lower = preferred) so priority-sorted views update before `account:updated`.
+      return { accounts: [...reordered, ...remaining].map((a, priority) => (a.priority === priority ? a : { ...a, priority })) };
+    });
+  },
+
+  removeAccount: async (accountId) => {
+    const result = await invoke('account:remove', { accountId, deleteConfigDir: true });
+    if (!result.ok) throw new Error(result.error);
+    set((s) => ({ accounts: s.accounts.filter((a) => a.id !== accountId) }));
+  },
+
+  refreshUsage: async (accountId) => {
+    const pool = await invoke('usage:refresh', { accountId });
+    set({ pool });
+    return pool;
+  },
+
+  fetchUsageHistory: async (accountId, rangeMs) => invoke('usage:history', { accountId, rangeMs }),
+
+  openTerminal: async (threadId, cols, rows) => {
+    const result = await invoke('pty:open', { threadId, cols, rows });
+    set((s) => ({
+      ptyStatusByThread: {
+        ...s.ptyStatusByThread,
+        [threadId]: { ptyId: result.ptyId, running: true, lastExitCode: null },
+      },
+    }));
+    return result;
+  },
+
+  writeTerminal: async (threadId, data) => {
+    await invoke('pty:write', { threadId, data });
+  },
+
+  resizeTerminal: async (threadId, cols, rows) => {
+    await invoke('pty:resize', { threadId, cols, rows });
+  },
+
+  applyBootstrap: (payload) =>
+    set((s) => ({
+      bootstrapped: true,
+      projects: payload.projects,
+      threads: payload.threads,
+      accounts: payload.accounts,
+      pool: payload.pool,
+      settings: payload.settings,
+      appVersion: payload.appVersion,
+      // Permission prompts still waiting in main survive a renderer reload (M7).
+      permissionRequests: payload.pendingPermissions ?? [],
+      selectedThreadId: s.selectedThreadId ?? payload.threads[0]?.id ?? null,
+    })),
+
+  applyThreadUpdated: (thread) => set((s) => ({ threads: upsertThread(s.threads, thread) })),
+
+  applyChatEvent: (threadId, event) => {
+    switch (event.type) {
+      case 'text-delta':
+        // Accumulate into a provisional assistant-text item; the final item-upsert (same id) replaces it.
+        set((s) => {
+          const items = s.chatItemsByThread[threadId] ?? EMPTY_CHAT_ITEMS;
+          const existing = items.find((i) => i.id === event.itemId);
+          const item: ChatItem =
+            existing?.type === 'assistant-text'
+              ? { ...existing, text: existing.text + event.text }
+              : { type: 'assistant-text', id: event.itemId, text: event.text, createdAt: Date.now() };
+          return {
+            chatItemsByThread: { ...s.chatItemsByThread, [threadId]: upsertChatItem(items, item) },
+            streamingItemIdByThread: { ...s.streamingItemIdByThread, [threadId]: event.itemId },
+          };
+        });
+        break;
+      case 'item-upsert':
+        set((s) => ({
+          chatItemsByThread: {
+            ...s.chatItemsByThread,
+            [threadId]: upsertChatItem(
+              dropSupersededLocalErrors(s.chatItemsByThread[threadId] ?? EMPTY_CHAT_ITEMS, [event.item]),
+              event.item,
+            ),
+          },
+          streamingItemIdByThread:
+            s.streamingItemIdByThread[threadId] === event.item.id
+              ? { ...s.streamingItemIdByThread, [threadId]: null }
+              : s.streamingItemIdByThread,
+        }));
+        break;
+      case 'turn-start':
+      case 'turn-end':
+        set((s) => ({ streamingItemIdByThread: { ...s.streamingItemIdByThread, [threadId]: null } }));
+        break;
+      case 'error':
+        // Shown as an error notice. If main also logs it as a notice item, that item supersedes this one
+        // (item-upsert / history merge drop same-text local errors), and a recent identical notice is not repeated.
+        set((s) => {
+          const items = s.chatItemsByThread[threadId] ?? EMPTY_CHAT_ITEMS;
+          const recent = items.slice(-3);
+          if (recent.some((i) => i.type === 'notice' && i.level === 'error' && i.text === event.message)) return {};
+          const notice: ChatItem = {
+            type: 'notice',
+            id: `${LOCAL_ERROR_PREFIX}${++localErrorSeq}`,
+            level: 'error',
+            text: event.message,
+            createdAt: Date.now(),
+          };
+          return {
+            chatItemsByThread: { ...s.chatItemsByThread, [threadId]: [...items, notice] },
+            streamingItemIdByThread: { ...s.streamingItemIdByThread, [threadId]: null },
+          };
+        });
+        break;
+      default:
+        break;
+    }
+  },
+
+  applyPermissionRequest: (req) =>
+    set((s) => ({
+      permissionRequests: [...s.permissionRequests.filter((r) => r.requestId !== req.requestId), req],
+    })),
+
+  applyPermissionCancel: (requestId) =>
+    set((s) => ({ permissionRequests: s.permissionRequests.filter((r) => r.requestId !== requestId) })),
+
+  applyUsageUpdated: (pool) => set({ pool }),
+
+  applyAccountsUpdated: (accounts) => set({ accounts }),
+
+  applyLoginData: (loginId, data) =>
+    set((s) => ({
+      loginSessions: {
+        ...s.loginSessions,
+        [loginId]: {
+          output: (s.loginSessions[loginId]?.output ?? '') + data,
+          done: false,
+          ok: null,
+          account: null,
+          error: null,
+        },
+      },
+    })),
+
+  applyLoginExit: (loginId, ok, account, error) =>
+    set((s) => ({
+      loginSessions: {
+        ...s.loginSessions,
+        [loginId]: {
+          output: s.loginSessions[loginId]?.output ?? '',
+          done: true,
+          ok,
+          account: account ?? null,
+          error: error ?? null,
+        },
+      },
+      accounts: account ? upsertAccount(s.accounts, account) : s.accounts,
+    })),
+
+  applyPtyExit: (threadId, code) =>
+    set((s) => ({
+      ptyStatusByThread: { ...s.ptyStatusByThread, [threadId]: { ptyId: null, running: false, lastExitCode: code } },
+    })),
+}));

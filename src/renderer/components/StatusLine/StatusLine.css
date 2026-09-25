@@ -1,0 +1,96 @@
+/* Statusline (plan 6). Container styling (height/bg/blur/border) lives on .app__status in App.css;
+   this file owns the internal segments, meters and the popover trigger. */
+
+.hc-statusline__trigger {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  height: 100%;
+  cursor: default;
+}
+
+.hc-statusline__divider {
+  width: 1px;
+  height: 12px;
+  background: var(--separator);
+  flex: none;
+}
+
+.hc-statusline__segment {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  flex: none;
+}
+
+.hc-statusline__label {
+  color: var(--label-secondary);
+}
+.hc-statusline__value {
+  color: var(--label);
+}
+
+.hc-statusline__model {
+  color: var(--label);
+  font-weight: var(--weight-medium);
+}
+
+.hc-statusline__avail {
+  margin-left: auto;
+}
+.hc-statusline__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+.hc-statusline__dot--ok {
+  background: var(--ok);
+}
+.hc-statusline__dot--warn {
+  background: var(--warn);
+}
+.hc-statusline__dot--crit {
+  background: var(--crit);
+}
+
+/* ---------- Usage meter ---------- */
+.hc-meter__label {
+  color: var(--label-secondary);
+}
+.hc-meter__track {
+  height: 4px;
+  border-radius: var(--radius-capsule);
+  background: var(--meter-track);
+  overflow: hidden;
+  flex: none;
+}
+.hc-meter__fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-capsule);
+  transition: width var(--dur-fast) var(--ease-out);
+}
+.hc-meter__fill--ok {
+  background: var(--ok);
+}
+.hc-meter__fill--warn {
+  background: var(--warn);
+}
+.hc-meter__fill--crit {
+  background: var(--crit);
+}
+.hc-meter__percent {
+  color: var(--label);
+  font-variant-numeric: tabular-nums;
+}
+.hc-meter__percent--crit {
+  color: var(--crit-text);
+}
+.hc-meter__reset {
+  color: var(--label-tertiary);
+}

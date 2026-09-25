@@ -1,0 +1,7 @@
+{
+  "five_hour": { "utilization": 134.2, "resets_at": "not-a-date" },
+  "seven_day": { "utilization": -3, "resets_at": null },
+  "limits": [
+    { "kind": "weekly_scoped", "percent": 250, "resets_at": "", "scope": { "model": { "display_name": "Claude Fable 5" } } }
+  ]
+}

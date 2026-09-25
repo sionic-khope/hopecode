@@ -1,0 +1,56 @@
+{
+  "name": "hopecode",
+  "productName": "Hopecode",
+  "version": "0.1.0",
+  "description": "Native macOS chat UI for Claude Code sessions with multi-account rotation",
+  "private": true,
+  "type": "module",
+  "main": "./out/main/index.js",
+  "author": "Hopecode",
+  "license": "UNLICENSED",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "dist:dir": "electron-vite build && electron-builder --mac --dir",
+    "rebuild:native": "electron-rebuild -f -w node-pty",
+    "smoke:native": "electron-vite build && node scripts/smoke-native.mjs",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.282",
+    "node-pty": "1.1.0"
+  },
+  "devDependencies": {
+    "@dnd-kit/core": "6.3.1",
+    "@dnd-kit/sortable": "10.0.0",
+    "@electron/rebuild": "4.2.0",
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/xterm": "6.0.0",
+    "electron": "44.4.5",
+    "electron-builder": "26.15.3",
+    "electron-vite": "^5.0.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "typescript": "~5.9.3",
+    "vite": "^7.3.6",
+    "vitest": "^5.0.2",
+    "zustand": "^5.0.15"
+  },
+  "allowScripts": {
+    "node-pty@1.1.0": true,
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.2": true,
+    "electron-winstaller": false
+  }
+}

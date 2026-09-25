@@ -1,0 +1,27 @@
+appId: dev.hopecode.app
+productName: Hopecode
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**/*
+  - package.json
+asarUnpack:
+  - "**/node_modules/node-pty/**"
+  - "**/node_modules/@anthropic-ai/claude-agent-sdk-darwin-*/**"
+mac:
+  target:
+    - target: dir
+      arch:
+        - arm64
+  identity: "-"
+  category: public.app-category.developer-tools
+npmRebuild: true
+# Harden the packaged Electron binary (L4). ASAR integrity needs the macOS build to embed the asar hash
+# (electron-builder does this when the fuse is on).
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true

@@ -1,0 +1,116 @@
+/* Design tokens (plan 5). Light only. */
+:root {
+  color-scheme: light;
+
+  /* Typography */
+  --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
+  --text-xs: 11px;   --lh-xs: 14px;
+  --text-sm: 12px;   --lh-sm: 16px;
+  --text-md: 13px;   --lh-md: 18px;
+  --text-chat: 14px; --lh-chat: 22px;
+  --text-lg: 15px;   --lh-lg: 20px;
+  --text-xl: 20px;   --lh-xl: 26px;
+  --mono-sm: 12px;   --lh-mono-sm: 18px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+
+  /* Accent */
+  --accent: #007aff;
+  --accent-hover: #0066d6;
+  --accent-pressed: #0056b3;
+  --accent-subtle: rgba(0, 122, 255, 0.1);
+  --focus-ring: 0 0 0 3px rgba(0, 122, 255, 0.35);
+
+  /* Labels */
+  --label: rgba(0, 0, 0, 0.85);
+  --label-secondary: rgba(0, 0, 0, 0.55);
+  --label-tertiary: rgba(0, 0, 0, 0.3);
+  --label-on-accent: #ffffff;
+  --separator: rgba(0, 0, 0, 0.1);
+  --separator-strong: rgba(0, 0, 0, 0.16);
+
+  /* Backgrounds */
+  --bg-window: #ffffff;
+  --bg-sidebar: transparent;
+  --bg-sidebar-hover: rgba(0, 0, 0, 0.05);
+  --bg-sidebar-sel-inactive: rgba(0, 0, 0, 0.08);
+  --bg-sidebar-sel: var(--accent-subtle);
+  --bg-elevated: #ffffff;
+  --bg-control: rgba(0, 0, 0, 0.04);
+  --bg-control-hover: rgba(0, 0, 0, 0.07);
+  --bg-control-pressed: rgba(0, 0, 0, 0.1);
+  --bg-code: #f5f5f7;
+  --bg-statusline: rgba(246, 246, 246, 0.92);
+  --statusline-backdrop: saturate(180%) blur(20px);
+  --bg-terminal: #ffffff;
+  --fg-terminal: #1d1d1f;
+  --cursor-terminal: #007aff;
+  --selection-terminal: rgba(0, 122, 255, 0.2);
+
+  /* Status */
+  --ok: #34c759;   --ok-text: #248a3d;
+  --warn: #ff9500; --warn-text: #c93400;
+  --crit: #ff3b30; --crit-text: #d70015;
+  --meter-track: rgba(0, 0, 0, 0.08);
+
+  /* Diff */
+  --diff-add-bg: #e6f4ea; --diff-add-fg: #1a7f37; --diff-add-gutter: #ccebd5;
+  --diff-del-bg: #fdecea; --diff-del-fg: #cf222e; --diff-del-gutter: #f8d0d0;
+
+  /* Spacing (4pt) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Radius */
+  --radius-control: 6px;
+  --radius-card: 8px;
+  --radius-popover: 10px;
+  --radius-dialog: 12px;
+  --radius-capsule: 999px;
+
+  /* Elevation */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.06), 0 0 0 0.5px rgba(0, 0, 0, 0.1);
+  --shadow-popover: 0 8px 28px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.12);
+  --shadow-control: 0 0.5px 1px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.12);
+
+  /* Layout */
+  --titlebar-h: 52px;
+  --traffic-light-w: 78px;
+  --sidebar-w: 240px;
+  --sidebar-min-w: 200px;
+  --sidebar-max-w: 320px;
+  --terminal-w: 420px;
+  --terminal-min-w: 280px;
+  --terminal-max-w: 720px;
+  --statusline-h: 24px;
+
+  /* Motion */
+  --dur-fast: 150ms;
+  --ease-out: ease-out;
+  --dur-pane: 200ms;
+  --ease-pane: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Account palette */
+  --account-1: #007aff;
+  --account-2: #34c759;
+  --account-3: #ff9500;
+  --account-4: #af52de;
+  --account-5: #ff2d55;
+  --account-6: #5ac8fa;
+  --account-7: #ffcc00;
+  --account-8: #a2845e;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur-pane: 0ms;
+  }
+}

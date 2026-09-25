@@ -1,0 +1,129 @@
+.app {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr) var(--app-terminal-w, 0px);
+  grid-template-rows: minmax(0, 1fr) var(--statusline-h);
+  grid-template-areas:
+    'sidebar chat terminal'
+    'status status status';
+  height: 100%;
+  transition: grid-template-columns var(--dur-pane) var(--ease-pane);
+}
+.app--terminal-open {
+  --app-terminal-w: var(--terminal-w);
+}
+
+.app__titlebar {
+  height: var(--titlebar-h);
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-3);
+}
+
+.app__sidebar {
+  grid-area: sidebar;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--separator);
+}
+.app__sidebar .app__titlebar {
+  padding-left: var(--traffic-light-w);
+}
+.app__sidebar .app__body {
+  /* Sidebar.tsx owns its own scroll region + pinned footer; don't scroll the outer wrapper. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.app__chat {
+  grid-area: chat;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--bg-window);
+}
+.app__chat .app__titlebar {
+  border-bottom: 1px solid var(--separator);
+  font-weight: var(--weight-semibold);
+}
+
+.app__terminal {
+  grid-area: terminal;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--bg-terminal);
+  border-left: 1px solid var(--separator);
+}
+.app--terminal-closed .app__terminal {
+  border-left: none;
+}
+
+.app__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.app__body--fill {
+  position: relative;
+  overflow: hidden;
+}
+
+.app__toast {
+  position: absolute;
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%);
+  max-width: 80%;
+  cursor: pointer;
+  box-shadow: var(--shadow-popover, 0 4px 16px rgba(0, 0, 0, 0.12));
+}
+
+.app__empty {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--label-tertiary);
+}
+
+.app__status {
+  grid-area: status;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-3);
+  background: var(--bg-statusline);
+  backdrop-filter: var(--statusline-backdrop);
+  border-top: 1px solid var(--separator);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+  color: var(--label-secondary);
+}
+
+.app__terminal-host {
+  position: relative;
+  height: 100%;
+}
+.app__terminal-exited {
+  position: absolute;
+  left: 50%;
+  bottom: var(--space-4);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 6px 6px var(--space-3);
+  border-radius: var(--radius-popover);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-popover);
+  color: var(--label-secondary);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}

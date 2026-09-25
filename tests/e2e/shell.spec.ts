@@ -1,0 +1,78 @@
+// S1 layout + ⌘J, S2 fonts, U1/U2/U4/U5/U6 statusline + popover over the fixture pool (100/40/0).
+import { expect, test } from '@playwright/test';
+import { createSandbox, launch, menuShortcut, screenshot, type Launched, type Sandbox } from './helpers';
+
+test.describe.configure({ mode: 'serial' });
+
+let sandbox: Sandbox;
+let run: Launched;
+
+test.beforeAll(async () => {
+  sandbox = createSandbox();
+  run = await launch(sandbox);
+});
+
+test.afterAll(async () => {
+  await run?.app.close();
+  sandbox?.cleanup();
+});
+
+test('3-pane layout, ⌘J toggles the terminal pane', async () => {
+  const { page } = run;
+  await expect(page.getByTestId('sidebar')).toBeVisible();
+  await expect(page.getByTestId('chat')).toBeVisible();
+  await expect(page.getByTestId('statusline')).toBeVisible();
+  await expect(page.getByTestId('sidebar').getByRole('button', { name: 'Accounts' })).toBeVisible();
+  const app = page.locator('.app');
+  await expect(app).toHaveClass(/app--terminal-closed/);
+  await screenshot(page, '01-shell-empty');
+
+  // No renderer keydown handler: the shortcut belongs to the menu alone (no double toggle).
+  await page.keyboard.press('Meta+J');
+  await page.waitForTimeout(300);
+  await expect(app).toHaveClass(/app--terminal-closed/);
+
+  await menuShortcut(run.app, 'CmdOrCtrl+J');
+  await expect(app).toHaveClass(/app--terminal-open/);
+  await expect.poll(async () => (await page.getByTestId('terminal').boundingBox())?.width ?? 0).toBeGreaterThan(300);
+  await menuShortcut(run.app, 'CmdOrCtrl+J');
+  await expect(app).toHaveClass(/app--terminal-closed/);
+});
+
+test('SF Pro UI font and SF Mono statusline', async () => {
+  const { page } = run;
+  const bodyFont = await page.evaluate(() => getComputedStyle(document.body).fontFamily);
+  expect(bodyFont).toContain('-apple-system');
+  const statusFont = await page.getByTestId('statusline').evaluate((el) => getComputedStyle(el).fontFamily);
+  expect(statusFont).toContain('ui-monospace');
+});
+
+test('statusline pool summary: 5h 47%, 2/3 avail, level colors', async () => {
+  const { page } = run;
+  const status = page.getByTestId('statusline');
+  const fiveHour = status.locator('.hc-meter').filter({ hasText: '5h' });
+  await expect(fiveHour.locator('.hc-meter__percent')).toHaveText('47%');
+  await expect(status).toContainText('2/3 avail');
+  // 47% is below the 70% warn threshold.
+  await expect(fiveHour.locator('.hc-meter__fill')).toHaveClass(/hc-meter__fill--ok/);
+  // wk avg = (62+20+5)/3 = 29%
+  await expect(status.locator('.hc-meter').filter({ hasText: 'wk' }).locator('.hc-meter__percent')).toHaveText('29%');
+  await screenshot(page, '02-statusline');
+});
+
+test('statusline click opens the per-account popover with an exhausted badge', async () => {
+  const { page } = run;
+  await page.getByTestId('statusline').locator('.hc-statusline__trigger').click();
+  const pop = page.locator('.hc-accounts-pop');
+  await expect(pop).toBeVisible();
+  await expect(pop.locator('.hc-accounts-pop__row')).toHaveCount(3);
+  for (const alias of ['Work', 'Personal', 'Spare']) {
+    await expect(pop.locator('.hc-accounts-pop__alias', { hasText: alias })).toBeVisible();
+  }
+  const work = pop.locator('.hc-accounts-pop__row').filter({ hasText: 'Work' });
+  await expect(work.locator('.hc-accounts-pop__badge')).toContainText('Exhausted');
+  // 100% meter uses the crit level color.
+  await expect(work.locator('.hc-meter__fill--crit').first()).toBeVisible();
+  await screenshot(page, '03-accounts-popover');
+  await page.keyboard.press('Escape');
+});
