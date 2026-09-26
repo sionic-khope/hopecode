@@ -1,4 +1,4 @@
-/* Sidebar (Codex-scale: 36px rows, 15px labels). Vibrancy shows through (--bg-sidebar transparent). */
+/* Sidebar: rows, sections and the profile footer inside the floating sidebar card (App.css draws the card). */
 
 .hc-sidebar {
   display: flex;
@@ -91,11 +91,22 @@
 .hc-nav:hover {
   background: var(--bg-sidebar-hover);
 }
+.hc-nav:active {
+  transform: scale(0.985);
+}
+.hc-nav {
+  transition:
+    background-color var(--motion-1) var(--ease-soft),
+    color var(--motion-1) var(--ease-soft),
+    transform var(--motion-1) var(--ease-soft);
+}
 .hc-nav--active {
   background: var(--bg-sidebar-sel);
+  color: var(--accent-strong);
+  font-weight: var(--weight-medium);
 }
 .hc-nav--active svg {
-  color: var(--label);
+  color: var(--accent);
 }
 .hc-nav:focus-visible {
   box-shadow: var(--focus-ring);
@@ -451,6 +462,10 @@
 .hc-thread--selected,
 .hc-thread-wrap:hover .hc-thread--selected {
   background: var(--bg-sidebar-sel);
+  color: var(--accent-strong);
+}
+.hc-thread--selected .hc-thread__time {
+  color: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 .hc-thread:focus-visible {
   box-shadow: var(--focus-ring);
@@ -480,13 +495,14 @@
   border-radius: 50%;
   background: var(--crit);
 }
-.hc-thread__meta {
+.hc-thread__time {
   font-size: var(--text-xs);
   color: var(--label-tertiary);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
-.hc-thread__meta--waiting {
-  color: var(--label-tertiary);
+.hc-thread__pill {
+  flex: none;
 }
 .hc-thread__account {
   width: 7px;
@@ -603,4 +619,129 @@
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
+}
+
+/* ---------- Profile footer ---------- */
+.hc-profile {
+  flex: none;
+  padding: var(--space-2);
+  border-top: 1px solid var(--separator);
+}
+.hc-profile__row {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 46px;
+  padding: 6px 8px;
+  border-radius: 12px;
+  transition:
+    background-color var(--motion-1) var(--ease-soft),
+    transform var(--motion-1) var(--ease-soft);
+}
+.hc-profile__row:hover,
+.hc-profile__row--open {
+  background: var(--bg-sidebar-hover);
+}
+.hc-profile__row:active {
+  transform: scale(0.99);
+}
+.hc-profile__row:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+.hc-profile__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.hc-profile__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-md);
+  line-height: var(--lh-md);
+  font-weight: var(--weight-medium);
+  color: var(--label);
+}
+.hc-profile__sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+  color: var(--label-tertiary);
+}
+.hc-profile__plan {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: var(--radius-capsule);
+  background: var(--accent-tint);
+  color: var(--accent-strong);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.01em;
+}
+.hc-profile__add-icon {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+
+/* Account avatar: initials on the account color (a soft gradient keeps light colors legible). */
+.hc-avatar {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.28), rgba(0, 0, 0, 0.12)),
+    var(--hc-avatar, var(--accent));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(22, 32, 56, 0.14);
+  color: #ffffff;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.hc-profile-menu__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.hc-profile-menu__who {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.hc-profile-menu__email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--label);
+}
+.hc-profile-menu__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+  color: var(--label-secondary);
 }

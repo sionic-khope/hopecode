@@ -24,6 +24,14 @@ export function initStoreEventSubscriptions(): () => void {
     on('ui:toggleTerminal', () => useAppStore.getState().toggleTerminal()),
     on('ui:toggleSidebar', () => useAppStore.getState().toggleSidebar()),
     on('ui:newThread', () => useAppStore.getState().newDraft()),
+    on('ui:toggleChanges', () => useAppStore.getState().togglePanel('changes')),
+    on('ui:openSettings', () => useAppStore.getState().setRoute('settings')),
+    on('ui:commandPalette', () => {
+      const s = useAppStore.getState();
+      s.setPaletteOpen(!s.paletteOpen);
+    }),
+    on('settings:updated', (settings) => useAppStore.getState().applySettingsUpdated(settings)),
+    on('models:updated', (models) => useAppStore.getState().applyModelsUpdated(models)),
   ];
 
   return () => {

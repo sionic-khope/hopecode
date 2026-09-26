@@ -2,6 +2,7 @@
 // in plain Node (vitest environment: node) without `window.hopecode` / Electron.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Account, ChatItem, PermissionRequest, PoolSnapshot, Project, Thread } from '../../src/shared/types';
+import { DEFAULT_SETTINGS } from '../../src/shared/constants';
 
 const invoke = vi.fn();
 const on = vi.fn();
@@ -18,6 +19,7 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
   return {
     id: 't1',
     projectId: 'p1',
+    agent: 'claude-code',
     title: 'Thread 1',
     cwd: '/tmp/project',
     model: 'default',
@@ -81,10 +83,11 @@ describe('bootstrap', () => {
       threads: [thread],
       accounts: [account],
       pool: EMPTY_POOL,
-      settings: { idleCloseMinutes: 10, defaultModel: 'default', defaultPermissionMode: 'default', tosNoticeAcknowledged: false },
+      settings: { ...DEFAULT_SETTINGS },
       appVersion: '1.2.3',
       homeDir: '/Users/me',
       pendingPermissions: [],
+      testMode: false,
     });
 
     const s = useAppStore.getState();
@@ -103,7 +106,7 @@ describe('bootstrap', () => {
       threads: [],
       accounts: [],
       pool: EMPTY_POOL,
-      settings: { idleCloseMinutes: 10, defaultModel: 'default', defaultPermissionMode: 'default' as const, tosNoticeAcknowledged: false },
+      settings: { ...DEFAULT_SETTINGS },
       appVersion: '0.1.0',
       homeDir: '/Users/me',
       pendingPermissions: [],
@@ -126,10 +129,11 @@ describe('bootstrap', () => {
       threads: [t1, t2],
       accounts: [],
       pool: EMPTY_POOL,
-      settings: { idleCloseMinutes: 10, defaultModel: 'default', defaultPermissionMode: 'default', tosNoticeAcknowledged: false },
+      settings: { ...DEFAULT_SETTINGS },
       appVersion: null as unknown as string,
       homeDir: '/Users/me',
       pendingPermissions: [],
+      testMode: false,
     });
     expect(useAppStore.getState().selectedThreadId).toBe('t2');
   });
@@ -358,7 +362,7 @@ describe('selectPoolSummary', () => {
 });
 
 describe('review fixes', () => {
-  const settings = { idleCloseMinutes: 10, defaultModel: 'default', defaultPermissionMode: 'default' as const, tosNoticeAcknowledged: false };
+  const settings = { ...DEFAULT_SETTINGS };
   const req: PermissionRequest = { requestId: 'r1', threadId: 't1', toolUseId: 'tu1', toolName: 'Edit', input: {}, hasSessionSuggestion: false };
 
   it('applyBootstrap restores pending permission requests (reload keeps the cards)', () => {
@@ -371,6 +375,7 @@ describe('review fixes', () => {
       appVersion: '1',
       homeDir: '/Users/me',
       pendingPermissions: [req],
+      testMode: false,
     });
     expect(selectors.selectPendingPermissions(useAppStore.getState(), 't1')).toEqual([req]);
   });
@@ -479,7 +484,7 @@ describe('review fixes', () => {
 });
 
 describe('draft / new chat', () => {
-  const settings = { idleCloseMinutes: 10, defaultModel: 'default', defaultPermissionMode: 'default' as const, tosNoticeAcknowledged: false };
+  const settings = { ...DEFAULT_SETTINGS };
 
   it('defaultDraftProjectId prefers the project of the most recent thread, then the newest project', async () => {
     const { defaultDraftProjectId } = await import('../../src/renderer/store/appStore');
@@ -512,6 +517,7 @@ describe('draft / new chat', () => {
       appVersion: '1',
       homeDir: '/Users/me',
       pendingPermissions: [],
+      testMode: false,
     });
     useAppStore.getState().setDraft({ model: 'sonnet', effort: 'high', permissionMode: 'plan' });
     const thread = makeThread({ id: 'new', title: 'hello' });
@@ -519,6 +525,7 @@ describe('draft / new chat', () => {
     const result = await useAppStore.getState().startThread('hello');
     expect(invoke).toHaveBeenCalledWith('thread:start', {
       projectId: 'p1',
+      agent: 'claude-code',
       text: 'hello',
       model: 'sonnet',
       permissionMode: 'plan',

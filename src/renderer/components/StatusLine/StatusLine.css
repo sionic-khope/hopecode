@@ -1,52 +1,67 @@
-/* Statusline (plan 6). Container styling (height/bg/blur/border) lives on .app__status in App.css;
-   this file owns the internal segments, meters and the popover trigger. */
+/* Statusline: a thin bar on the canvas with soft capsule segments. Container styling lives on .app__status in
+   App.css; this file owns the segments, meters and the popover trigger. */
 
 .hc-statusline__trigger {
   all: unset;
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: 6px;
   width: 100%;
   height: 100%;
   cursor: default;
 }
+.hc-statusline__trigger:focus-visible .hc-statusline__model {
+  box-shadow: var(--focus-ring);
+}
 
+/* Dividers became spacing: capsules separate themselves. */
 .hc-statusline__divider {
-  width: 1px;
-  height: var(--lh-status);
-  background: var(--separator);
-  flex: none;
+  display: none;
 }
 
 .hc-statusline__segment {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  height: 20px;
+  padding: 0 9px;
+  border-radius: var(--radius-capsule);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 0 0 1px rgba(22, 32, 56, 0.05);
   white-space: nowrap;
   flex: none;
+  transition: background-color var(--motion-1) var(--ease-soft);
+}
+.hc-statusline__trigger:hover .hc-statusline__segment {
+  background: #ffffff;
 }
 
 .hc-statusline__label {
-  color: var(--label-secondary);
+  color: var(--label-tertiary);
 }
 .hc-statusline__value {
   color: var(--label);
+  font-variant-numeric: tabular-nums;
 }
 
 .hc-statusline__model {
-  color: var(--label);
-  font-weight: var(--weight-medium);
+  height: 20px;
+  padding: 0 10px;
+  background: var(--accent-tint);
+  color: var(--accent-strong);
+  font-weight: var(--weight-semibold);
 }
 
 .hc-statusline__avail {
   margin-left: auto;
 }
 .hc-statusline__dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   flex: none;
+  transition: background-color var(--motion-2) var(--ease-soft);
 }
 .hc-statusline__dot--ok {
   background: var(--ok);
@@ -58,12 +73,13 @@
   background: var(--crit);
 }
 
-/* ---------- Usage meter ---------- */
+/* ---------- Usage meter (capsule) ---------- */
 .hc-meter__label {
-  color: var(--label-secondary);
+  color: var(--label-tertiary);
+  font-weight: var(--weight-medium);
 }
 .hc-meter__track {
-  height: 4px;
+  height: 6px;
   border-radius: var(--radius-capsule);
   background: var(--meter-track);
   overflow: hidden;
@@ -73,24 +89,36 @@
   display: block;
   height: 100%;
   border-radius: var(--radius-capsule);
-  transition: width var(--dur-fast) var(--ease-out);
+  transition:
+    width var(--motion-3) var(--ease-soft),
+    background-color var(--motion-2) var(--ease-soft);
 }
 .hc-meter__fill--ok {
-  background: var(--ok);
+  background: linear-gradient(90deg, #5bd68c, var(--ok));
 }
 .hc-meter__fill--warn {
-  background: var(--warn);
+  background: linear-gradient(90deg, #ffc15a, var(--warn));
 }
 .hc-meter__fill--crit {
-  background: var(--crit);
+  background: linear-gradient(90deg, #ff8078, var(--crit));
 }
 .hc-meter__percent {
   color: var(--label);
   font-variant-numeric: tabular-nums;
+  font-weight: var(--weight-medium);
 }
 .hc-meter__percent--crit {
   color: var(--crit-text);
 }
 .hc-meter__reset {
   color: var(--label-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Numbers in Geist Mono: fixed-width digits keep the capsules from jittering as values tick. */
+.hc-statusline__value,
+.hc-meter__percent,
+.hc-meter__reset {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
 }

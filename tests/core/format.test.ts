@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatPercent, formatResetCountdown, formatSessionDuration, tildePath } from '../../src/core/format';
+import { formatPercent, formatRelativeTime, formatResetCountdown, formatSessionDuration, tildePath } from '../../src/core/format';
 
 const HOUR_MS = 60 * 60_000;
 const DAY_MS = 24 * HOUR_MS;
@@ -77,5 +77,21 @@ describe('tildePath', () => {
     expect(tildePath('/Users/me', '/Users/me/')).toBe('~');
     expect(tildePath('/Users/meow/app', '/Users/me')).toBe('/Users/meow/app');
     expect(tildePath('/tmp/x', null)).toBe('/tmp/x');
+  });
+});
+
+describe('formatRelativeTime', () => {
+  const now = new Date(2026, 8, 26, 15, 0, 0).getTime();
+  it('reads minutes and hours as "N분 전" / "N시간 전"', () => {
+    expect(formatRelativeTime(now - 20_000, now)).toBe('방금');
+    expect(formatRelativeTime(now + 5_000, now)).toBe('방금');
+    expect(formatRelativeTime(now - 3 * MINUTE_MS, now)).toBe('3분 전');
+    expect(formatRelativeTime(now - 2 * HOUR_MS - 5 * MINUTE_MS, now)).toBe('2시간 전');
+  });
+  it('switches to calendar days after a day', () => {
+    expect(formatRelativeTime(new Date(2026, 8, 25, 9, 0).getTime(), now)).toBe('어제');
+    expect(formatRelativeTime(new Date(2026, 8, 23, 18, 0).getTime(), now)).toBe('3일 전');
+    expect(formatRelativeTime(new Date(2026, 8, 3, 12, 0).getTime(), now)).toBe('9월 3일');
+    expect(formatRelativeTime(new Date(2025, 11, 31, 12, 0).getTime(), now)).toBe('2025년 12월 31일');
   });
 });

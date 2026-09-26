@@ -4,9 +4,12 @@
 import { create } from 'zustand';
 import { invoke } from '../api';
 import type { InvokeResponse } from '../../shared/ipc';
+import { DEFAULT_SETTINGS } from '../../shared/constants';
+import { DEFAULT_AGENT } from '../../shared/agents';
 import type {
   Account,
   AccountPatch,
+  AgentKind,
   AppSettings,
   BootstrapPayload,
   ChatEvent,
@@ -18,6 +21,7 @@ import type {
   PermissionRequest,
   PoolSnapshot,
   Project,
+  SettingsPatch,
   Thread,
   ThreadStartResult,
   UiPermissionMode,
@@ -27,6 +31,8 @@ import type {
 /** Settings of the unsent "new chat" (draft) the composer edits before `thread:start` creates the thread. */
 export interface DraftState {
   projectId: string | null;
+  /** Agent the thread will run with (the picker above the draft composer). */
+  agent: AgentKind;
   model: string;
   permissionMode: UiPermissionMode;
   effort: EffortLevel | null;
@@ -34,6 +40,33 @@ export interface DraftState {
 }
 
 const SIDEBAR_COLLAPSED_KEY = 'hopecode.sidebarCollapsed';
+const PANEL_WIDTH_KEY = 'hopecode.panelWidth';
+export const PANEL_MIN_WIDTH = 320;
+export const PANEL_MAX_WIDTH = 820;
+export const PANEL_DEFAULT_WIDTH = 460;
+
+/** Right panel width, clamped; per-viewer convenience (localStorage, guarded). */
+export function clampPanelWidth(width: number): number {
+  if (!Number.isFinite(width)) return PANEL_DEFAULT_WIDTH;
+  return Math.round(Math.min(PANEL_MAX_WIDTH, Math.max(PANEL_MIN_WIDTH, width)));
+}
+
+function readPanelWidth(): number {
+  try {
+    const raw = globalThis.localStorage?.getItem(PANEL_WIDTH_KEY);
+    return raw ? clampPanelWidth(Number(raw)) : PANEL_DEFAULT_WIDTH;
+  } catch {
+    return PANEL_DEFAULT_WIDTH;
+  }
+}
+
+function writePanelWidth(width: number): void {
+  try {
+    globalThis.localStorage?.setItem(PANEL_WIDTH_KEY, String(width));
+  } catch {
+    // Not persisted; the width still applies for this session.
+  }
+}
 
 /** Per-viewer convenience only: storage may be unavailable (private mode, tests), so every access is guarded. */
 function readSidebarCollapsed(): boolean {
@@ -69,7 +102,23 @@ export function defaultDraftProjectId(projects: readonly Project[], threads: rea
   return newest?.id ?? null;
 }
 
-export type Route = 'chat' | 'accounts';
+export type Route = 'chat' | 'accounts' | 'settings';
+
+/** Right panel tab (null = panel closed). */
+export type PanelTab = 'changes' | 'terminal';
+
+/** App-level modal opened from the profile menu / palette. */
+export type AppModal = 'shortcuts' | 'about';
+
+/**
+ * Text to place in a composer (suggested prompt, "편집해서 다시 보내기"). `target` is a thread id or 'draft';
+ * `nonce` makes a repeat of the same text still apply.
+ */
+export interface ComposerPrefill {
+  target: string;
+  text: string;
+  nonce: number;
+}
 
 export interface LoginSessionState {
   output: string;
@@ -96,12 +145,7 @@ const EMPTY_POOL: PoolSnapshot = {
   at: 0,
 };
 
-const EMPTY_SETTINGS: AppSettings = {
-  idleCloseMinutes: 10,
-  defaultModel: 'default',
-  defaultPermissionMode: 'default',
-  tosNoticeAcknowledged: false,
-};
+const EMPTY_SETTINGS: AppSettings = { ...DEFAULT_SETTINGS };
 
 function upsertThread(threads: Thread[], thread: Thread): Thread[] {
   const idx = threads.findIndex((t) => t.id === thread.id);
@@ -187,11 +231,24 @@ export interface AppStoreState {
   /** null (with route 'chat') shows the draft "new chat" screen. */
   selectedThreadId: string | null;
   route: Route;
-  terminalOpen: boolean;
   sidebarCollapsed: boolean;
   draft: DraftState;
   /** The open transcript is scrolled away from its top (the chat title bar shows its divider). */
   chatScrolled: boolean;
+  /** Right panel tab, or null when closed. */
+  panel: PanelTab | null;
+  panelWidth: number;
+  paletteOpen: boolean;
+  modal: AppModal | null;
+  /** Accounts route opened from "사용량": scroll to the usage charts once. */
+  accountsFocus: 'usage' | null;
+  /** Threads whose turn finished while another view was showing (sidebar "완료" pill until opened). */
+  unseenDone: Record<string, true>;
+  composerPrefill: ComposerPrefill | null;
+  /** Bumped after a git action (commit, merge, revert) so the changes panel reloads. */
+  gitRevision: Record<string, number>;
+  /** Fixture / e2e run (bootstrap): no system notifications. */
+  testMode: boolean;
 
   // per-thread chat state
   chatItemsByThread: Record<string, ChatItem[]>;
@@ -210,6 +267,20 @@ export interface AppStoreState {
   setTerminalOpen: (open: boolean) => void;
   toggleSidebar: () => void;
   setChatScrolled: (scrolled: boolean) => void;
+  /** Opens the tab, or closes the panel when that tab is already showing. */
+  togglePanel: (tab: PanelTab) => void;
+  setPanel: (tab: PanelTab | null) => void;
+  setPanelWidth: (width: number) => void;
+  setPaletteOpen: (open: boolean) => void;
+  setModal: (modal: AppModal | null) => void;
+  /** Accounts route, optionally scrolled to the usage charts. */
+  openAccounts: (focus?: 'usage') => void;
+  clearAccountsFocus: () => void;
+  prefillComposer: (target: string, text: string) => void;
+  clearComposerPrefill: () => void;
+  bumpGitRevision: (threadId: string) => void;
+  updateSettings: (patch: SettingsPatch) => Promise<AppSettings>;
+  deleteArchivedThreads: () => Promise<number>;
   /** Opens an empty draft (⌘N / "새 채팅") in the last used folder. */
   newDraft: () => void;
   setDraft: (patch: Partial<DraftState>) => void;
@@ -271,6 +342,8 @@ export interface AppStoreState {
   applyLoginData: (loginId: string, data: string) => void;
   applyLoginExit: (loginId: string, ok: boolean, account?: Account, error?: string) => void;
   applyPtyExit: (threadId: string, code: number) => void;
+  applySettingsUpdated: (settings: AppSettings) => void;
+  applyModelsUpdated: (models: ModelOption[]) => void;
 }
 
 export const useAppStore = create<AppStoreState>()((set, get) => ({
@@ -286,11 +359,20 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
 
   selectedThreadId: null,
   route: 'chat',
-  terminalOpen: false,
   sidebarCollapsed: readSidebarCollapsed(),
   chatScrolled: false,
+  panel: null,
+  panelWidth: readPanelWidth(),
+  paletteOpen: false,
+  modal: null,
+  accountsFocus: null,
+  unseenDone: {},
+  composerPrefill: null,
+  gitRevision: {},
+  testMode: false,
   draft: {
     projectId: null,
+    agent: DEFAULT_AGENT,
     model: EMPTY_SETTINGS.defaultModel,
     permissionMode: EMPTY_SETTINGS.defaultPermissionMode,
     effort: null,
@@ -309,10 +391,50 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
     get().applyBootstrap(payload);
   },
 
-  selectThread: (threadId) => set({ selectedThreadId: threadId }),
+  selectThread: (threadId) =>
+    set((s) => {
+      if (!threadId || !s.unseenDone[threadId]) return { selectedThreadId: threadId };
+      const unseenDone = { ...s.unseenDone };
+      delete unseenDone[threadId];
+      return { selectedThreadId: threadId, unseenDone };
+    }),
   setRoute: (route) => set({ route }),
-  toggleTerminal: () => set((s) => ({ terminalOpen: !s.terminalOpen })),
-  setTerminalOpen: (open) => set({ terminalOpen: open }),
+  toggleTerminal: () => get().togglePanel('terminal'),
+  setTerminalOpen: (open) => set((s) => ({ panel: open ? 'terminal' : s.panel === 'terminal' ? null : s.panel })),
+  togglePanel: (tab) => set((s) => ({ panel: s.panel === tab ? null : tab })),
+  setPanel: (tab) => set({ panel: tab }),
+  setPanelWidth: (width) => {
+    const next = clampPanelWidth(width);
+    writePanelWidth(next);
+    set({ panelWidth: next });
+  },
+  setPaletteOpen: (open) => set({ paletteOpen: open }),
+  setModal: (modal) => set({ modal, paletteOpen: false }),
+  openAccounts: (focus) => set({ route: 'accounts', accountsFocus: focus ?? null }),
+  clearAccountsFocus: () => set({ accountsFocus: null }),
+  prefillComposer: (target, text) =>
+    set((s) => ({ composerPrefill: { target, text, nonce: (s.composerPrefill?.nonce ?? 0) + 1 } })),
+  clearComposerPrefill: () => set({ composerPrefill: null }),
+  bumpGitRevision: (threadId) => set((s) => ({ gitRevision: { ...s.gitRevision, [threadId]: (s.gitRevision[threadId] ?? 0) + 1 } })),
+  updateSettings: async (patch) => {
+    const settings = await invoke('settings:update', patch);
+    get().applySettingsUpdated(settings);
+    return settings;
+  },
+  deleteArchivedThreads: async () => {
+    const { deleted } = await invoke('threads:deleteArchived');
+    set((s) => {
+      const gone = new Set(s.threads.filter((t) => t.archived).map((t) => t.id));
+      const chatItemsByThread = { ...s.chatItemsByThread };
+      for (const id of gone) delete chatItemsByThread[id];
+      return {
+        threads: s.threads.filter((t) => !gone.has(t.id)),
+        chatItemsByThread,
+        selectedThreadId: s.selectedThreadId && gone.has(s.selectedThreadId) ? null : s.selectedThreadId,
+      };
+    });
+    return deleted;
+  },
   toggleSidebar: () =>
     set((s) => {
       writeSidebarCollapsed(!s.sidebarCollapsed);
@@ -327,7 +449,16 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
     set((s) => ({
       selectedThreadId: null,
       route: 'chat',
-      draft: { ...s.draft, projectId: defaultDraftProjectId(s.projects, s.threads) },
+      // A new chat starts from the settings' defaults (설정 > 일반), in the last used folder.
+      draft: {
+        ...s.draft,
+        projectId: defaultDraftProjectId(s.projects, s.threads),
+        agent: DEFAULT_AGENT,
+        model: s.settings.defaultModel,
+        permissionMode: safeDraftMode(s.settings.defaultPermissionMode),
+        effort: s.settings.defaultEffort ?? null,
+        pinnedAccountId: null,
+      },
     })),
 
   setDraft: (patch) => set((s) => ({ draft: { ...s.draft, ...patch } })),
@@ -337,6 +468,7 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
     if (!draft.projectId) throw new Error('No folder selected for the new chat');
     const result = await invoke('thread:start', {
       projectId: draft.projectId,
+      agent: draft.agent,
       text,
       model: draft.model,
       permissionMode: draft.permissionMode,
@@ -574,6 +706,7 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
       homeDir: payload.homeDir ?? null,
       // Permission prompts still waiting in main survive a renderer reload (M7).
       permissionRequests: payload.pendingPermissions ?? [],
+      testMode: payload.testMode === true,
       // Launch opens a new chat (draft) in the last used folder; an explicit selection is kept on re-bootstrap.
       selectedThreadId:
         s.selectedThreadId && payload.threads.some((t) => t.id === s.selectedThreadId) ? s.selectedThreadId : null,
@@ -585,7 +718,11 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
             : defaultDraftProjectId(payload.projects, payload.threads),
         ...(s.bootstrapped
           ? {}
-          : { model: payload.settings.defaultModel, permissionMode: safeDraftMode(payload.settings.defaultPermissionMode) }),
+          : {
+              model: payload.settings.defaultModel,
+              permissionMode: safeDraftMode(payload.settings.defaultPermissionMode),
+              effort: payload.settings.defaultEffort ?? null,
+            }),
       },
     })),
 
@@ -624,8 +761,18 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
         }));
         break;
       case 'turn-start':
-      case 'turn-end':
         set((s) => ({ streamingItemIdByThread: { ...s.streamingItemIdByThread, [threadId]: null } }));
+        break;
+      case 'turn-end':
+        set((s) => {
+          // A finished turn the user is not looking at gets the sidebar "완료" pill until the thread is opened.
+          const watching = s.route === 'chat' && s.selectedThreadId === threadId;
+          const done = event.ok && !watching;
+          return {
+            streamingItemIdByThread: { ...s.streamingItemIdByThread, [threadId]: null },
+            ...(done ? { unseenDone: { ...s.unseenDone, [threadId]: true as const } } : {}),
+          };
+        });
         break;
       case 'error':
         // Shown as an error notice. If main also logs it as a notice item, that item supersedes this one
@@ -692,6 +839,10 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
       },
       accounts: account ? upsertAccount(s.accounts, account) : s.accounts,
     })),
+
+  applySettingsUpdated: (settings) => set({ settings }),
+
+  applyModelsUpdated: (models) => set({ models }),
 
   applyPtyExit: (threadId, code) =>
     set((s) => ({

@@ -1,8 +1,10 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Account, Project, Thread } from '../../../shared/types';
 import { BrandMark } from '../common';
+import { GlyphSettings } from '../common/glyphs';
 import { IconArchive, IconChevron, IconClose, IconCompose, IconFolderPlus, IconPeople, IconPinThread, IconSearch } from './icons';
 import { ProjectGroup, type ThreadRowHandlers } from './ProjectGroup';
+import { MINUTE_MS } from '../../../shared/constants';
 import { ThreadRow } from './ThreadRow';
 import './Sidebar.css';
 
@@ -15,9 +17,16 @@ export interface SidebarProps extends ThreadRowHandlers {
   draftActive: boolean;
   /** The Accounts route is showing. */
   accountsActive: boolean;
+  /** The Settings route is showing. */
+  settingsActive: boolean;
+  /** Threads with a finished turn not yet opened ("완료" pill). */
+  unseenDone: Readonly<Record<string, true>>;
+  /** Footer (profile row). */
+  footer?: ReactNode;
   onNewChat: () => void;
   onNewChatIn: (projectId: string) => void;
   onOpenAccounts: () => void;
+  onOpenSettings: () => void;
   onAddProject: () => void;
   onRemoveProject: (projectId: string) => Promise<void>;
   onSetProjectTrusted: (projectId: string, trusted: boolean) => void;
@@ -42,9 +51,13 @@ export const Sidebar = memo(function Sidebar({
   selectedThreadId,
   draftActive,
   accountsActive,
+  settingsActive,
+  unseenDone,
+  footer,
   onNewChat,
   onNewChatIn,
   onOpenAccounts,
+  onOpenSettings,
   onAddProject,
   onRemoveProject,
   onSetProjectTrusted,
@@ -56,6 +69,7 @@ export const Sidebar = memo(function Sidebar({
   const [archivedOpen, setArchivedOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const filtering = searchOpen && query.trim().length > 0;
+  const now = useMinuteClock();
 
   useEffect(() => {
     if (searchOpen) searchRef.current?.focus();
@@ -136,6 +150,16 @@ export const Sidebar = memo(function Sidebar({
             {accounts.filter((a) => a.enabled).length}/{accounts.length}
           </span>
         </button>
+        <button
+          type="button"
+          className={`hc-nav${settingsActive ? ' hc-nav--active' : ''}`}
+          aria-current={settingsActive ? 'page' : undefined}
+          onClick={onOpenSettings}
+        >
+          <GlyphSettings width={17} height={17} />
+          <span className="hc-nav__label">설정</span>
+          <kbd className="hc-nav__kbd">⌘,</kbd>
+        </button>
       </nav>
 
       {searchOpen ? (
@@ -183,6 +207,8 @@ export const Sidebar = memo(function Sidebar({
                   onSetPinned={rowHandlers.onSetPinned}
                   onSetArchived={rowHandlers.onSetArchived}
                   onDelete={rowHandlers.onDeleteThread}
+                  done={unseenDone[t.id] === true}
+                  now={now}
                 />
               ))}
             </ul>
@@ -232,6 +258,8 @@ export const Sidebar = memo(function Sidebar({
                   onNewChatIn={onNewChatIn}
                   onRemoveProject={onRemoveProject}
                   onSetTrusted={onSetProjectTrusted}
+                  unseenDone={unseenDone}
+                  now={now}
                   {...rowHandlers}
                 />
               ))
@@ -271,6 +299,8 @@ export const Sidebar = memo(function Sidebar({
                     onSetPinned={rowHandlers.onSetPinned}
                     onSetArchived={rowHandlers.onSetArchived}
                     onDelete={rowHandlers.onDeleteThread}
+                    done={unseenDone[t.id] === true}
+                    now={now}
                   />
                 ))}
               </ul>
@@ -278,6 +308,17 @@ export const Sidebar = memo(function Sidebar({
           </section>
         ) : null}
       </div>
+      {footer}
     </div>
   );
 });
+
+/** Minute-aligned clock for the relative "3분 전" labels (one timer for the whole list). */
+function useMinuteClock(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), MINUTE_MS / 2);
+    return () => window.clearInterval(id);
+  }, []);
+  return now;
+}

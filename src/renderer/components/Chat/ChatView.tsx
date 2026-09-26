@@ -5,7 +5,7 @@ import { MINUTE_MS } from '../../../shared/constants';
 import { selectChatItems, selectStreamingItemId, useAppStore, usePendingPermissions } from '../../store';
 import { MessageList } from './MessageList';
 import { Composer } from './Composer';
-import { AccountChip, FolderTag, ModelPicker, PermissionChip } from './ComposerControls';
+import { AccountChip, AgentChip, FolderTag, ModelPicker, PermissionChip } from './ComposerControls';
 import './Chat.css';
 
 export interface ChatViewProps {
@@ -68,6 +68,9 @@ export function ChatView({
   const handleAttach = useCallback(() => onAttachFiles(threadId), [onAttachFiles, threadId]);
   const waiting = thread.status === 'waiting';
   const setChatScrolled = useAppStore((s) => s.setChatScrolled);
+  const prefill = useAppStore((s) => (s.composerPrefill?.target === threadId ? s.composerPrefill : null));
+  const clearPrefill = useCallback(() => useAppStore.getState().clearComposerPrefill(), []);
+  const handleEditResend = useCallback((text: string) => useAppStore.getState().prefillComposer(threadId, text), [threadId]);
 
   return (
     <div className="hc-chat">
@@ -77,6 +80,8 @@ export function ChatView({
         permissionRequests={permissionRequests}
         onPermissionDecision={onPermissionDecision}
         onScrolledChange={setChatScrolled}
+        agent={thread.agent}
+        onEditResend={handleEditResend}
       />
       {waiting ? <WaitingBanner until={thread.waitingUntil} /> : null}
       <Composer
@@ -85,8 +90,11 @@ export function ChatView({
         onInterrupt={handleInterrupt}
         onAttachFiles={handleAttach}
         canChangeFolder={false}
+        prefill={prefill}
+        onPrefillApplied={clearPrefill}
         leading={
           <>
+            <AgentChip value={thread.agent} />
             {project ? (
               <FolderTag
                 name={project.name}

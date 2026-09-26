@@ -1,18 +1,33 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { concreteModelLabel, defaultModelLabelFrom } from '../core/modelDisplay';
 import './App.css';
-import { on } from './api';
+import { invoke, on } from './api';
 import { AccountsPage } from './components/Accounts/AccountsPage';
 import { AddAccountDialog, type LoginStatus } from './components/Accounts/AddAccountDialog';
 import { ChatView, DraftView } from './components/Chat';
+import { CommandPalette, type PaletteCommand } from './components/Palette/CommandPalette';
+import { SettingsPage } from './components/Settings/SettingsPage';
+import { AboutModal, ShortcutsModal } from './components/Shell/AppModals';
+import { ChatHeader } from './components/Shell/ChatHeader';
+import { RightPanel, forgetTerminalSize } from './components/Shell/RightPanel';
 import { NEEDS_FORCE } from './components/Sidebar/ItemMenu';
+import { ProfileRow } from './components/Sidebar/ProfileRow';
 import { Sidebar } from './components/Sidebar/Sidebar';
 import { IconCompose, IconSidebar } from './components/Sidebar/icons';
 import { StatusLine } from './components/StatusLine/StatusLine';
-import { Button } from './components/common';
-import { TerminalPane } from './components/Terminal/TerminalPane';
+import {
+  GlyphChanges,
+  GlyphChart,
+  GlyphCode,
+  GlyphInfo,
+  GlyphKeyboard,
+  GlyphPeople,
+  GlyphSettings,
+  GlyphTerminal,
+} from './components/common/glyphs';
 import { disposeTerminalEntry, resetTerminalEntry } from './components/Terminal/terminalRegistry';
 import { ipcErrorMessage } from './errors';
+import { useNotifications } from './hooks/useNotifications';
 import {
   initStoreEventSubscriptions,
   selectAccounts,
@@ -20,19 +35,29 @@ import {
   selectDraft,
   selectHomeDir,
   selectModels,
+  selectPanel,
+  selectPanelWidth,
   selectPoolSnapshot,
   selectProjects,
   selectRoute,
   selectSelectedThread,
-  selectPtyStatus,
   selectSelectedThreadId,
+  selectSettings,
   selectSidebarCollapsed,
-  selectTerminalOpen,
   selectThreads,
   useAppStore,
+  type PanelTab,
 } from './store';
 import { ACCOUNT_COLORS, DAY_MS, MINUTE_MS } from '../shared/constants';
-import type { ChatSendResult, EffortLevel, PermissionDecision, UiPermissionMode, UsageSample } from '../shared/types';
+import type {
+  ChatSendResult,
+  EditorId,
+  EditorInfo,
+  EffortLevel,
+  PermissionDecision,
+  UiPermissionMode,
+  UsageSample,
+} from '../shared/types';
 
 const USAGE_HISTORY_RANGE_MS = 7 * DAY_MS;
 const USAGE_HISTORY_REFRESH_MS = 5 * MINUTE_MS;
@@ -70,7 +95,17 @@ function useNow(intervalMs: number): number {
 
 const reportError = (label: string) => (err: unknown) => console.error(`[hopecode] ${label}`, err);
 
-/** Shell: sidebar (⌘B) | chat, draft or accounts | terminal (⌘J), bottom statusline. */
+const loadAppInfo = () => invoke('app:info');
+const loadDataDir = () => invoke('app:info').then((i) => i.dataDir);
+const loadSharedStatus = () => invoke('config:sharedStatus');
+const relinkShared = () => invoke('config:relink');
+const openDataFolder = () => invoke('app:openDataFolder');
+const loadEditorList = () => invoke('editor:list');
+
+/**
+ * Shell: a pale canvas carrying floating cards: sidebar (⌘B) with the profile footer | conversation, draft,
+ * accounts or settings | right panel (변경사항 / 터미널, ⌘⇧D / ⌘J); a thin statusline underneath.
+ */
 export function App() {
   const projects = useAppStore(selectProjects);
   const threads = useAppStore(selectThreads);
@@ -78,19 +113,29 @@ export function App() {
   const pool = useAppStore(selectPoolSnapshot);
   const models = useAppStore(selectModels);
   const route = useAppStore(selectRoute);
-  const terminalOpen = useAppStore(selectTerminalOpen);
+  const panel = useAppStore(selectPanel);
+  const panelWidth = useAppStore(selectPanelWidth);
   const sidebarCollapsed = useAppStore(selectSidebarCollapsed);
   const selectedThreadId = useAppStore(selectSelectedThreadId);
   const activeThread = useAppStore(selectSelectedThread);
   const draft = useAppStore(selectDraft);
   const homeDir = useAppStore(selectHomeDir);
   const chatScrolled = useAppStore(selectChatScrolled);
-  const defaultModelLabel = useMemo(() => defaultModelLabelFrom(threads), [threads]);
+  const settings = useAppStore(selectSettings);
+  const unseenDone = useAppStore((s) => s.unseenDone);
+  const paletteOpen = useAppStore((s) => s.paletteOpen);
+  const modal = useAppStore((s) => s.modal);
+  const defaultModelLabel = useMemo(() => defaultModelLabelFrom(threads, models), [threads, models]);
 
   const [sendError, setSendError] = useState<string | null>(null);
+  const [editors, setEditors] = useState<EditorInfo[]>([]);
+  const [resizing, setResizing] = useState(false);
+  const [addAccountRequest, setAddAccountRequest] = useState(0);
 
-  // Store <-> main wiring, once per mount. ⌘N / ⌘B / ⌘J come only from the app menu (`ui:newThread`,
-  // `ui:toggleSidebar`, `ui:toggleTerminal` in store/events.ts), so each shortcut runs exactly once.
+  useNotifications();
+
+  // Store <-> main wiring, once per mount. ⌘N / ⌘B / ⌘J / ⌘K / ⌘, come only from the app menu (`ui:*` events in
+  // store/events.ts), so each shortcut runs exactly once.
   useEffect(() => {
     const off = initStoreEventSubscriptions();
     const offPtyExit = on('pty:exit', ({ threadId }) => resetTerminalEntry(threadId));
@@ -180,10 +225,40 @@ export function App() {
     useAppStore.getState().setDraft(patch);
   }, []);
 
-  const onOpenAccounts = useCallback(() => useAppStore.getState().setRoute('accounts'), []);
+  const onOpenAccounts = useCallback(() => useAppStore.getState().openAccounts(), []);
+  const onOpenUsage = useCallback(() => useAppStore.getState().openAccounts('usage'), []);
+  const onOpenSettings = useCallback(() => useAppStore.getState().setRoute('settings'), []);
   const onToggleSidebar = useCallback(() => useAppStore.getState().toggleSidebar(), []);
+  const onShowShortcuts = useCallback(() => useAppStore.getState().setModal('shortcuts'), []);
+  const onShowAbout = useCallback(() => useAppStore.getState().setModal('about'), []);
+  const onCloseModal = useCallback(() => useAppStore.getState().setModal(null), []);
+  const onQuit = useCallback(() => void invoke('app:quit').catch(reportError('quit failed')), []);
+  const onOpenDataFolder = useCallback(() => void openDataFolder().catch(reportError('open data folder failed')), []);
+  const onAddAccount = useCallback(() => {
+    useAppStore.getState().openAccounts();
+    setAddAccountRequest((n) => n + 1);
+  }, []);
+  const onTogglePanel = useCallback((tab: PanelTab) => useAppStore.getState().togglePanel(tab), []);
+  const onSelectTab = useCallback((tab: PanelTab) => useAppStore.getState().setPanel(tab), []);
+  const onClosePanel = useCallback(() => useAppStore.getState().setPanel(null), []);
+  const onResizePanel = useCallback((width: number) => useAppStore.getState().setPanelWidth(width), []);
+
+  const onLoadEditors = useCallback(() => {
+    void loadEditorList()
+      .then(setEditors)
+      .catch(reportError('editor list failed'));
+  }, []);
+  const onOpenEditor = useCallback((editor: EditorId) => {
+    const threadId = useAppStore.getState().selectedThreadId;
+    if (!threadId) return;
+    void invoke('editor:open', { threadId, editor }).catch((err: unknown) => setSendError(`앱에서 열지 못했습니다: ${ipcErrorMessage(err)}`));
+  }, []);
 
   const onRenameThread = useCallback((threadId: string, title: string) => useAppStore.getState().renameThread(threadId, title), []);
+  const onRenameActive = useCallback(
+    (title: string) => (activeThread ? useAppStore.getState().renameThread(activeThread.id, title) : Promise.resolve()),
+    [activeThread],
+  );
   const onSetPinned = useCallback((threadId: string, pinned: boolean) => {
     void useAppStore.getState().setThreadPinned(threadId, pinned).catch(reportError('pin failed'));
   }, []);
@@ -245,42 +320,158 @@ export function App() {
       ? concreteModelLabel(draft.model, models, { defaultLabel: defaultModelLabel })
       : null;
   const activeProject = activeThread ? (projects.find((p) => p.id === activeThread.projectId) ?? null) : null;
+  // The panel belongs to the conversation view; other routes keep it closed without forgetting the tab.
+  const shownPanel = route === 'chat' ? panel : null;
+  const profileAccount = useMemo(() => {
+    const byId = activeThread?.activeAccountId ? accounts.find((a) => a.id === activeThread.activeAccountId) : undefined;
+    return byId ?? [...accounts].filter((a) => a.enabled).sort((a, b) => a.priority - b.priority)[0] ?? accounts[0] ?? null;
+  }, [accounts, activeThread?.activeAccountId]);
+
+  const paletteCommands = useMemo<PaletteCommand[]>(() => {
+    const s = () => useAppStore.getState();
+    const byProject = new Map(projects.map((p) => [p.id, p.name]));
+    const threadItems: PaletteCommand[] = [...threads]
+      .filter((t) => !t.archived)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .map((t) => ({
+        id: `thread:${t.id}`,
+        title: t.title,
+        subtitle: byProject.get(t.projectId),
+        group: '스레드',
+        keywords: [byProject.get(t.projectId) ?? ''],
+        run: () => onSelectThread(t.id),
+      }));
+    const primaryEditor = editors.find((e) => e.id === settings.defaultEditor) ?? editors[0];
+    const actions: PaletteCommand[] = [
+      { id: 'new-chat', title: '새 채팅', group: '작업', shortcut: '⌘N', keywords: ['new', 'chat', 'draft'], run: () => s().newDraft() },
+      { id: 'settings', title: '설정', group: '작업', shortcut: '⌘,', icon: <GlyphSettings />, keywords: ['settings', 'preferences'], run: onOpenSettings },
+      { id: 'accounts', title: '계정 관리', group: '작업', icon: <GlyphPeople />, keywords: ['accounts'], run: onOpenAccounts },
+      { id: 'usage', title: '사용량', group: '작업', icon: <GlyphChart />, keywords: ['usage', 'limit'], run: onOpenUsage },
+      {
+        id: 'panel-changes',
+        title: panel === 'changes' ? '변경사항 패널 닫기' : '변경사항 패널 열기',
+        group: '패널',
+        shortcut: '⌘⇧D',
+        icon: <GlyphChanges />,
+        keywords: ['changes', 'diff', 'git'],
+        run: () => {
+          s().setRoute('chat');
+          s().togglePanel('changes');
+        },
+      },
+      {
+        id: 'panel-terminal',
+        title: panel === 'terminal' ? '터미널 닫기' : '터미널 열기',
+        group: '패널',
+        shortcut: '⌘J',
+        icon: <GlyphTerminal />,
+        keywords: ['terminal', 'shell'],
+        run: () => {
+          s().setRoute('chat');
+          s().togglePanel('terminal');
+        },
+      },
+      ...(activeThread && primaryEditor
+        ? [
+            {
+              id: 'open-editor',
+              title: `${primaryEditor.name}에서 열기`,
+              subtitle: activeThread.title,
+              group: '패널',
+              icon: <GlyphCode />,
+              keywords: ['editor', 'open', 'vscode', 'cursor'],
+              run: () => onOpenEditor(primaryEditor.id),
+            },
+          ]
+        : []),
+      { id: 'sidebar', title: sidebarCollapsed ? '사이드바 보기' : '사이드바 숨기기', group: '보기', shortcut: '⌘B', keywords: ['sidebar'], run: onToggleSidebar },
+      { id: 'shortcuts', title: '키보드 단축키', group: '보기', icon: <GlyphKeyboard />, keywords: ['shortcuts', 'keys'], run: onShowShortcuts },
+      { id: 'about', title: '앱 정보', group: '보기', icon: <GlyphInfo />, keywords: ['about', 'version'], run: onShowAbout },
+    ];
+    return [...actions, ...threadItems];
+  }, [
+    projects,
+    threads,
+    editors,
+    settings.defaultEditor,
+    panel,
+    activeThread,
+    sidebarCollapsed,
+    onSelectThread,
+    onOpenSettings,
+    onOpenAccounts,
+    onOpenUsage,
+    onOpenEditor,
+    onToggleSidebar,
+    onShowShortcuts,
+    onShowAbout,
+  ]);
+
+  // The palette offers "에디터에서 열기" from the start.
+  useEffect(() => {
+    if (paletteOpen && editors.length === 0) onLoadEditors();
+  }, [paletteOpen, editors.length, onLoadEditors]);
+
   const shellClass = [
     'app',
-    terminalOpen ? 'app--terminal-open' : 'app--terminal-closed',
+    shownPanel === 'terminal' ? 'app--terminal-open' : 'app--terminal-closed',
+    shownPanel ? 'app--panel-open' : 'app--panel-closed',
     sidebarCollapsed ? 'app--sidebar-collapsed' : '',
+    resizing ? 'app--resizing' : '',
   ]
     .filter(Boolean)
     .join(' ');
 
+  const archivedCount = useMemo(() => threads.filter((t) => t.archived).length, [threads]);
+
   return (
-    <div className={shellClass}>
+    <div className={shellClass} style={{ ['--app-panel-w' as string]: shownPanel ? `${panelWidth}px` : '0px' }}>
       <aside className="app__sidebar" data-testid="sidebar" aria-hidden={sidebarCollapsed} inert={sidebarCollapsed}>
-        <div className="app__titlebar app__titlebar--sidebar drag-region">
-          <WindowButton label="사이드바 숨기기 (⌘B)" onClick={onToggleSidebar}>
-            <IconSidebar />
-          </WindowButton>
-        </div>
-        <div className="app__body">
-          <Sidebar
-            projects={projects}
-            threads={threads}
-            accounts={accounts}
-            selectedThreadId={route === 'chat' ? selectedThreadId : null}
-            draftActive={draftActive}
-            accountsActive={route === 'accounts'}
-            onNewChat={onNewChat}
-            onNewChatIn={onNewChatIn}
-            onOpenAccounts={onOpenAccounts}
-            onAddProject={onAddProject}
-            onSelectThread={onSelectThread}
-            onRenameThread={onRenameThread}
-            onSetPinned={onSetPinned}
-            onSetArchived={onSetArchived}
-            onDeleteThread={onDeleteThread}
-            onRemoveProject={onRemoveProject}
-            onSetProjectTrusted={onSetProjectTrusted}
-          />
+        <div className="app__sidebar-card">
+          <div className="app__titlebar app__titlebar--sidebar drag-region">
+            <WindowButton label="사이드바 숨기기 (⌘B)" onClick={onToggleSidebar}>
+              <IconSidebar />
+            </WindowButton>
+          </div>
+          <div className="app__body">
+            <Sidebar
+              projects={projects}
+              threads={threads}
+              accounts={accounts}
+              selectedThreadId={route === 'chat' ? selectedThreadId : null}
+              draftActive={draftActive}
+              accountsActive={route === 'accounts'}
+              settingsActive={route === 'settings'}
+              unseenDone={unseenDone}
+              onNewChat={onNewChat}
+              onNewChatIn={onNewChatIn}
+              onOpenAccounts={onOpenAccounts}
+              onOpenSettings={onOpenSettings}
+              onAddProject={onAddProject}
+              onSelectThread={onSelectThread}
+              onRenameThread={onRenameThread}
+              onSetPinned={onSetPinned}
+              onSetArchived={onSetArchived}
+              onDeleteThread={onDeleteThread}
+              onRemoveProject={onRemoveProject}
+              onSetProjectTrusted={onSetProjectTrusted}
+              footer={
+                <ProfileRow
+                  account={profileAccount}
+                  accounts={accounts}
+                  pool={pool.summary}
+                  onOpenAccounts={onOpenAccounts}
+                  onOpenUsage={onOpenUsage}
+                  onOpenSettings={onOpenSettings}
+                  onShowShortcuts={onShowShortcuts}
+                  onOpenDataFolder={onOpenDataFolder}
+                  onShowAbout={onShowAbout}
+                  onQuit={onQuit}
+                  onAddAccount={onAddAccount}
+                />
+              }
+            />
+          </div>
         </div>
       </aside>
       <main className="app__chat" data-testid="chat">
@@ -297,49 +488,74 @@ export function App() {
               </WindowButton>
             </div>
           ) : null}
-          {/* The Accounts page and the draft screen carry their own headings; the bar stays a drag region. */}
+          {/* The Accounts / Settings pages and the draft screen carry their own headings; the bar stays a drag region. */}
           {route === 'chat' && activeThread ? (
-            <div className="app__thread-title">
-              <span className="app__thread-name">{activeThread.title}</span>
-              {activeProject ? <span className="app__thread-project">{activeProject.name}</span> : null}
-            </div>
+            <ChatHeader
+              thread={activeThread}
+              project={activeProject}
+              panel={shownPanel}
+              editors={editors}
+              defaultEditor={settings.defaultEditor}
+              onRename={onRenameActive}
+              onTogglePanel={onTogglePanel}
+              onOpenEditor={onOpenEditor}
+              onLoadEditors={onLoadEditors}
+            />
           ) : null}
         </div>
         <div className="app__body app__body--fill">
-          {route === 'accounts' ? (
-            <AccountsRoute />
-          ) : activeThread ? (
-            <ChatView
-              key={activeThread.id}
-              thread={activeThread}
-              project={activeProject}
-              models={models}
-              accounts={accounts}
-              onSend={onSend}
-              onInterrupt={onInterrupt}
-              onPermissionDecision={onPermissionDecision}
-              onModelChange={onModelChange}
-              onEffortChange={onEffortChange}
-              onPermissionModeChange={onPermissionModeChange}
-              onPinAccountChange={onPinAccountChange}
-              onAttachFiles={onAttachToThread}
-              defaultModelLabel={defaultModelLabel}
-              homeDir={homeDir}
-            />
-          ) : (
-            <DraftView
-              draft={draft}
-              projects={projects}
-              models={models}
-              accounts={accounts}
-              onDraftChange={onDraftChange}
-              onPickFolder={onPickFolder}
-              onStart={onStartThread}
-              onAttachFiles={onAttachToDraft}
-              defaultModelLabel={defaultModelLabel}
-              homeDir={homeDir}
-            />
-          )}
+          <div className="app__view" key={route === 'chat' ? (activeThread ? `thread:${activeThread.id}` : 'draft') : route}>
+            {route === 'accounts' ? (
+              <AccountsRoute addRequest={addAccountRequest} />
+            ) : route === 'settings' ? (
+              <SettingsPage
+                settings={settings}
+                models={models}
+                accounts={accounts}
+                archivedCount={archivedCount}
+                homeDir={homeDir}
+                defaultModelLabel={defaultModelLabel}
+                onUpdate={(patch) => useAppStore.getState().updateSettings(patch)}
+                onDeleteArchived={() => useAppStore.getState().deleteArchivedThreads()}
+                onOpenDataFolder={openDataFolder}
+                loadDataDir={loadDataDir}
+                loadEditors={loadEditorList}
+                loadSharedStatus={loadSharedStatus}
+                relinkShared={relinkShared}
+                onBack={() => useAppStore.getState().setRoute('chat')}
+              />
+            ) : activeThread ? (
+              <ChatView
+                thread={activeThread}
+                project={activeProject}
+                models={models}
+                accounts={accounts}
+                onSend={onSend}
+                onInterrupt={onInterrupt}
+                onPermissionDecision={onPermissionDecision}
+                onModelChange={onModelChange}
+                onEffortChange={onEffortChange}
+                onPermissionModeChange={onPermissionModeChange}
+                onPinAccountChange={onPinAccountChange}
+                onAttachFiles={onAttachToThread}
+                defaultModelLabel={defaultModelLabel}
+                homeDir={homeDir}
+              />
+            ) : (
+              <DraftView
+                draft={draft}
+                projects={projects}
+                models={models}
+                accounts={accounts}
+                onDraftChange={onDraftChange}
+                onPickFolder={onPickFolder}
+                onStart={onStartThread}
+                onAttachFiles={onAttachToDraft}
+                defaultModelLabel={defaultModelLabel}
+                homeDir={homeDir}
+              />
+            )}
+          </div>
           {sendError && route === 'chat' ? (
             <div className="app__toast hc-notice hc-notice--error" role="alert" onClick={() => setSendError(null)}>
               {sendError}
@@ -347,13 +563,21 @@ export function App() {
           ) : null}
         </div>
       </main>
-      <section className="app__terminal" data-testid="terminal" aria-hidden={!terminalOpen}>
-        <div className="app__titlebar drag-region" />
-        <div className="app__body app__body--fill">
-          {terminalOpen && activeThread ? <ThreadTerminal threadId={activeThread.id} /> : null}
-        </div>
+      <section className="app__panel" aria-label="오른쪽 패널">
+        <RightPanel
+          tab={shownPanel}
+          thread={activeThread}
+          width={panelWidth}
+          onTab={onSelectTab}
+          onClose={onClosePanel}
+          onResize={onResizePanel}
+          onResizing={setResizing}
+        />
       </section>
       <StatusLine pool={pool} accounts={accounts} activeThread={activeThread} models={models} modelText={statusModel} />
+      <CommandPalette open={paletteOpen} onClose={() => useAppStore.getState().setPaletteOpen(false)} commands={paletteCommands} />
+      <ShortcutsModal open={modal === 'shortcuts'} onClose={onCloseModal} />
+      <AboutModal open={modal === 'about'} onClose={onCloseModal} loadInfo={loadAppInfo} homeDir={homeDir} />
     </div>
   );
 }
@@ -369,72 +593,19 @@ function WindowButton({ label, onClick, children }: { label: string; onClick: ()
 /** Drops renderer-side per-thread state after a thread (or its project) was deleted. */
 function forgetThread(threadId: string): void {
   disposeTerminalEntry(threadId);
-  lastTerminalSize.delete(threadId);
+  forgetTerminalSize(threadId);
   historyRequested.delete(threadId);
-}
-
-// ---------------------------------------------------------------------------
-// Terminal: pty:open replay seeds the xterm once, pty:data (filtered by thread) streams live output.
-// ---------------------------------------------------------------------------
-
-const lastTerminalSize = new Map<string, { cols: number; rows: number }>();
-
-const subscribeOutput = (threadId: string, onChunk: (data: string) => void) =>
-  on('pty:data', (payload) => {
-    if (payload.threadId === threadId) onChunk(payload.data);
-  });
-
-const getInitialContent = async (threadId: string) => {
-  const size = lastTerminalSize.get(threadId) ?? { cols: 80, rows: 24 };
-  const { replay } = await useAppStore.getState().openTerminal(threadId, size.cols, size.rows);
-  return replay;
-};
-
-function ThreadTerminal({ threadId }: { threadId: string }) {
-  const pty = useAppStore((s) => selectPtyStatus(s, threadId));
-  // Bumped by Restart: remounts TerminalPane, which re-seeds the (reset) entry from a fresh `pty:open`.
-  const [generation, setGeneration] = useState(0);
-  const exited = pty !== undefined && !pty.running;
-
-  const onResize = useCallback(
-    (cols: number, rows: number) => {
-      lastTerminalSize.set(threadId, { cols, rows });
-      void useAppStore.getState().resizeTerminal(threadId, cols, rows);
-    },
-    [threadId],
-  );
-  return (
-    <div className="app__terminal-host">
-      <TerminalPane
-        key={generation}
-        sessionId={threadId}
-        onData={(data) => {
-          if (!exited) void useAppStore.getState().writeTerminal(threadId, data);
-        }}
-        subscribeOutput={subscribeOutput}
-        getInitialContent={getInitialContent}
-        onResize={onResize}
-      />
-      {exited ? (
-        <div className="app__terminal-exited" role="status">
-          <span>셸이 종료되었습니다{pty.lastExitCode ? ` (코드 ${pty.lastExitCode})` : ''}</span>
-          <span aria-hidden>·</span>
-          <Button variant="secondary" size="sm" onClick={() => setGeneration((g) => g + 1)}>
-            다시 시작
-          </Button>
-        </div>
-      ) : null}
-    </div>
-  );
 }
 
 // ---------------------------------------------------------------------------
 // Accounts route: AccountsPage + AddAccountDialog (account:loginStart/Input/Cancel <-> login:data/exit).
 // ---------------------------------------------------------------------------
 
-function AccountsRoute() {
+/** `addRequest` bumps when "계정 추가" is chosen elsewhere (profile row): the add dialog opens. */
+function AccountsRoute({ addRequest }: { addRequest: number }) {
   const accounts = useAppStore(selectAccounts);
   const pool = useAppStore(selectPoolSnapshot);
+  const focus = useAppStore((s) => s.accountsFocus);
   const now = useNow(30_000);
   const [history, setHistory] = useState<Record<string, UsageSample[]>>(() => cachedUsageHistory());
 
@@ -490,6 +661,18 @@ function AccountsRoute() {
     setInputValue('');
   };
 
+  const openAddDialog = () => {
+    resetDialog();
+    setAlias('');
+    setColor(ACCOUNT_COLORS[accounts.length % ACCOUNT_COLORS.length] ?? '#007AFF');
+    setDialogOpen(true);
+  };
+
+  useEffect(() => {
+    if (addRequest > 0) openAddDialog();
+    // Only a new request opens the dialog; the dialog's own state changes must not re-open it.
+  }, [addRequest]);
+
   const onStart = () => {
     const trimmed = alias.trim();
     if (!trimmed) return;
@@ -513,13 +696,10 @@ function AccountsRoute() {
         onReorder={(ids) => void useAppStore.getState().reorderAccounts(ids)}
         onUpdateAccount={(id, patch) => void useAppStore.getState().updateAccount(id, patch)}
         onRemoveAccount={(id) => useAppStore.getState().removeAccount(id)}
-        onAddAccount={() => {
-          resetDialog();
-          setAlias('');
-          setColor(ACCOUNT_COLORS[accounts.length % ACCOUNT_COLORS.length] ?? '#007AFF');
-          setDialogOpen(true);
-        }}
+        onAddAccount={openAddDialog}
         onBack={() => useAppStore.getState().setRoute('chat')}
+        focusUsage={focus === 'usage'}
+        onFocused={() => useAppStore.getState().clearAccountsFocus()}
       />
       <AddAccountDialog
         open={dialogOpen}

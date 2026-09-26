@@ -2,7 +2,17 @@
 import type {
   Account,
   AccountPatch,
+  AppInfo,
+  AppSettings,
   BootstrapPayload,
+  EditorId,
+  EditorInfo,
+  GitActionResult,
+  GitChanges,
+  GitFileDiff,
+  GitRemoteInfo,
+  SettingsPatch,
+  SharedConfigStatus,
   ChatEvent,
   ChatItem,
   ChatSendResult,
@@ -82,6 +92,37 @@ export interface InvokeMap {
   'pty:open': { req: { threadId: string; cols: number; rows: number }; res: { ptyId: string; replay: string } };
   'pty:write': { req: { threadId: string; data: string }; res: void };
   'pty:resize': { req: { threadId: string; cols: number; rows: number }; res: void };
+
+  /** Validated partial update; main applies it (poller interval, rotation, worktrees, defaults) and broadcasts it. */
+  'settings:update': { req: SettingsPatch; res: AppSettings };
+  'app:info': { req: void; res: AppInfo };
+  /** Reveals the app data folder (fixed path; nothing else can be opened) in Finder. */
+  'app:openDataFolder': { req: void; res: void };
+  'app:quit': { req: void; res: void };
+  /** ~/.claude entries shared into the account config dirs and their link state per account. */
+  'config:sharedStatus': { req: void; res: SharedConfigStatus };
+  /** Re-runs the shared-config linking for every account, then reports the new state. */
+  'config:relink': { req: void; res: SharedConfigStatus };
+  /** Deletes every archived thread (history, runner, worktree even when dirty). */
+  'threads:deleteArchived': { req: void; res: { deleted: number } };
+
+  /** Editors / terminals installed in /Applications (Finder always). */
+  'editor:list': { req: void; res: EditorInfo[] };
+  /** Opens the thread's folder (its cwd, nothing else) in `editor`. */
+  'editor:open': { req: { threadId: string; editor: EditorId }; res: void };
+
+  /** Changed files of the thread folder (worktree: against the base branch's merge-base, plus uncommitted work). */
+  'git:changes': { req: { threadId: string }; res: GitChanges };
+  'git:fileDiff': { req: { threadId: string; path: string }; res: GitFileDiff };
+  /** Discards the file's uncommitted changes (tracked: checkout, untracked: removed). The renderer confirms first. */
+  'git:revertFile': { req: { threadId: string; path: string }; res: GitActionResult };
+  /** `git add -A && git commit -m message` in the thread folder. */
+  'git:commit': { req: { threadId: string; message: string }; res: GitActionResult<{ sha: string }> };
+  /** Merges the worktree branch into the project's checked-out branch; refused when either side is dirty. */
+  'git:merge': { req: { threadId: string }; res: GitActionResult<{ into: string }> };
+  'git:remoteInfo': { req: { threadId: string }; res: GitRemoteInfo };
+  /** Pushes the branch to its remote and opens a PR with `gh`. The renderer shows a confirm with the target first. */
+  'git:pushPr': { req: { threadId: string; title: string; body: string }; res: GitActionResult<{ url: string | null }> };
 }
 
 /** main -> renderer (`webContents.send`). */
@@ -102,6 +143,15 @@ export interface EventMap {
   'ui:newThread': void;
   /** Menu View > Toggle Sidebar (⌘B). */
   'ui:toggleSidebar': void;
+  /** Model list refreshed (startup probe or a live session's supportedModels()). */
+  'models:updated': ModelOption[];
+  'settings:updated': AppSettings;
+  /** App menu > 설정… (⌘,). */
+  'ui:openSettings': void;
+  /** Menu View > 명령 팔레트 (⌘K). */
+  'ui:commandPalette': void;
+  /** Menu View > 변경사항 패널 (⌘⇧D). */
+  'ui:toggleChanges': void;
 }
 
 export type InvokeChannel = keyof InvokeMap;
@@ -143,6 +193,22 @@ export const INVOKE_CHANNELS = [
   'pty:open',
   'pty:write',
   'pty:resize',
+  'settings:update',
+  'app:info',
+  'app:openDataFolder',
+  'app:quit',
+  'config:sharedStatus',
+  'config:relink',
+  'threads:deleteArchived',
+  'editor:list',
+  'editor:open',
+  'git:changes',
+  'git:fileDiff',
+  'git:revertFile',
+  'git:commit',
+  'git:merge',
+  'git:remoteInfo',
+  'git:pushPr',
 ] as const satisfies readonly InvokeChannel[];
 
 export const EVENT_CHANNELS = [
@@ -159,6 +225,11 @@ export const EVENT_CHANNELS = [
   'ui:toggleTerminal',
   'ui:newThread',
   'ui:toggleSidebar',
+  'models:updated',
+  'settings:updated',
+  'ui:openSettings',
+  'ui:commandPalette',
+  'ui:toggleChanges',
 ] as const satisfies readonly EventChannel[];
 
 type Missing<All, Listed> = Exclude<All, Listed>;

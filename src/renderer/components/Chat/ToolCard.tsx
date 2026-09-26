@@ -1,5 +1,6 @@
 import { memo, useState } from 'react';
 import type { ToolItem } from '../../../shared/types';
+import { Collapse } from '../common';
 import { CheckCircleIcon, ChevronIcon, ErrorCircleIcon, SpinnerIcon, iconForTool } from './icons';
 import { DiffView } from './DiffView';
 import './Chat.css';
@@ -89,7 +90,7 @@ export const ToolCard = memo(function ToolCard({ item, defaultExpanded = false }
           <ChevronIcon width={13} height={13} />
         </span>
       </button>
-      {open ? (
+      <Collapse open={open}>
         <div className="hc-tool__body">
           {hasPatch ? <DiffView patch={item.patch} /> : null}
           {editFallback ? (
@@ -99,7 +100,7 @@ export const ToolCard = memo(function ToolCard({ item, defaultExpanded = false }
             <pre className={`hc-tool__result${hasError ? ' hc-tool__result--error' : ''}`}>{item.result}</pre>
           ) : null}
         </div>
-      ) : null}
+      </Collapse>
     </div>
   );
 });

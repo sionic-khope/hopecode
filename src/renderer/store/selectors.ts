@@ -11,7 +11,9 @@ export const selectProjects = (s: AppStoreState): Project[] => s.projects;
 export const selectThreads = (s: AppStoreState): Thread[] => s.threads;
 export const selectAccounts = (s: AppStoreState): Account[] => s.accounts;
 export const selectRoute = (s: AppStoreState): Route => s.route;
-export const selectTerminalOpen = (s: AppStoreState): boolean => s.terminalOpen;
+export const selectTerminalOpen = (s: AppStoreState): boolean => s.panel === 'terminal';
+export const selectPanel = (s: AppStoreState) => s.panel;
+export const selectPanelWidth = (s: AppStoreState): number => s.panelWidth;
 export const selectSelectedThreadId = (s: AppStoreState): string | null => s.selectedThreadId;
 export const selectBootstrapped = (s: AppStoreState): boolean => s.bootstrapped;
 

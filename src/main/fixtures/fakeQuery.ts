@@ -2,9 +2,9 @@
 // `HOPECODE_FIXTURES=1` fixture mode / e2e. Implements the Query subset ThreadRunner uses:
 // async iteration, interrupt, close, setPermissionMode, setModel, applyFlagSettings (effortLevel), supportedModels,
 // getContextUsage.
-import { appendFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { join } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import type {
   CanUseTool,
   ModelInfo,
@@ -19,7 +19,7 @@ import type { RateLimitInfoLite, StructuredPatchHunk } from '../../shared/types'
 import type { QueryFn } from '../contracts';
 
 export const FAKE_CLI_VERSION = '2.1.282';
-export const FAKE_DEFAULT_MODEL = 'claude-fable-5';
+export const FAKE_DEFAULT_MODEL = 'claude-fable-5-1';
 
 export type FakeStep =
   /** stream_event text deltas (split into `chunks`) followed by the full assistant text message. */
@@ -35,6 +35,11 @@ export type FakeStep =
       structuredPatch?: StructuredPatchHunk[];
       permission?: boolean;
       suggestions?: PermissionUpdate[];
+      /**
+       * Fixture mode only: once allowed, apply `input.old_string -> input.new_string` to `input.file_path` under the
+       * Query cwd (the changes panel then sees a real modification).
+       */
+      applyEdit?: boolean;
     }
   | { type: 'rateLimit'; info: RateLimitInfoLite }
   | { type: 'assistantError'; error: 'rate_limit' | 'authentication_failed' }
@@ -81,6 +86,8 @@ export interface FakeCall {
   closed: boolean;
   /** true once the consumer received the end of the message stream. */
   ended: boolean;
+  /** initializationResult() was requested (model probe). */
+  initialized: boolean;
 }
 
 export interface FakeQueryOptions {
@@ -102,32 +109,63 @@ export interface FakeQueryController {
   setContextPercentage(value: number): void;
 }
 
+/** Mirrors the CLI's supportedModels() rows (Fable 5.1 era): `default` resolves to Fable 5.1. */
 export const FAKE_MODELS: ModelInfo[] = [
   {
     value: 'default',
-    displayName: 'Default',
-    description: 'Recommended model',
+    resolvedModel: 'claude-fable-5-1',
+    displayName: 'Default (recommended)',
+    description: 'Fable 5.1 · Recommended model',
     supportsEffort: true,
     supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
   },
   {
-    value: 'fable',
-    displayName: 'Fable',
-    description: 'Most capable',
+    value: 'claude-fable-5-1',
+    resolvedModel: 'claude-fable-5-1',
+    displayName: 'Fable 5.1',
+    description: 'For your toughest challenges',
+    supportsEffort: true,
+    supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+  },
+  {
+    value: 'opus',
+    resolvedModel: 'claude-opus-5-5',
+    displayName: 'Opus 5.5',
+    description: 'Most capable for ambitious work',
     supportsEffort: true,
     supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
   },
   {
     value: 'sonnet',
-    displayName: 'Sonnet',
+    resolvedModel: 'claude-sonnet-5',
+    displayName: 'Sonnet 5',
     description: 'Fast everyday model',
     supportsEffort: true,
     supportedEffortLevels: ['low', 'medium', 'high'],
+  },
+  {
+    value: 'haiku',
+    resolvedModel: 'claude-haiku-4-5-20251001',
+    displayName: 'Haiku 4.5',
+    description: 'Fastest for quick answers',
   },
 ];
 
 export function defaultFakeScenario(): FakeStep[] {
   return [{ type: 'text', text: 'Hello from the fake session.', chunks: 3 }];
+}
+
+/** Replaces the first `old_string` with `new_string` in `<cwd>/<file_path>` (relative paths inside cwd only). */
+function applyFixtureEdit(cwd: string, input: Record<string, unknown>): void {
+  const file = input.file_path;
+  const from = input.old_string;
+  const to = input.new_string;
+  if (typeof file !== 'string' || typeof from !== 'string' || typeof to !== 'string') return;
+  const target = resolve(cwd, file);
+  const rel = relative(cwd, target);
+  if (!rel || rel.startsWith('..') || isAbsolute(rel) || !existsSync(target)) return;
+  const text = readFileSync(target, 'utf8');
+  if (text.includes(from)) writeFileSync(target, text.replace(from, to));
 }
 
 function encodeCwd(cwd: string): string {
@@ -230,6 +268,7 @@ export function createFakeQuery(opts: FakeQueryOptions = {}): FakeQueryControlle
       permissionResults: [],
       closed: false,
       ended: false,
+      initialized: false,
     };
     calls.push(call);
     timeline.push(`open:${index}`);
@@ -351,6 +390,7 @@ export function createFakeQuery(opts: FakeQueryOptions = {}): FakeQueryControlle
               call.permissionResults.push(decision);
             }
             const denied = decision.behavior === 'deny';
+            if (!denied && step.applyEdit) applyFixtureEdit(cwd, step.input);
             emit({
               type: 'user',
               message: {
@@ -484,6 +524,17 @@ export function createFakeQuery(opts: FakeQueryOptions = {}): FakeQueryControlle
       async supportedModels() {
         return models;
       },
+      async initializationResult() {
+        call.initialized = true;
+        return {
+          commands: [],
+          agents: [],
+          output_style: 'default',
+          available_output_styles: ['default'],
+          models,
+          account: { subscriptionType: 'max', apiProvider: 'firstParty' },
+        };
+      },
       async getContextUsage() {
         return { percentage: contextPercentage, totalTokens: 0, maxTokens: 200_000, rawMaxTokens: 200_000, categories: [], gridRows: [] };
       },
@@ -521,6 +572,7 @@ export const FIXTURE_EDIT_PATCH: StructuredPatchHunk[] = [
  * - `[ratelimit]`: first attempt is rejected (five_hour, no output), the retry on the next account succeeds.
  * - `[overage]`: allowed event with `isUsingOverage` (account blocked from the next turn), then normal text.
  * - `[text]`: streaming text only.
+ * - `[code]`: text with a fenced TypeScript block (code block label / copy).
  * - `[exhaust]`: the first two attempts are rejected (five_hour, resets in 10s, no output) so a pool with one
  *   exhausted account ends up waiting; the attempt after the reset succeeds.
  * - `[whoami]`: replies `model=<model> resume=<sid|none> account=<config dir name> permissionMode=<mode>
@@ -568,6 +620,15 @@ export function createFixtureScenario(): FakeScenario {
         { type: 'text', text: 'This turn used extra usage; the next turn will switch accounts.', chunks: 3 },
       ];
     }
+    if (prompt.includes('[code]')) {
+      return [
+        {
+          type: 'text',
+          text: 'Here is the helper:\n\n```ts\nexport function greet(name: string): string {\n  return `Hello ${name}`;\n}\n```\n\nCall it with your name.',
+          chunks: 3,
+        },
+      ];
+    }
     if (prompt.includes('[text]')) {
       return [{ type: 'text', text: 'Streaming reply from the fixture session.', chunks: 4 }];
     }
@@ -580,6 +641,7 @@ export function createFixtureScenario(): FakeScenario {
         result: 'The file README.md has been updated.',
         structuredPatch: FIXTURE_EDIT_PATCH,
         permission: true,
+        applyEdit: true,
         suggestions: [
           { type: 'addRules', rules: [{ toolName: 'Edit' }], behavior: 'allow', destination: 'localSettings' },
         ],

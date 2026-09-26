@@ -21,21 +21,40 @@ export const DEFAULT_THREAD_TITLE = '새 채팅';
 /** Auto titles (first user message) are cut to this many characters. */
 export const THREAD_TITLE_MAX_CHARS = 40;
 
-/** Fallback model list when supportedModels() is unavailable. */
+/**
+ * Model list shown until the SDK reported one (startup probe cache or a live session). Values mirror the CLI's
+ * supportedModels() rows; `default` runs as Fable 5.1 until a session says otherwise.
+ */
 export const FALLBACK_MODELS: readonly ModelOption[] = [
-  { value: 'default', label: 'Default', description: '권장 모델' },
-  { value: 'fable', label: 'Fable 5', description: '가장 뛰어난 성능' },
-  { value: 'opus', label: 'Opus 5.5', description: '복잡하고 긴 작업' },
-  { value: 'sonnet', label: 'Sonnet 5', description: '빠른 일상 작업' },
-  { value: 'haiku', label: 'Haiku 4.5', description: '가장 빠른 응답' },
+  { value: 'default', label: 'Default', description: '권장 모델', resolvedModel: 'claude-fable-5-1' },
+  { value: 'claude-fable-5-1', label: 'Fable 5.1', description: '가장 어려운 작업', resolvedModel: 'claude-fable-5-1' },
+  { value: 'opus', label: 'Opus 5.5', description: '복잡하고 긴 작업', resolvedModel: 'claude-opus-5-5' },
+  { value: 'sonnet', label: 'Sonnet 5', description: '빠른 일상 작업', resolvedModel: 'claude-sonnet-5' },
+  { value: 'haiku', label: 'Haiku 4.5', description: '가장 빠른 응답', resolvedModel: 'claude-haiku-4-5-20251001' },
 ];
+
+// Usage poll interval bounds (settings, seconds).
+export const USAGE_POLL_MIN_SEC = 60;
+export const USAGE_POLL_MAX_SEC = 300;
+export const USAGE_POLL_DEFAULT_SEC = 90;
+/** idleCloseMinutes bounds (0 = never close). */
+export const IDLE_CLOSE_MAX_MINUTES = 240;
 
 export const DEFAULT_SETTINGS: AppSettings = {
   idleCloseMinutes: 10,
   defaultModel: 'default',
   defaultPermissionMode: 'default',
+  defaultEffort: null,
+  useWorktree: true,
+  autoSwitchAccounts: true,
+  usagePollIntervalSec: USAGE_POLL_DEFAULT_SEC,
+  notifications: true,
+  defaultEditor: null,
   tosNoticeAcknowledged: false,
 };
+
+/** Startup model probe: give up on `initializationResult()` after this long (the cached / fallback list stays). */
+export const MODEL_PROBE_TIMEOUT_MS = 30_000;
 
 /** Account color palette (plan 5.3). */
 export const ACCOUNT_COLORS: readonly string[] = [
@@ -62,7 +81,7 @@ export const DAY_MS = 24 * HOUR_MS;
 export const USAGE_ENDPOINT = 'https://api.anthropic.com/api/oauth/usage';
 export const USAGE_BETA_HEADER = 'oauth-2025-04-20';
 export const USAGE_FETCH_TIMEOUT_MS = 10_000;
-export const USAGE_POLL_INTERVAL_MS = 90_000;
+export const USAGE_POLL_INTERVAL_MS = 90_000; // = USAGE_POLL_DEFAULT_SEC
 export const USAGE_POLL_JITTER_MS = 10_000;
 export const USAGE_RATE_LIMIT_BACKOFF_MAX_MS = 5 * MINUTE_MS;
 export const USAGE_NETWORK_BACKOFF_MS = 2 * MINUTE_MS;

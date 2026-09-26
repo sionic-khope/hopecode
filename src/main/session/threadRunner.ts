@@ -45,6 +45,8 @@ export interface ThreadRunnerDeps {
   /** Waiting-state registration (WaitScheduler.track / untrack). */
   onWaiting: (threadId: string, waiting: boolean) => void;
   onCliVersion?: (version: string) => void;
+  /** A Query reported its init message (the manager refreshes the model catalog from the first live session). */
+  onSessionInit?: () => void;
   now: () => number;
   log: (message: string, err?: unknown) => void;
 }
@@ -332,7 +334,7 @@ export class ThreadRunner {
   private pick(tried: Set<string>) {
     const thread = this.thread();
     return pickAccount({
-      accounts: this.deps.listAccounts(),
+      accounts: this.candidateAccounts(thread),
       usageById: this.deps.usage.getSnapshot().usageById,
       pinnedAccountId: thread.pinnedAccountId,
       resolvedModel: thread.resolvedModel,
@@ -340,6 +342,19 @@ export class ThreadRunner {
       exclude: tried,
       now: this.deps.now(),
     });
+  }
+
+  /**
+   * Accounts this turn may use. With automatic switching off (settings.autoSwitchAccounts), a thread that already
+   * ran on an account stays on it: a rate-limited turn then waits for that account's reset instead of moving on.
+   * A thread with no account yet (first turn) picks from the whole pool.
+   */
+  private candidateAccounts(thread: Thread): Account[] {
+    const accounts = this.deps.listAccounts();
+    if (this.deps.store.get().settings.autoSwitchAccounts !== false) return accounts;
+    const homeId = thread.activeAccountId ?? thread.lastAccountId;
+    const home = homeId ? accounts.find((a) => a.id === homeId && a.enabled) : undefined;
+    return home ? [home] : accounts;
   }
 
   private account(accountId: string | null): Account | undefined {
@@ -376,12 +391,10 @@ export class ThreadRunner {
     if (decision.type === 'waiting') {
       this.patch({ status: 'waiting', waitingUntil: decision.until, pendingPrompt: prompt });
       this.deps.onWaiting(this.threadId, true);
-      this.notice(
-        'warn',
-        switchedFrom
-          ? `모든 계정이 한도에 도달했습니다 (${switchReasonLabel(switchedFrom)}). 초기화되면 자동으로 이어갑니다.`
-          : '모든 계정이 한도에 도달했습니다. 초기화되면 자동으로 이어갑니다.',
-      );
+      const pinnedHome = this.deps.store.get().settings.autoSwitchAccounts === false && this.candidateAccounts(this.thread()).length === 1;
+      const who = pinnedHome ? `${this.candidateAccounts(this.thread())[0]?.alias ?? '이'} 계정이 한도에 도달했습니다` : '모든 계정이 한도에 도달했습니다';
+      const detail = [switchedFrom ? switchReasonLabel(switchedFrom) : null, pinnedHome ? '자동 전환 꺼짐' : null].filter(Boolean).join(' · ');
+      this.notice('warn', `${who}${detail ? ` (${detail})` : ''}. 초기화되면 자동으로 이어갑니다.`);
       return { accepted: true, reason: 'waiting' };
     }
 
@@ -685,6 +698,7 @@ export class ThreadRunner {
           if (signal.model) patch.resolvedModel = signal.model;
           this.patch(patch);
           if (signal.cliVersion) this.deps.onCliVersion?.(signal.cliVersion);
+          this.deps.onSessionInit?.();
           break;
         }
         case 'rate-limit':

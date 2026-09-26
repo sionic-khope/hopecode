@@ -31,3 +31,4 @@ Requirements: macOS (Apple Silicon), Node 22+.
 
 - Usage numbers come from an undocumented OAuth usage endpoint used by Claude Code itself; it may change. Account rotation also works from Agent SDK rate-limit events alone.
 - Only use accounts that belong to you, and review Anthropic's terms for your plan.
+- 에이전트 로고: 공식 로고 에셋(예: Claude Code)을 `src/renderer/assets/agents/claude-code.svg`에 넣으면 에이전트 선택 칩과 대화 아바타에 표시됩니다. 파일이 없으면 Hopecode의 중립 아이콘을 씁니다.

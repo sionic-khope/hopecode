@@ -9,7 +9,13 @@ import type {
   ChatItem,
   ChatSendResult,
   ChildEnvInject,
+  EditorId,
+  EditorInfo,
   EffortLevel,
+  GitActionResult,
+  GitChanges,
+  GitFileDiff,
+  GitRemoteInfo,
   ModelOption,
   PermissionDecision,
   PermissionRequest,
@@ -210,6 +216,48 @@ export interface SessionManager {
   dispose(): Promise<void>;
   /** Hard stop (quit timeout): abort every Query's CLI process without waiting. */
   abortAll(): void;
+}
+
+// ---------------------------------------------------------------------------
+// Git (changes panel / commit flow)
+// ---------------------------------------------------------------------------
+
+/**
+ * Git operations for one thread folder. `cwd` is the thread cwd (worktree or project folder); every `path`
+ * argument is repo-relative and must resolve inside `cwd` (containment), or the call throws. Every git / gh run
+ * uses the injected child env (login-shell PATH, no inherited app env).
+ */
+export interface GitService {
+  /**
+   * `projectPath` is the thread's project folder: when `cwd` is a worktree of it, the base is the project folder's
+   * checked-out branch (merge-base), otherwise HEAD.
+   */
+  changes(cwd: string, projectPath: string): Promise<GitChanges>;
+  fileDiff(cwd: string, projectPath: string, path: string): Promise<GitFileDiff>;
+  /** Tracked file: `git checkout HEAD -- path` (restores deleted / modified; staged changes reset too). Untracked: removed. */
+  revertFile(cwd: string, path: string): Promise<GitActionResult>;
+  /** `git add -A` then `git commit -m message`. Nothing to commit -> `{ok:false}`. */
+  commit(cwd: string, message: string): Promise<GitActionResult<{ sha: string }>>;
+  /**
+   * Merges the branch checked out in `cwd` into the branch checked out in `projectPath` (`--no-ff`).
+   * Refused when `cwd` has uncommitted changes, `projectPath` is dirty, or `cwd` is not a worktree of it.
+   * A conflicting merge is aborted (`git merge --abort`) and reported; nothing is left half-merged.
+   */
+  merge(cwd: string, projectPath: string): Promise<GitActionResult<{ into: string }>>;
+  remoteInfo(cwd: string, projectPath: string): Promise<GitRemoteInfo>;
+  /** `git push -u <remote> <branch>` then `gh pr create --title --body --base --head`. */
+  pushAndOpenPr(cwd: string, projectPath: string, title: string, body: string): Promise<GitActionResult<{ url: string | null }>>;
+}
+
+// ---------------------------------------------------------------------------
+// External editors
+// ---------------------------------------------------------------------------
+
+export interface EditorLauncher {
+  /** Installed targets (checked in /Applications and ~/Applications; Finder always). Cached after the first call. */
+  list(): Promise<EditorInfo[]>;
+  /** `open -a <App> <dir>` (Finder: `open <dir>`). Throws for an editor that is not installed. */
+  open(editor: EditorId, dir: string): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------

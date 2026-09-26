@@ -11,6 +11,7 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
   return {
     id: 't1',
     projectId: 'p1',
+    agent: 'claude-code',
     title: 'Test',
     cwd: '/tmp/project',
     model: 'default',
@@ -57,6 +58,28 @@ describe('store', () => {
       accounts: [],
       settings: DEFAULT_SETTINGS,
     });
+  });
+
+  it('settings changes persist across save / load; threads saved before agents migrate to claude-code', async () => {
+    const legacyThread = { ...makeThread({ id: 'old' }) } as Partial<Thread>;
+    delete legacyThread.agent;
+    await writeFile(
+      filePath,
+      JSON.stringify({ version: 1, projects: [], threads: [legacyThread], accounts: [], settings: { idleCloseMinutes: 3 } }),
+      'utf8',
+    );
+    const store = createStore(filePath);
+    const loaded = await store.load();
+    expect(loaded.threads[0]!.agent).toBe('claude-code');
+    expect(loaded.settings).toEqual({ ...DEFAULT_SETTINGS, idleCloseMinutes: 3 });
+
+    store.update((draft) => {
+      draft.settings = { ...draft.settings, autoSwitchAccounts: false, usagePollIntervalSec: 240, useWorktree: false, defaultEffort: 'max' };
+    });
+    await store.flush();
+    const again = createStore(filePath);
+    const reloaded = await again.load();
+    expect(reloaded.settings).toMatchObject({ autoSwitchAccounts: false, usagePollIntervalSec: 240, useWorktree: false, defaultEffort: 'max' });
   });
 
   it('load() recovers from a corrupt file instead of throwing', async () => {

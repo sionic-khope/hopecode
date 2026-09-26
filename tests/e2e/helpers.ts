@@ -150,7 +150,7 @@ export async function bootstrapState(
  */
 export async function menuShortcut(
   app: ElectronApplication,
-  accelerator: 'CmdOrCtrl+J' | 'CmdOrCtrl+N' | 'CmdOrCtrl+B',
+  accelerator: 'CmdOrCtrl+J' | 'CmdOrCtrl+N' | 'CmdOrCtrl+B' | 'CmdOrCtrl+K' | 'CmdOrCtrl+,' | 'CmdOrCtrl+Shift+D',
 ): Promise<void> {
   await app.evaluate(({ Menu, BrowserWindow }, acc) => {
     type Item = { accelerator?: string | null; submenu?: { items: Item[] } | null; click: (...args: unknown[]) => void };
@@ -166,4 +166,23 @@ export async function menuShortcut(
     if (!item) throw new Error(`no menu item with accelerator ${acc}`);
     item.click(undefined, BrowserWindow.getAllWindows()[0], undefined);
   }, accelerator);
+}
+
+/** Screenshot of one element (settled animations), for component-level captures. */
+export async function screenshotOf(
+  page: Page,
+  locator: ReturnType<Page['locator']>,
+  name: string,
+  dir: string = SCREENSHOT_DIR,
+): Promise<void> {
+  mkdirSync(dir, { recursive: true });
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((a) => Number.isFinite(a.effect?.getComputedTiming().iterations ?? Infinity))
+        .map((a) => a.finished.catch(() => undefined)),
+    ),
+  );
+  await locator.screenshot({ path: join(dir, `${name}.png`) });
 }

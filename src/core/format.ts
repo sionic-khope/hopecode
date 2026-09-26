@@ -40,3 +40,22 @@ export function tildePath(path: string, home: string | null | undefined): string
   if (path === base) return '~';
   return path.startsWith(`${base}/`) ? `~${path.slice(base.length)}` : path;
 }
+
+/**
+ * Sidebar-style relative time in Korean: `방금`, `3분 전`, `2시간 전`, `어제`, `3일 전`, then `9월 3일`
+ * (`2025년 9월 3일` in another year). Future times (clock skew) read as `방금`.
+ */
+export function formatRelativeTime(at: number, now: number): string {
+  const diff = now - at;
+  if (!Number.isFinite(diff) || diff < MINUTE_MS) return '방금';
+  if (diff < HOUR_MS) return `${Math.floor(diff / MINUTE_MS)}분 전`;
+  if (diff < DAY_MS) return `${Math.floor(diff / HOUR_MS)}시간 전`;
+  const then = new Date(at);
+  const today = new Date(now);
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const days = Math.ceil((startOfToday - at) / DAY_MS);
+  if (days <= 1) return '어제';
+  if (days < 7) return `${days}일 전`;
+  const md = `${then.getMonth() + 1}월 ${then.getDate()}일`;
+  return then.getFullYear() === today.getFullYear() ? md : `${then.getFullYear()}년 ${md}`;
+}

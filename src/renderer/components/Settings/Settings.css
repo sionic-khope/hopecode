@@ -1,0 +1,281 @@
+/* 설정: macOS settings-style section cards on the conversation card. */
+.hc-settings {
+  height: 100%;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-8) var(--space-10);
+  animation: hc-view-in var(--motion-3) var(--ease-soft);
+}
+.hc-settings > * {
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.hc-settings__header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-bottom: var(--space-6);
+}
+.hc-settings__header > .hc-btn {
+  margin-top: 5px;
+}
+.hc-settings__title {
+  margin: 0;
+  font-size: var(--text-2xl);
+  line-height: var(--lh-2xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-title);
+}
+.hc-settings__lede {
+  margin: 4px 0 0;
+  font-size: var(--text-md);
+  color: var(--label-secondary);
+}
+.hc-settings__error {
+  margin-bottom: var(--space-4);
+  padding: 10px 14px;
+  border-radius: var(--radius-card);
+  background: var(--crit-bg);
+  color: var(--crit-text);
+  font-size: var(--text-sm);
+}
+
+.hc-settings__section + .hc-settings__section {
+  margin-top: var(--space-7);
+}
+.hc-settings__section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin: 0 var(--space-1) var(--space-2);
+}
+.hc-settings__section-title {
+  margin: 0;
+  font-size: var(--text-lg);
+  line-height: var(--lh-lg);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-title);
+}
+.hc-settings__section-desc {
+  margin: 2px 0 0;
+  font-size: var(--text-sm);
+  line-height: var(--lh-sm);
+  color: var(--label-tertiary);
+}
+.hc-settings__card {
+  border-radius: var(--radius-card-lg);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+.hc-settings__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  min-height: 60px;
+  padding: 12px var(--space-5);
+}
+.hc-settings__row + .hc-settings__row {
+  border-top: 1px solid var(--separator);
+}
+.hc-settings__row-text {
+  flex: 1;
+  min-width: 0;
+}
+.hc-settings__row-label {
+  font-size: var(--text-md);
+  line-height: var(--lh-md);
+  font-weight: var(--weight-medium);
+  color: var(--label);
+}
+.hc-settings__row-hint {
+  margin-top: 2px;
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+  color: var(--label-tertiary);
+  overflow-wrap: anywhere;
+}
+.hc-settings__row-hint--mono {
+  font-family: var(--font-mono);
+  color: var(--label-secondary);
+  -webkit-user-select: text;
+  user-select: text;
+}
+.hc-settings__row-control {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Number field with a unit. */
+.hc-settings__number {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+  color: var(--label-secondary);
+}
+.hc-settings__number input {
+  width: 64px;
+  height: var(--control-h-sm);
+  padding: 0 8px;
+  border: none;
+  border-radius: 8px;
+  background: var(--bg-card-muted);
+  box-shadow: inset 0 0 0 1px rgba(22, 32, 56, 0.1);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--label);
+  transition: box-shadow var(--motion-1) var(--ease-soft);
+}
+.hc-settings__number input:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--accent), var(--focus-ring);
+}
+
+/* Range slider with a filled track. */
+.hc-settings__range {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.hc-settings__range input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 180px;
+  height: 4px;
+  border-radius: var(--radius-capsule);
+  background: linear-gradient(to right, var(--accent) 0 var(--hc-range, 0%), var(--meter-track) var(--hc-range, 0%) 100%);
+  outline: none;
+}
+.hc-settings__range input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 0 0 1px rgba(22, 32, 56, 0.12), 0 2px 5px rgba(22, 32, 56, 0.2);
+  transition: transform var(--motion-1) var(--ease-soft);
+}
+.hc-settings__range input[type='range']:active::-webkit-slider-thumb {
+  transform: scale(1.12);
+}
+.hc-settings__range input[type='range']:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 1px var(--accent), var(--focus-ring);
+}
+.hc-settings__range-value {
+  min-width: 60px;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--label);
+  text-align: right;
+}
+
+/* Shared ~/.claude entries. */
+.hc-settings__shared {
+  margin: 0;
+  padding: 6px var(--space-3);
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 2px var(--space-3);
+}
+.hc-settings__shared-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: 40px;
+  padding: 0 var(--space-2);
+}
+.hc-settings__shared-name {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--label);
+}
+.hc-settings__muted {
+  color: var(--label-tertiary);
+  font-size: var(--text-sm);
+}
+.hc-settings__chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: var(--radius-capsule);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+}
+.hc-settings__chip--ok {
+  background: var(--ok-bg);
+  color: var(--ok-text);
+}
+.hc-settings__chip--warn {
+  background: var(--wait-bg);
+  color: var(--warn-text);
+}
+.hc-settings__chip--muted {
+  background: var(--neutral-bg);
+  color: var(--label-tertiary);
+}
+.hc-settings__confirm {
+  margin: 0;
+  color: var(--label-secondary);
+}
+
+/* Pop-up button (settings selects). */
+.hc-select {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 260px;
+  height: var(--control-h-sm);
+  padding: 0 10px 0 12px;
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-control);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--label);
+  transition:
+    background-color var(--motion-1) var(--ease-soft),
+    transform var(--motion-1) var(--ease-soft);
+}
+.hc-select:hover {
+  background: var(--bg-card-muted);
+}
+.hc-select:active {
+  transform: scale(0.98);
+}
+.hc-select:focus-visible {
+  box-shadow: var(--shadow-control), var(--focus-ring);
+}
+.hc-select__value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hc-select svg {
+  flex: none;
+  color: var(--label-tertiary);
+}
+
+/* Filled destructive confirm (modal primary). */
+.hc-btn--danger-fill {
+  background: var(--crit);
+  box-shadow: 0 1px 2px rgba(198, 42, 32, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+.hc-btn--danger-fill:hover:not(:disabled) {
+  background: #eb3b2f;
+}
+.hc-btn--danger-fill:active:not(:disabled) {
+  background: var(--crit-text);
+}

@@ -39,13 +39,15 @@ export interface MenuProps {
   placement?: PopoverPlacement;
   width?: number;
   className?: string;
+  /** Non-interactive block above the first section (profile summary). */
+  header?: ReactNode;
 }
 
 /**
  * Anchored menu (Popover) with sections, radio items and roving keyboard focus: ↑/↓/Home/End move,
  * Enter/Space select, Escape closes (Popover) and returns focus to the anchor.
  */
-export function Menu({ open, onClose, anchorRef, sections, label, placement = 'bottom-start', width = 260, className }: MenuProps) {
+export function Menu({ open, onClose, anchorRef, sections, label, placement = 'bottom-start', width = 260, className, header }: MenuProps) {
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -83,6 +85,14 @@ export function Menu({ open, onClose, anchorRef, sections, label, placement = 'b
   return (
     <Popover open={open} onClose={onClose} anchorRef={anchorRef} placement={placement} width={width} aria-label={label} className={className}>
       <div ref={listRef} className="hc-mnu" role="menu" aria-label={label} onKeyDown={onKeyDown}>
+        {header ? (
+          <>
+            <div className="hc-mnu__header" role="presentation">
+              {header}
+            </div>
+            <div className="hc-mnu__sep" role="separator" />
+          </>
+        ) : null}
         {sections.map((section, si) => (
           <Fragment key={section.key}>
             {si > 0 ? <div className="hc-mnu__sep" role="separator" /> : null}

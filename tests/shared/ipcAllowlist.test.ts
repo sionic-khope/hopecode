@@ -96,6 +96,7 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
   return {
     id: 't1',
     projectId: 'p1',
+    agent: 'claude-code',
     title: 'Test thread',
     cwd: '/tmp/project',
     model: 'default',
@@ -284,6 +285,46 @@ function makeFakeServices(overrides: Partial<RegisterIpcServices> = {}): { servi
     appVersion: '0.0.0-test',
     isTrustedSender: (url) => url === APP_URL,
     syncTranscript: async () => ({ found: true, copied: [] }),
+    gitService: {
+      async changes() {
+        return { isRepo: false, branch: null, baseBranch: null, files: [], ahead: 0, dirty: false };
+      },
+      async fileDiff(_cwd, _project, path) {
+        return { path, binary: false, hunks: [] };
+      },
+      async revertFile() {
+        return { ok: true };
+      },
+      async commit() {
+        return { ok: true, sha: 'abc' };
+      },
+      async merge() {
+        return { ok: true, into: 'main' };
+      },
+      async remoteInfo() {
+        return { remote: null, remoteUrl: null, branch: null, baseBranch: null, ghAvailable: false };
+      },
+      async pushAndOpenPr() {
+        return { ok: false, error: 'no remote' };
+      },
+    },
+    editorLauncher: {
+      async list() {
+        return [{ id: 'finder', name: 'Finder' }];
+      },
+      async open() {},
+    },
+    appInfo: () => ({ appVersion: '0.0.0-test', cliVersion: null, sdkVersion: null, electronVersion: '', dataDir: '/tmp/data' }),
+    async openDataFolder() {},
+    quit() {},
+    sharedConfig: {
+      async status() {
+        return { sourceDir: '/tmp/.claude', entries: [] };
+      },
+      async relink() {
+        return { sourceDir: '/tmp/.claude', entries: [] };
+      },
+    },
     ...overrides,
   };
 
@@ -964,5 +1005,199 @@ describe('createBroadcaster', () => {
     (broadcaster.emit as (channel: string, payload: unknown) => void)('evil:channel', { x: 1 });
     expect(t1.sent).toEqual([]);
     expect(logSpy).toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Settings, worktree preference, agents, app / git / editor channels
+// ---------------------------------------------------------------------------
+
+describe('settings:update', () => {
+  function setup() {
+    const ipcMain = new FakeIpcMain();
+    const changes: [unknown, unknown][] = [];
+    const { services, emitted } = makeFakeServices({ onSettingsChanged: (next, prev) => void changes.push([next, prev]) });
+    services.store.get().settings = { ...DEFAULT_SETTINGS };
+    registerIpc(ipcMain, services);
+    return { ipcMain, services, emitted, changes };
+  }
+
+  it('stores a validated patch, reports it to main and broadcasts settings:updated', async () => {
+    const { ipcMain, services, emitted, changes } = setup();
+    const next = await ipcMain.invoke('settings:update', {
+      autoSwitchAccounts: false,
+      usagePollIntervalSec: 180,
+      useWorktree: false,
+      defaultEffort: 'high',
+      defaultPermissionMode: 'plan',
+      defaultModel: 'claude-fable-5-1',
+      idleCloseMinutes: 30,
+      notifications: false,
+      defaultEditor: 'cursor',
+    });
+    expect(next).toMatchObject({ autoSwitchAccounts: false, usagePollIntervalSec: 180, useWorktree: false, defaultEffort: 'high' });
+    expect(services.store.get().settings).toEqual(next);
+    expect(emitted.filter(([ch]) => ch === 'settings:updated').map(([, p]) => p)).toEqual([next]);
+    expect(changes).toHaveLength(1);
+    expect((changes[0]![1] as typeof DEFAULT_SETTINGS).autoSwitchAccounts).toBe(true);
+  });
+
+  it('rejects invalid values and unknown keys without touching the stored settings', async () => {
+    const { ipcMain, services } = setup();
+    const before = { ...services.store.get().settings };
+    for (const bad of [
+      { usagePollIntervalSec: 30 },
+      { usagePollIntervalSec: 301 },
+      { defaultPermissionMode: 'bypassPermissions' },
+      { defaultEffort: 'ultra' },
+      { useWorktree: 'no' },
+      { tosNoticeAcknowledged: true },
+      { somethingElse: 1 },
+      { defaultEditor: 'emacs' },
+      null,
+      [],
+    ]) {
+      await expect(Promise.resolve(ipcMain.invoke('settings:update', bad))).rejects.toThrow(InvalidIpcRequestError);
+    }
+    expect(services.store.get().settings).toEqual(before);
+  });
+});
+
+describe('new threads follow the settings (worktree preference, default effort) and carry their agent', () => {
+  function setup(settings: Partial<typeof DEFAULT_SETTINGS>) {
+    const ipcMain = new FakeIpcMain();
+    const created: string[] = [];
+    const { services } = makeFakeServices({
+      worktreeManager: {
+        create: async (_path, shortId) => {
+          created.push(shortId);
+          return { cwd: `/wt/${shortId}`, worktree: { path: `/wt/${shortId}`, branch: `hopecode/${shortId}` } };
+        },
+        isDirty: async () => false,
+        async remove() {},
+      },
+    });
+    services.store.get().threads.length = 0;
+    services.store.get().settings = { ...DEFAULT_SETTINGS, ...settings };
+    services.store.get().projects.push({ id: 'p1', name: 'proj', path: '/tmp/proj', trusted: true, createdAt: 0 });
+    registerIpc(ipcMain, services);
+    return { ipcMain, created };
+  }
+
+  it('worktree off: the thread works directly in the project folder (no worktree is created)', async () => {
+    const { ipcMain, created } = setup({ useWorktree: false });
+    const res = (await ipcMain.invoke('thread:start', { projectId: 'p1', text: 'hello' })) as ThreadStartResult;
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(created).toEqual([]);
+    expect(res.thread.cwd).toBe('/tmp/proj');
+    expect(res.thread.worktree).toBeUndefined();
+  });
+
+  it('worktree on (default): a worktree per thread', async () => {
+    const { ipcMain, created } = setup({});
+    const res = (await ipcMain.invoke('thread:start', { projectId: 'p1', text: 'hello' })) as ThreadStartResult;
+    expect(res.ok && res.thread.cwd).toBe(`/wt/${created[0]}`);
+  });
+
+  it('agent defaults to claude-code, is stored as requested, and an unknown agent is refused', async () => {
+    const { ipcMain } = setup({});
+    const a = (await ipcMain.invoke('thread:start', { projectId: 'p1', text: 'x' })) as ThreadStartResult;
+    expect(a.ok && a.thread.agent).toBe('claude-code');
+    const b = (await ipcMain.invoke('thread:start', { projectId: 'p1', text: 'y', agent: 'claude-code' })) as ThreadStartResult;
+    expect(b.ok && b.thread.agent).toBe('claude-code');
+    await expect(Promise.resolve(ipcMain.invoke('thread:start', { projectId: 'p1', text: 'z', agent: 'gpt' }))).rejects.toThrow(
+      InvalidIpcRequestError,
+    );
+  });
+
+  it('thread:create uses the default effort; thread:start keeps an explicit null', async () => {
+    const { ipcMain } = setup({ defaultEffort: 'high' });
+    const created = (await ipcMain.invoke('thread:create', { projectId: 'p1' })) as Thread;
+    expect(created.effort).toBe('high');
+    const started = (await ipcMain.invoke('thread:start', { projectId: 'p1', text: 'x', effort: null })) as ThreadStartResult;
+    expect(started.ok && started.thread.effort).toBeNull();
+  });
+});
+
+describe('threads:deleteArchived', () => {
+  it('deletes only archived threads, with their worktrees (forced)', async () => {
+    const ipcMain = new FakeIpcMain();
+    const removed: [string, boolean][] = [];
+    const { services } = makeFakeServices({
+      worktreeManager: {
+        async create() {
+          return { cwd: '/x' };
+        },
+        isDirty: async () => true,
+        remove: async (_p, w, o) => void removed.push([w.path, o.force]),
+      },
+    });
+    services.store.get().projects.push({ id: 'p1', name: 'proj', path: '/tmp/proj', trusted: true, createdAt: 0 });
+    services.store.get().threads.length = 0;
+    services.store.get().threads.push(
+      makeThread({ id: 'keep' }),
+      makeThread({ id: 'old1', archived: true, worktree: { path: '/wt/old1', branch: 'hopecode/old1' } }),
+      makeThread({ id: 'old2', archived: true }),
+    );
+    registerIpc(ipcMain, services);
+    expect(await ipcMain.invoke('threads:deleteArchived')).toEqual({ deleted: 2 });
+    expect(services.store.get().threads.map((t) => t.id)).toEqual(['keep']);
+    expect(removed).toEqual([['/wt/old1', true]]);
+  });
+});
+
+describe('editor / git channels only ever act on the thread folder', () => {
+  function setup() {
+    const ipcMain = new FakeIpcMain();
+    const opened: [string, string][] = [];
+    const diffs: string[] = [];
+    const { services } = makeFakeServices({
+      editorLauncher: {
+        async list() {
+          return [{ id: 'vscode', name: 'Visual Studio Code' }];
+        },
+        async open(editor, dir) {
+          opened.push([editor, dir]);
+        },
+      },
+    });
+    services.gitService.fileDiff = async (cwd, _p, path) => {
+      diffs.push(`${cwd}:${path}`);
+      return { path, binary: false, hunks: [] };
+    };
+    registerIpc(ipcMain, services);
+    return { ipcMain, opened, diffs };
+  }
+
+  it('editor:open passes the thread cwd (never a renderer path) and validates the editor id', async () => {
+    const { ipcMain, opened } = setup();
+    await ipcMain.invoke('editor:open', { threadId: 't1', editor: 'vscode', dir: '/etc' });
+    expect(opened).toEqual([['vscode', '/tmp/project']]);
+    await expect(Promise.resolve(ipcMain.invoke('editor:open', { threadId: 't1', editor: 'rm -rf' }))).rejects.toThrow(
+      InvalidIpcRequestError,
+    );
+    await expect(Promise.resolve(ipcMain.invoke('editor:open', { threadId: 'nope', editor: 'vscode' }))).rejects.toThrow(
+      InvalidIpcRequestError,
+    );
+  });
+
+  it('git:fileDiff refuses absolute paths before reaching GitService', async () => {
+    const { ipcMain, diffs } = setup();
+    await ipcMain.invoke('git:fileDiff', { threadId: 't1', path: 'src/a.ts' });
+    expect(diffs).toEqual(['/tmp/project:src/a.ts']);
+    await expect(Promise.resolve(ipcMain.invoke('git:fileDiff', { threadId: 't1', path: '/etc/passwd' }))).rejects.toThrow(
+      InvalidIpcRequestError,
+    );
+    await expect(Promise.resolve(ipcMain.invoke('git:revertFile', { threadId: 't1', path: '' }))).rejects.toThrow(
+      InvalidIpcRequestError,
+    );
+  });
+
+  it('refuses every new channel from an untrusted sender', async () => {
+    const { ipcMain } = setup();
+    for (const ch of ['settings:update', 'app:openDataFolder', 'editor:open', 'git:commit', 'git:pushPr', 'threads:deleteArchived']) {
+      expect(() => ipcMain.invoke(ch, {}, 'https://evil.example')).toThrow(UntrustedSenderError);
+    }
   });
 });

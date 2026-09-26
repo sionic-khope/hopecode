@@ -1,7 +1,8 @@
 // Thread -> ThreadRunner registry (plan 4.2 session/sessionManager.ts). The SDK `query` function is
 // injected so unit tests and fixture mode pass src/main/fixtures/fakeQuery.
 import { FALLBACK_MODELS } from '../../shared/constants';
-import type { Account, ModelOption } from '../../shared/types';
+import type { Account, AgentKind, ModelOption } from '../../shared/types';
+import { toModelOption, type ModelCatalog } from '../models/modelCatalog';
 import type {
   Broadcaster,
   ClaudeBinary,
@@ -32,6 +33,8 @@ export interface SessionManagerDeps {
   syncTranscript?: SyncTranscriptFn;
   /** SDK init `claude_code_version` (usage User-Agent). */
   onCliVersion?: (version: string) => void;
+  /** Persisted model list (startup probe); live supportedModels() results are written back to it. */
+  models?: Pick<ModelCatalog, 'get' | 'update'>;
   now?: () => number;
   log?: (message: string, err?: unknown) => void;
   waitTickMs?: number;
@@ -57,6 +60,40 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManagerIm
   });
   let cachedModels: ModelOption[] | null = null;
 
+  /**
+   * Runner per agent kind: the one branch point for new agents (shared/agents.ts). Each kind's runner must
+   * implement the ThreadRunner surface the manager drives (send / interrupt / setModel / ... / close).
+   */
+  const runnerFactories: Record<AgentKind, (threadId: string) => ThreadRunner> = {
+    'claude-code': (threadId) =>
+      new ThreadRunner(threadId, {
+        query: deps.query,
+        store: deps.store,
+        threadLog: deps.threadLog,
+        listAccounts: deps.listAccounts,
+        usage: deps.usage,
+        shellEnv: deps.shellEnv,
+        claudeBinary: deps.claudeBinary,
+        broadcaster: deps.broadcaster,
+        broker,
+        syncTranscript: deps.syncTranscript ?? defaultSyncTranscript,
+        appVersion: deps.appVersion,
+        onWaiting: (id, waiting) => (waiting ? scheduler.track(id) : scheduler.untrack(id)),
+        onCliVersion: deps.onCliVersion,
+        onSessionInit: refreshModelsOnce,
+        now,
+        log,
+      }),
+  };
+
+  /** The first live session of this run refreshes the persisted model list (broadcast as models:updated). */
+  let modelsRefreshed = false;
+  function refreshModelsOnce(): void {
+    if (modelsRefreshed || !deps.models) return;
+    modelsRefreshed = true;
+    void listModels().catch((err: unknown) => log('[session] model refresh failed', err));
+  }
+
   const scheduler = createWaitScheduler({
     getWaitingUntil: (threadId) => {
       const thread = deps.store.getThread(threadId);
@@ -71,27 +108,33 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManagerIm
   function runner(threadId: string): ThreadRunner {
     let r = runners.get(threadId);
     if (!r) {
-      if (!deps.store.getThread(threadId)) throw new Error(`thread not found: ${threadId}`);
-      r = new ThreadRunner(threadId, {
-        query: deps.query,
-        store: deps.store,
-        threadLog: deps.threadLog,
-        listAccounts: deps.listAccounts,
-        usage: deps.usage,
-        shellEnv: deps.shellEnv,
-        claudeBinary: deps.claudeBinary,
-        broadcaster: deps.broadcaster,
-        broker,
-        syncTranscript: deps.syncTranscript ?? defaultSyncTranscript,
-        appVersion: deps.appVersion,
-        onWaiting: (id, waiting) => (waiting ? scheduler.track(id) : scheduler.untrack(id)),
-        onCliVersion: deps.onCliVersion,
-        now,
-        log,
-      });
+      const thread = deps.store.getThread(threadId);
+      if (!thread) throw new Error(`thread not found: ${threadId}`);
+      const create = runnerFactories[thread.agent ?? 'claude-code'];
+      if (!create) throw new Error(`unsupported agent: ${String(thread.agent)}`);
+      r = create(threadId);
       runners.set(threadId, r);
     }
     return r;
+  }
+
+  async function listModels(): Promise<ModelOption[]> {
+    for (const r of runners.values()) {
+      const q = r.query();
+      if (!q) continue;
+      try {
+        const models = await q.supportedModels();
+        cachedModels = models.map(toModelOption);
+        if (cachedModels.length > 0) {
+          await deps.models?.update(cachedModels).catch((err: unknown) => log('[session] model cache update failed', err));
+        }
+        break;
+      } catch (err) {
+        log('[session] supportedModels failed', err);
+      }
+    }
+    // Live session > persisted catalog (startup probe / an earlier session) > built-in fallback.
+    return cachedModels ?? deps.models?.get() ?? [...FALLBACK_MODELS];
   }
 
   return {
@@ -117,29 +160,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManagerIm
       broker.respond(requestId, decision, message);
     },
 
-    async listModels() {
-      for (const r of runners.values()) {
-        const q = r.query();
-        if (!q) continue;
-        try {
-          const models = await q.supportedModels();
-          cachedModels = models.map((m) => ({
-            value: m.value,
-            label: m.displayName,
-            description: m.description,
-            ...(m.supportsEffort === false
-              ? { effortLevels: [] }
-              : m.supportedEffortLevels
-                ? { effortLevels: [...m.supportedEffortLevels] }
-                : {}),
-          }));
-          break;
-        } catch (err) {
-          log('[session] supportedModels failed', err);
-        }
-      }
-      return cachedModels ?? [...FALLBACK_MODELS];
-    },
+    listModels,
 
     async closeAccount(accountId) {
       await Promise.all([...runners.values()].map((r) => r.releaseAccount(accountId)));

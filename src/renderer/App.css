@@ -1,18 +1,26 @@
+/* Shell: a pale canvas with floating cards (sidebar, conversation, right panel) over a thin statusline. */
 .app {
   display: grid;
-  grid-template-columns: var(--app-sidebar-w, var(--sidebar-w)) minmax(0, 1fr) var(--app-terminal-w, 0px);
+  grid-template-columns: var(--app-sidebar-w, var(--sidebar-w)) minmax(0, 1fr) var(--app-panel-w, 0px);
   grid-template-rows: minmax(0, 1fr) var(--statusline-h);
   grid-template-areas:
-    'sidebar chat terminal'
+    'sidebar chat panel'
     'status status status';
   height: 100%;
-  transition: grid-template-columns var(--dur-pane) var(--ease-pane);
-}
-.app--terminal-open {
-  --app-terminal-w: var(--terminal-w);
+  background: var(--bg-canvas);
+  transition: grid-template-columns var(--motion-3) var(--ease-soft);
 }
 .app--sidebar-collapsed {
   --app-sidebar-w: 0px;
+}
+/* Dragging the panel edge follows the pointer without easing. */
+.app--resizing {
+  transition: none;
+  cursor: col-resize;
+}
+.app--resizing * {
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .app__titlebar {
@@ -23,20 +31,39 @@
   padding: 0 var(--space-3);
 }
 
+/* ---------- Sidebar card ---------- */
 .app__sidebar {
   grid-area: sidebar;
-  display: flex;
-  flex-direction: column;
   min-width: 0;
   overflow: hidden;
+  padding: var(--canvas-gap) 0 0 var(--canvas-gap);
+}
+.app__sidebar-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: calc(var(--sidebar-w) - var(--canvas-gap));
+  border-radius: var(--radius-panel);
   background: var(--bg-sidebar);
-  border-right: 1px solid var(--sidebar-edge);
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: saturate(160%) blur(20px);
+  overflow: hidden;
+  transition:
+    opacity var(--motion-2) var(--ease-soft),
+    transform var(--motion-3) var(--ease-soft);
+}
+.app--sidebar-collapsed .app__sidebar {
+  padding-left: 0;
+}
+.app--sidebar-collapsed .app__sidebar-card {
+  opacity: 0;
+  transform: translateX(-12px);
 }
 /* Short sidebar bar: the toggle sits right after the traffic lights (x 78), centred on them (y 25). */
 .app__titlebar--sidebar {
-  height: 38px;
+  height: 30px;
   align-items: flex-start;
-  padding: 11px var(--space-2) 0 var(--traffic-light-w);
+  padding: 3px var(--space-2) 0 calc(var(--traffic-light-w) - var(--canvas-gap));
 }
 .app__window-actions {
   display: flex;
@@ -56,12 +83,16 @@
   border-radius: var(--radius-menu-item);
   color: var(--label-secondary);
   transition:
-    background-color var(--dur-fast) var(--ease-out),
-    color var(--dur-fast) var(--ease-out);
+    background-color var(--motion-1) var(--ease-soft),
+    color var(--motion-1) var(--ease-soft),
+    transform var(--motion-1) var(--ease-soft);
 }
 .app__window-btn:hover {
   background: var(--bg-sidebar-hover);
   color: var(--label);
+}
+.app__window-btn:active {
+  transform: scale(0.94);
 }
 .app__window-btn:focus-visible {
   box-shadow: var(--focus-ring);
@@ -74,65 +105,87 @@
   overflow: hidden;
 }
 
+/* ---------- Conversation card ---------- */
 .app__chat {
   grid-area: chat;
   display: flex;
   flex-direction: column;
   min-width: 0;
+  margin: var(--canvas-gap) var(--canvas-gap) 0;
+  border-radius: var(--radius-panel);
   background: var(--bg-window);
+  box-shadow: var(--shadow-panel);
+  overflow: hidden;
 }
-.app--sidebar-collapsed .app__sidebar {
-  border-right: none;
+.app--panel-open .app__chat {
+  margin-right: 0;
 }
 /* Collapsed: the chat bar starts after the traffic lights and carries the toggle + new chat. */
 .app--sidebar-collapsed .app__titlebar--chat {
-  padding-left: var(--traffic-light-w);
+  padding-left: calc(var(--traffic-light-w) - var(--canvas-gap));
 }
 .app__titlebar--chat {
   gap: var(--space-2);
-  padding: 0 var(--space-4);
+  padding: 0 var(--space-3) 0 var(--space-5);
   border-bottom: 1px solid transparent;
-  transition: border-color var(--dur-fast) var(--ease-out);
+  transition: border-color var(--motion-1) var(--ease-soft);
 }
 /* Divider only once the transcript scrolls under the title. */
 .app__titlebar--scrolled {
   border-bottom-color: var(--separator);
 }
 .app__thread-title {
+  flex: 1;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--space-2);
   min-width: 0;
 }
 .app__thread-name {
+  all: unset;
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  padding: 3px 8px;
+  margin-left: -8px;
+  border-radius: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-lg);
+  line-height: var(--lh-lg);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-title);
+  color: var(--label);
+  transition: background-color var(--motion-1) var(--ease-soft);
+}
+.app__thread-name:hover {
+  background: var(--bg-control);
+}
+.app__thread-name:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+.app__thread-project {
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--text-nav);
-  line-height: var(--lh-nav);
-  font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-title);
-  color: var(--label);
-}
-.app__thread-project {
-  flex: none;
   font-size: var(--text-sm);
   line-height: var(--lh-nav);
   color: var(--label-tertiary);
 }
 
-.app__terminal {
-  grid-area: terminal;
-  display: flex;
-  flex-direction: column;
+/* ---------- Right panel card ---------- */
+.app__panel {
+  grid-area: panel;
   min-width: 0;
   overflow: hidden;
-  background: var(--bg-terminal);
-  border-left: 1px solid var(--separator);
+  padding: var(--canvas-gap) var(--canvas-gap) 0;
 }
-.app--terminal-closed .app__terminal {
-  border-left: none;
+.app--panel-closed .app__panel {
+  padding-left: 0;
+  padding-right: 0;
 }
 
 .app__body {
@@ -145,27 +198,50 @@
   position: relative;
   overflow: hidden;
 }
+/* Route / thread switch: the new view cross-fades in. */
+.app__view {
+  height: 100%;
+  animation: hc-view-in var(--motion-3) var(--ease-soft);
+}
+@keyframes hc-view-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
 
 .app__toast {
   position: absolute;
   left: 50%;
-  bottom: 132px;
+  bottom: 148px;
   transform: translateX(-50%);
   max-width: 80%;
   cursor: pointer;
-  box-shadow: var(--shadow-popover, 0 4px 16px rgba(0, 0, 0, 0.12));
+  box-shadow: var(--shadow-popover);
+  animation: hc-toast-in var(--motion-2) var(--ease-soft);
+}
+@keyframes hc-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%);
+  }
 }
 
 .app__status {
   grid-area: status;
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: 0 var(--space-3);
-  background: var(--bg-statusline);
-  backdrop-filter: var(--statusline-backdrop);
-  border-top: 1px solid var(--separator);
-  font-family: var(--font-mono);
+  gap: var(--space-2);
+  padding: 0 var(--space-4);
+  font-family: var(--font-ui);
   font-size: var(--text-status);
   line-height: var(--lh-status);
   letter-spacing: 0;
@@ -191,4 +267,14 @@
   color: var(--label-secondary);
   font-size: var(--text-sm);
   white-space: nowrap;
+}
+
+/* Right panel open: the chat column is narrow, so give the title the room.
+   The project name hides and toolbar buttons collapse to icons. */
+.app--panel-open .app__thread-project {
+  display: none;
+}
+.app--panel-open .hc-toolbar-btn__label,
+.app--panel-open .hc-commit-trigger__label {
+  display: none;
 }

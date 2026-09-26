@@ -6,7 +6,7 @@ import type { FakeScenario } from '../../src/main/fixtures/fakeQuery';
 import { makeAccount, makeThread } from '../../src/main/fixtures/memoryDeps';
 import { createSessionHarness, type SessionHarness } from '../../src/main/fixtures/sessionHarness';
 import { CONTINUE_PROMPT, MINUTE_MS } from '../../src/shared/constants';
-import type { Account, ChatEvent, ChatItem, Thread } from '../../src/shared/types';
+import type { Account, AppSettings, ChatEvent, ChatItem, Thread } from '../../src/shared/types';
 
 const HOUR = 60 * MINUTE_MS;
 const SID0 = '0f0e0d0c-0b0a-4908-8706-050403020100';
@@ -27,7 +27,7 @@ function accountsFor(ids: string[]): Account[] {
   return ids.map((id, i) => makeAccount(id, { priority: i, configDir: join(root, 'accounts', id) }));
 }
 
-function setup(opts: { accounts: string[]; thread?: Partial<Thread>; scenario?: FakeScenario; settings?: { idleCloseMinutes: number } }) {
+function setup(opts: { accounts: string[]; thread?: Partial<Thread>; scenario?: FakeScenario; settings?: Partial<AppSettings> }) {
   const cwd = join(root, 'work');
   return createSessionHarness({
     accounts: accountsFor(opts.accounts),
@@ -67,6 +67,58 @@ function notices(h: SessionHarness): string[] {
 
 const rejected = (resetsAtSec = Math.floor(Date.now() / 1000) + 3600) =>
   ({ type: 'rateLimit', info: { status: 'rejected', rateLimitType: 'five_hour', resetsAt: resetsAtSec } }) as const;
+
+describe('automatic account switching off (settings.autoSwitchAccounts = false)', () => {
+  it('a rate-limited turn waits for its own account instead of moving to the next one', async () => {
+    const h = setup({
+      accounts: ['A', 'B'],
+      settings: { autoSwitchAccounts: false },
+      scenario: ({ callIndex, turnIndex }) =>
+        callIndex === 0 && turnIndex === 0 ? [{ type: 'text', text: 'first answer' }] : [rejected(Math.floor(Date.now() / 1000) + 600)],
+    });
+    await h.manager.send('t1', 'one');
+    await h.manager.whenSettled('t1');
+    expect(h.thread('t1').lastAccountId).toBe('A');
+
+    await h.manager.send('t1', 'two');
+    await h.manager.whenSettled('t1');
+    const t = h.thread('t1');
+    expect(t.status).toBe('waiting');
+    expect(t.pendingPrompt).toEqual({ text: 'two', kind: 'original' });
+    expect(t.waitingUntil).toBeGreaterThan(Date.now());
+    // B was never used even though it is available.
+    expect(h.fake.calls.map((c) => c.configDir)).toEqual([h.accounts[0]!.configDir]);
+    expect(notices(h).some((n) => n.startsWith('A 계정이 한도에 도달했습니다') && n.includes('자동 전환 꺼짐'))).toBe(true);
+    expect(notices(h).some((n) => n.startsWith('계정 전환'))).toBe(false);
+  });
+
+  it('a thread with no account yet still picks from the pool; switching on again moves a waiting thread', async () => {
+    const h = setup({
+      accounts: ['A', 'B'],
+      settings: { autoSwitchAccounts: false },
+      thread: { lastAccountId: 'A', sdkSessionId: null },
+      scenario: () => [{ type: 'text', text: 'ok' }],
+    });
+    h.usage.set('A', exhausted(Date.now() + HOUR));
+    await h.manager.send('t1', 'hello');
+    await h.manager.whenSettled('t1');
+    expect(h.thread('t1').status).toBe('waiting');
+
+    h.store.update((d) => {
+      d.settings = { ...d.settings, autoSwitchAccounts: true };
+    });
+    await h.manager.reevaluate();
+    await h.manager.whenSettled('t1');
+    expect(h.thread('t1').status).toBe('idle');
+    expect(h.fake.calls.map((c) => c.configDir)).toEqual([h.accounts[1]!.configDir]);
+
+    const fresh = setup({ accounts: ['A', 'B'], settings: { autoSwitchAccounts: false } });
+    fresh.usage.set('A', exhausted(Date.now() + HOUR));
+    await fresh.manager.send('t1', 'hi');
+    await fresh.manager.whenSettled('t1');
+    expect(fresh.fake.calls[0]!.configDir).toBe(fresh.accounts[1]!.configDir);
+  });
+});
 
 describe('SessionManager rotation (plan 7.2)', () => {
   it('(a) rejected without output -> original prompt resent on B with same resume sid; lastAccountId unchanged', async () => {
@@ -315,7 +367,7 @@ describe('SessionManager rotation (plan 7.2)', () => {
     const t = h.thread('t1');
     expect(t.ctxPercent).toBe(37);
     expect(t.sdkSessionId).toBe(h.fake.calls[0]!.sessionId);
-    expect(t.resolvedModel).toBe('claude-fable-5');
+    expect(t.resolvedModel).toBe('claude-fable-5-1');
     expect(t.sessionStartedAt).not.toBeNull();
 
     h.fake.setContextPercentage(64);
@@ -366,9 +418,11 @@ describe('SessionManager rotation (plan 7.2)', () => {
     expect(h.thread('t1').model).toBe('fable');
     const all = ['low', 'medium', 'high', 'xhigh', 'max'];
     expect(await h.manager.listModels()).toEqual([
-      { value: 'default', label: 'Default', description: 'Recommended model', effortLevels: all },
-      { value: 'fable', label: 'Fable', description: 'Most capable', effortLevels: all },
-      { value: 'sonnet', label: 'Sonnet', description: 'Fast everyday model', effortLevels: ['low', 'medium', 'high'] },
+      { value: 'default', label: 'Default (recommended)', description: 'Fable 5.1 · Recommended model', resolvedModel: 'claude-fable-5-1', effortLevels: all },
+      { value: 'claude-fable-5-1', label: 'Fable 5.1', description: 'For your toughest challenges', resolvedModel: 'claude-fable-5-1', effortLevels: all },
+      { value: 'opus', label: 'Opus 5.5', description: 'Most capable for ambitious work', resolvedModel: 'claude-opus-5-5', effortLevels: all },
+      { value: 'sonnet', label: 'Sonnet 5', description: 'Fast everyday model', resolvedModel: 'claude-sonnet-5', effortLevels: ['low', 'medium', 'high'] },
+      { value: 'haiku', label: 'Haiku 4.5', description: 'Fastest for quick answers', resolvedModel: 'claude-haiku-4-5-20251001' },
     ]);
   });
 

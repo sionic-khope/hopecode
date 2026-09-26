@@ -1,0 +1,261 @@
+/* Command palette (⌘K). Same family as .hc-modal: fading blurred backdrop, white dialog card, soft dialog shadow.
+   Anchored high (~14vh) instead of centered so the field sits where the eye already is. Uses tokens.css only. */
+
+.hc-palette-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 14vh var(--space-4) var(--space-6);
+  background: var(--bg-backdrop);
+  backdrop-filter: blur(2px);
+  animation: hc-palette-fade var(--motion-2) var(--ease-soft);
+}
+@keyframes hc-palette-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.hc-palette {
+  width: 620px;
+  max-width: 100%;
+  max-height: calc(86vh - var(--space-6));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--radius-dialog);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-dialog);
+  color: var(--label);
+  font-family: var(--font-ui);
+  letter-spacing: var(--tracking-ui);
+  transform-origin: 50% 0;
+  animation: hc-palette-in var(--motion-2) var(--ease-soft);
+}
+@keyframes hc-palette-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------- Search field ---------- */
+.hc-palette__search {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 56px;
+  padding: 0 var(--space-5);
+  border-bottom: 1px solid var(--separator);
+}
+.hc-palette__search-icon {
+  flex: none;
+  display: flex;
+  color: var(--label-tertiary);
+  transition: color var(--motion-1) var(--ease-soft);
+}
+.hc-palette__search:focus-within .hc-palette__search-icon {
+  color: var(--accent);
+}
+.hc-palette__input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--label);
+  font: inherit;
+  font-size: var(--text-lg);
+  line-height: var(--lh-lg);
+  caret-color: var(--accent);
+}
+.hc-palette__input::placeholder {
+  color: var(--label-tertiary);
+}
+
+/* ---------- Results ---------- */
+.hc-palette__list {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: min(420px, 60vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px;
+  scroll-padding: 6px;
+}
+.hc-palette__list:empty {
+  display: none;
+}
+.hc-palette__section + .hc-palette__section {
+  margin-top: 4px;
+}
+.hc-palette__group {
+  padding: 8px 10px 4px;
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+  font-weight: var(--weight-medium);
+  color: var(--label-tertiary);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.hc-palette__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 6px 10px;
+  border-radius: var(--radius-row);
+  color: var(--label-secondary);
+  font-size: var(--text-md);
+  line-height: var(--lh-md);
+  cursor: default;
+  -webkit-user-select: none;
+  user-select: none;
+  transition:
+    background-color var(--motion-1) var(--ease-soft),
+    color var(--motion-1) var(--ease-soft);
+}
+.hc-palette__item--active {
+  background: var(--accent-tint);
+  color: var(--label);
+}
+
+.hc-palette__icon {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: var(--bg-control);
+  color: var(--label-secondary);
+  transition:
+    background-color var(--motion-1) var(--ease-soft),
+    color var(--motion-1) var(--ease-soft);
+}
+.hc-palette__icon:empty {
+  background: transparent;
+}
+.hc-palette__item--active .hc-palette__icon {
+  background: var(--bg-card);
+  color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(27, 110, 243, 0.14), 0 1px 2px rgba(22, 32, 56, 0.06);
+}
+.hc-palette__item--active .hc-palette__icon:empty {
+  background: transparent;
+  box-shadow: none;
+}
+
+.hc-palette__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.hc-palette__title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--label);
+  font-weight: var(--weight-regular);
+}
+.hc-palette__subtitle {
+  flex: 0 10 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  line-height: var(--lh-sm);
+  color: var(--label-tertiary);
+}
+.hc-palette__hl {
+  padding: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--accent-strong);
+  font-weight: var(--weight-semibold);
+  box-shadow: inset 0 -0.42em 0 var(--accent-subtle);
+}
+
+.hc-palette__keys {
+  flex: none;
+  display: inline-flex;
+  gap: 3px;
+  margin-left: auto;
+}
+.hc-palette__keys .hc-kbd {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  font-size: var(--text-2xs);
+}
+
+.hc-palette__empty {
+  padding: var(--space-8) var(--space-4);
+  text-align: center;
+  font-size: var(--text-md);
+  line-height: var(--lh-md);
+  color: var(--label-tertiary);
+}
+
+/* ---------- Footer ---------- */
+.hc-palette__footer {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 var(--space-4);
+  border-top: 1px solid var(--separator);
+  background: var(--bg-card-muted);
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+  color: var(--label-tertiary);
+  -webkit-user-select: none;
+  user-select: none;
+}
+.hc-palette__hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.hc-palette__hint .hc-kbd {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 5px;
+  font-size: var(--text-2xs);
+}
+.hc-palette__hint .hc-kbd + .hc-kbd {
+  margin-left: -1px;
+}
+.hc-palette__dot {
+  color: var(--label-tertiary);
+  opacity: 0.7;
+}
+
+/* The search field is the card's header: no global focus ring box around it. */
+.hc-palette__input:focus,
+.hc-palette__input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}

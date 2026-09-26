@@ -35,6 +35,7 @@ export function makeThread(id: string, over: Partial<Thread> = {}): Thread {
   return {
     id,
     projectId: 'project-1',
+    agent: 'claude-code',
     title: id,
     cwd: '/work/project',
     model: 'default',

@@ -1,6 +1,8 @@
 // Chips on the composer's control row: folder (draft only), permission mode, account pin, model + effort.
 import { memo, useRef, useState } from 'react';
-import type { Account, EffortLevel, ModelOption, Project, UiPermissionMode } from '../../../shared/types';
+import type { Account, AgentKind, EffortLevel, ModelOption, Project, UiPermissionMode } from '../../../shared/types';
+import { AGENT_KINDS, AGENTS } from '../../../shared/agents';
+import { AgentIcon } from '../Agent/AgentIcon';
 import { EFFORT_LEVELS, UI_PERMISSION_MODES } from '../../../shared/constants';
 import { concreteModelLabel, modelMenuLabel } from '../../../core/modelDisplay';
 import { tildePath } from '../../../core/format';
@@ -347,6 +349,65 @@ export const ModelPicker = memo(function ModelPicker({
         <ChevronDownSmallIcon className="hc-chip__chevron" />
       </button>
       <Menu open={open} onClose={() => setOpen(false)} anchorRef={ref} sections={sections} label="모델" placement="top-end" width={COMPOSER_MENU_WIDTH} />
+    </>
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Agent chip (first chip): picker in a draft, a static tag once the thread runs
+// ---------------------------------------------------------------------------
+
+export const AgentChip = memo(function AgentChip({
+  value,
+  onChange,
+}: {
+  value: AgentKind;
+  /** Absent: the thread already runs with this agent (static chip). */
+  onChange?: (agent: AgentKind) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLButtonElement>(null);
+  const current = AGENTS[value];
+  if (!onChange) {
+    return (
+      <span className="hc-chip hc-chip--static hc-chip--agent" aria-label={`에이전트: ${current.name}`} title={current.description}>
+        <AgentIcon kind={value} size={15} />
+        <span className="hc-chip__label">{current.name}</span>
+      </span>
+    );
+  }
+  const sections: MenuSection[] = [
+    {
+      key: 'agents',
+      title: '에이전트',
+      kind: 'radio',
+      items: AGENT_KINDS.map((kind) => ({
+        key: kind,
+        label: AGENTS[kind].name,
+        description: AGENTS[kind].description,
+        icon: <AgentIcon kind={kind} size={16} />,
+        checked: kind === value,
+        onSelect: () => onChange(kind),
+      })),
+    },
+  ];
+  return (
+    <>
+      <button
+        ref={ref}
+        type="button"
+        className="hc-chip hc-chip--agent"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`에이전트: ${current.name}`}
+        title={current.description}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <AgentIcon kind={value} size={15} />
+        <span className="hc-chip__label">{current.name}</span>
+        <ChevronDownSmallIcon className="hc-chip__chevron" />
+      </button>
+      <Menu open={open} onClose={() => setOpen(false)} anchorRef={ref} sections={sections} label="에이전트" placement="top-start" width={COMPOSER_MENU_WIDTH} />
     </>
   );
 });

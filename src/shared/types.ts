@@ -90,9 +90,17 @@ export interface WorktreeInfo {
   branch: string;
 }
 
+/**
+ * Coding agent that runs a thread's sessions. A union so more agents can be added: each kind gets an entry in
+ * shared/agents.ts (AGENTS) and a runner branch in main's SessionManager. Only Claude Code exists today.
+ */
+export type AgentKind = 'claude-code';
+
 export interface Thread {
   id: string;
   projectId: string;
+  /** Agent that runs this thread (persisted; threads saved before agents existed migrate to 'claude-code'). */
+  agent: AgentKind;
   title: string;
   /** Session cwd: worktree path, or project folder when not a git repo. */
   cwd: string;
@@ -125,14 +133,40 @@ export interface Thread {
   updatedAt: number;
 }
 
+/** External apps the "에디터에서 열기" menu can hand a thread folder to (detected in /Applications). */
+export type EditorId = 'vscode' | 'cursor' | 'zed' | 'xcode' | 'finder' | 'terminal' | 'iterm' | 'ghostty';
+
+export interface EditorInfo {
+  id: EditorId;
+  /** Display name ("Visual Studio Code"). */
+  name: string;
+}
+
 export interface AppSettings {
-  /** Close idle Query after N minutes (resume on next send). */
+  /** Close idle Query after N minutes (resume on next send); 0 = never. */
   idleCloseMinutes: number;
+  /** Model of a new chat (draft). */
   defaultModel: string;
+  /** Permission mode of a new chat; never `bypassPermissions` (that needs the per-thread confirm). */
   defaultPermissionMode: UiPermissionMode;
+  /** Effort of a new chat; null = the model's default. */
+  defaultEffort: EffortLevel | null;
+  /** New threads get their own git worktree; off = sessions work directly in the project folder. */
+  useWorktree: boolean;
+  /** Rate-limited turns move to the next account; off = the thread waits for its own account to reset. */
+  autoSwitchAccounts: boolean;
+  /** Usage poll interval per account, seconds (USAGE_POLL_MIN_SEC..USAGE_POLL_MAX_SEC). */
+  usagePollIntervalSec: number;
+  /** macOS notifications while the window is in the background (turn done, permission request, account switch). */
+  notifications: boolean;
+  /** Default target of "에디터에서 열기"; null = the first detected editor. */
+  defaultEditor: EditorId | null;
   /** Multi-account ToS notice shown once on first account add. */
   tosNoticeAcknowledged: boolean;
 }
+
+/** Fields `settings:update` may change (the ToS acknowledgement has its own flow). */
+export type SettingsPatch = Partial<Omit<AppSettings, 'tosNoticeAcknowledged'>>;
 
 export interface PersistedState {
   version: 1;
@@ -282,6 +316,8 @@ export interface ModelOption {
   value: string;
   label: string;
   description?: string;
+  /** Concrete model id this row runs as (SDK ModelInfo.resolvedModel: `default` -> `claude-fable-5-1`). */
+  resolvedModel?: string;
   /**
    * Effort levels the model accepts (SDK ModelInfo.supportedEffortLevels). `[]` = no effort support;
    * undefined = unknown (the fallback list before a live Query reported its models).
@@ -344,7 +380,96 @@ export interface BootstrapPayload {
   homeDir: string;
   /** Permission requests still awaiting an answer (renderer reload re-shows the cards). */
   pendingPermissions: PermissionRequest[];
+  /** Fixture / headless e2e run: the renderer shows no system notifications. */
+  testMode: boolean;
 }
+
+// ---------------------------------------------------------------------------
+// App info / data / shared config
+// ---------------------------------------------------------------------------
+
+export interface AppInfo {
+  appVersion: string;
+  /** Bundled Claude Code CLI version (SDK manifest, or what a session reported). */
+  cliVersion: string | null;
+  /** @anthropic-ai/claude-agent-sdk package version. */
+  sdkVersion: string | null;
+  electronVersion: string;
+  /** App data folder (state.json, thread logs, usage history). */
+  dataDir: string;
+}
+
+export type SharedEntryState = 'linked' | 'not-linked' | 'broken' | 'conflict';
+
+export interface SharedConfigEntry {
+  /** Entry name under ~/.claude (SHARED_CONFIG_ENTRIES). */
+  name: string;
+  /** Present in ~/.claude (only present entries are linked). */
+  inSource: boolean;
+  /** Per-account state, keyed by account id. */
+  byAccount: Record<string, SharedEntryState>;
+}
+
+export interface SharedConfigStatus {
+  /** `~/.claude` (display with `~`). */
+  sourceDir: string;
+  entries: SharedConfigEntry[];
+}
+
+// ---------------------------------------------------------------------------
+// Git (changes panel / commit flow)
+// ---------------------------------------------------------------------------
+
+/** M modified, A added (incl. untracked), D deleted, R renamed, U unmerged. */
+export type GitFileStatus = 'M' | 'A' | 'D' | 'R' | 'U';
+
+export interface GitChangedFile {
+  /** Path relative to the thread cwd (repo-relative). */
+  path: string;
+  /** Previous path of a rename. */
+  oldPath?: string;
+  status: GitFileStatus;
+  /** Not in git yet (never added). */
+  untracked: boolean;
+  additions: number;
+  deletions: number;
+  binary: boolean;
+}
+
+export interface GitChanges {
+  /** false: the thread folder is not a git repository (nothing else is set). */
+  isRepo: boolean;
+  /** Checked-out branch of the thread cwd (`hopecode/<id>` in a worktree). */
+  branch: string | null;
+  /** Branch the worktree was cut from (project folder's branch); null outside a worktree. */
+  baseBranch: string | null;
+  /** Changes compared with the merge-base of `baseBranch` (worktree) or HEAD, including uncommitted work. */
+  files: GitChangedFile[];
+  /** Commits on `branch` not in `baseBranch`. */
+  ahead: number;
+  /** Uncommitted changes exist (tracked or untracked). */
+  dirty: boolean;
+}
+
+export interface GitFileDiff {
+  path: string;
+  binary: boolean;
+  hunks: StructuredPatchHunk[];
+}
+
+export interface GitRemoteInfo {
+  /** `origin` (or the first remote); null when the repo has no remote. */
+  remote: string | null;
+  remoteUrl: string | null;
+  /** Branch that would be pushed. */
+  branch: string | null;
+  /** PR base branch. */
+  baseBranch: string | null;
+  /** `gh` CLI found on the login-shell PATH. */
+  ghAvailable: boolean;
+}
+
+export type GitActionResult<T = Record<never, never>> = ({ ok: true } & T) | { ok: false; error: string };
 
 // ---------------------------------------------------------------------------
 // Thread start (draft -> first send)
@@ -353,6 +478,8 @@ export interface BootstrapPayload {
 export interface ThreadStartRequest {
   projectId: string;
   text: string;
+  /** Agent of the new thread (default 'claude-code'). */
+  agent?: AgentKind;
   model?: string;
   permissionMode?: UiPermissionMode;
   effort?: EffortLevel | null;

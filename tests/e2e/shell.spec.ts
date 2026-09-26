@@ -39,14 +39,14 @@ test('3-pane layout, ⌘J toggles the terminal pane', async () => {
   await expect(app).toHaveClass(/app--terminal-closed/);
 });
 
-test('Geist UI font and Geist Mono statusline, loaded from the bundle', async () => {
+test('Geist UI font (statusline included) and Geist Mono, loaded from the bundle', async () => {
   const { page } = run;
   const bodyFont = await page.evaluate(() => getComputedStyle(document.body).fontFamily);
   expect(bodyFont).toMatch(/^"?Geist"?,/);
   expect(bodyFont).toContain('Apple SD Gothic Neo');
   const statusFont = await page.getByTestId('statusline').evaluate((el) => getComputedStyle(el).fontFamily);
-  expect(statusFont).toMatch(/^"?Geist Mono"?,/);
-  // Type ramp: 15px conversation body is --text-chat, statusline 13px, sidebar rows 14px.
+  expect(statusFont).toMatch(/^"?Geist"?,/);
+  // Type ramp: 15px conversation body is --text-chat, statusline 12px capsules, 14px controls.
   const sizes = await page.evaluate(() => {
     const root = getComputedStyle(document.documentElement);
     return {
@@ -55,8 +55,8 @@ test('Geist UI font and Geist Mono statusline, loaded from the bundle', async ()
       sidebar: root.getPropertyValue('--text-md').trim(),
     };
   });
-  expect(sizes).toEqual({ chat: '15px', status: '13px', sidebar: '14px' });
-  expect(await page.getByTestId('statusline').evaluate((el) => getComputedStyle(el).fontSize)).toBe('13px');
+  expect(sizes).toEqual({ chat: '15px', status: '12px', sidebar: '14px' });
+  expect(await page.getByTestId('statusline').evaluate((el) => getComputedStyle(el).fontSize)).toBe('12px');
   // The @font-face files actually resolved under the CSP (font-src 'self'), not a silent fallback.
   await expect
     .poll(() =>

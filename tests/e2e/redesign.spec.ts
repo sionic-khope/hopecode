@@ -80,7 +80,7 @@ test('folder chip (dialog seam) -> first send creates the thread and its worktre
   expect(threads[0].cwd.startsWith(`${sandbox.home}/home/worktrees/`)).toBe(true);
   expect(threads[0].worktree?.branch).toMatch(/^hopecode\//);
   // A started chat shows its folder read-only; "폴더 변경" is disabled.
-  await expect(page.locator('.hc-composer .hc-chip--static')).toContainText(sandbox.project.split('/').pop()!);
+  await expect(page.locator('.hc-composer .hc-chip--static:not(.hc-chip--agent)')).toContainText(sandbox.project.split('/').pop()!);
   await page.locator('.hc-composer__plus').click();
   await expect(page.getByRole('menuitem', { name: /폴더 변경/ })).toBeDisabled();
   await page.keyboard.press('Escape');
@@ -111,16 +111,16 @@ test('⌘N opens a draft at once in the last used folder; nothing is created unt
   await expect(page.getByTestId('sidebar').getByRole('button', { name: /^새 채팅/ })).toHaveAttribute('aria-current', 'page');
   expect((await bootstrapState(page)).threads).toHaveLength(1);
   // The composer names the concrete model, and so does the statusline before anything is sent.
-  await expect(draft.locator('.hc-chip--model')).toContainText('Fable 5');
+  await expect(draft.locator('.hc-chip--model')).toContainText('Fable 5.1');
   await expect(draft.locator('.hc-chip--model')).not.toContainText('Default');
-  await expect(page.getByTestId('statusline').locator('.hc-statusline__model')).toHaveText('Fable 5');
+  await expect(page.getByTestId('statusline').locator('.hc-statusline__model')).toHaveText('Fable 5.1');
   await expect(draft.locator('.hc-draft__hint')).toHaveText('');
   const send = page.locator('.hc-send');
   await expect(send).toBeDisabled();
   await screenshot(page, 'v2-draft-empty', SHOTS);
   await page.locator('.hc-composer__textarea').fill('README의 인사말을 Hopecode로 바꾸고 테스트를 추가해 주세요');
   await expect(send).toBeEnabled();
-  await expect.poll(() => send.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(29, 29, 31)');
+  await expect.poll(() => send.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(27, 110, 243)');
   await screenshot(page, 'v2-draft-typed', SHOTS);
   await page.locator('.hc-composer__textarea').fill('');
 
@@ -156,8 +156,8 @@ test('draft permission + model/effort choices reach the new thread', async () =>
   const modelMenu = page.getByRole('menu', { name: '모델' });
   await expect(modelMenu.getByRole('group', { name: 'Effort' })).toBeVisible();
   await expect(modelMenu.getByRole('group', { name: '모델' }).locator('.hc-mnu__label')).toHaveText([
-    '기본 (Fable 5)',
-    'Fable 5',
+    '기본 (Fable 5.1)',
+    'Fable 5.1',
     'Opus 5.5',
     'Sonnet 5',
     'Haiku 4.5',
@@ -262,7 +262,8 @@ test('⌘B collapses the sidebar to a full-width chat; the titlebar button bring
   await menuShortcut(run.app, 'CmdOrCtrl+B');
   await expect(app).toHaveClass(/app--sidebar-collapsed/);
   await expect.poll(async () => (await page.getByTestId('sidebar').boundingBox())?.width ?? -1).toBeLessThan(1);
-  await expect.poll(async () => (await page.getByTestId('chat').boundingBox())?.x ?? -1).toBeLessThan(1);
+  // The conversation card spans the window, inset only by the canvas gap.
+  await expect.poll(async () => (await page.getByTestId('chat').boundingBox())?.x ?? -1).toBeLessThanOrEqual(8);
   const show = page.getByTestId('chat').getByRole('button', { name: '사이드바 보기 (⌘B)' });
   await expect(show).toBeVisible();
   await screenshot(page, 'v2-sidebar-collapsed', SHOTS);

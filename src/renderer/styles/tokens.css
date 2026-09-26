@@ -1,4 +1,7 @@
-/* Design tokens (plan 5). Light only. */
+/* Design tokens. Light only.
+   Direction: a friendly agent desktop. A pale cool canvas (#EDF0F5) carries floating white cards (sidebar panel,
+   conversation, right panel) with soft layered shadows and generous radii; the one accent is the logo's caret
+   blue (#1B6EF3), and run states get pastel points (running blue, waiting amber, done green, error red). */
 :root {
   color-scheme: light;
 
@@ -6,67 +9,88 @@
      Korean glyphs fall back to Apple SD Gothic Neo, then the system stack. */
   --font-ui: 'Geist', 'Apple SD Gothic Neo', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
   --font-mono: 'Geist Mono', 'Apple SD Gothic Neo', ui-monospace, 'SF Mono', Menlo, monospace;
+  --text-2xs: 11px;    --lh-2xs: 14px;
   --text-xs: 12px;     --lh-xs: 16px;
   --text-sm: 13px;     --lh-sm: 18px;
   --text-md: 14px;     --lh-md: 20px;   /* sidebar, controls, default body */
   --text-chat: 15px;   --lh-chat: 24px; /* conversation body */
-  --text-nav: 15px;    --lh-nav: 20px;   /* sidebar nav + thread rows (Codex-scale) */
+  --text-nav: 14px;    --lh-nav: 20px;  /* sidebar nav + thread rows */
   --text-lg: 16px;     --lh-lg: 22px;
   --text-xl: 22px;     --lh-xl: 28px;
-  --text-status: 13px; --lh-status: 18px;
+  --text-2xl: 28px;    --lh-2xl: 34px;  /* greeting / page titles */
+  --text-status: 12px; --lh-status: 16px;
   --mono-sm: 13px;     --lh-mono-sm: 20px; /* inline code, code blocks, diffs */
   --mono-term: 14px;   --lh-mono-term: 20px; /* xterm (mirrored in terminalTheme.ts) */
   --tracking-ui: -0.005em;
-  --tracking-title: -0.015em;
+  --tracking-title: -0.018em;
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-semibold: 600;
+  --weight-bold: 680;
 
-  /* Accent */
-  --accent: #007aff;
-  --accent-hover: #0066d6;
-  --accent-pressed: #0056b3;
-  --accent-subtle: rgba(0, 122, 255, 0.1);
-  --focus-ring: 0 0 0 3px rgba(0, 122, 255, 0.35);
+  /* Accent: the logo caret blue */
+  --accent: #1b6ef3;
+  --accent-hover: #155fdb;
+  --accent-pressed: #104fbc;
+  --accent-strong: #0a4fc4;
+  --accent-subtle: rgba(27, 110, 243, 0.1);
+  --accent-tint: rgba(27, 110, 243, 0.08);
+  --accent-tint-strong: rgba(27, 110, 243, 0.14);
+  --accent-ring: rgba(27, 110, 243, 0.32);
+  --accent-gradient: linear-gradient(180deg, #4aa5ff 0%, #1b6ef3 100%);
+  --focus-ring: 0 0 0 3px rgba(27, 110, 243, 0.28);
 
   /* Labels */
-  --label: rgba(0, 0, 0, 0.85);
-  --label-secondary: rgba(0, 0, 0, 0.55);
-  --label-tertiary: rgba(0, 0, 0, 0.3);
+  --label: #16181d;
+  --label-secondary: rgba(22, 24, 29, 0.6);
+  --label-tertiary: rgba(22, 24, 29, 0.38);
   --label-on-accent: #ffffff;
-  --separator: rgba(0, 0, 0, 0.1);
-  --separator-strong: rgba(0, 0, 0, 0.16);
+  --separator: rgba(22, 32, 56, 0.08);
+  --separator-strong: rgba(22, 32, 56, 0.14);
 
-  /* Backgrounds */
-  --bg-window: #ffffff;
-  /* Translucent tint over the window vibrancy; on an opaque backdrop (hidden e2e capture) it reads as #F3F3F5. */
-  --bg-sidebar: rgba(236, 236, 240, 0.62);
-  --sidebar-edge: rgba(0, 0, 0, 0.055);
-  --bg-sidebar-hover: rgba(0, 0, 0, 0.05);
-  --bg-sidebar-sel-inactive: rgba(0, 0, 0, 0.08);
-  --bg-sidebar-sel: rgba(0, 0, 0, 0.075);
-  --bg-menu-hover: rgba(0, 0, 0, 0.055);
+  /* Surfaces */
+  --bg-canvas: #edf0f5;               /* window canvas behind the cards */
+  --bg-window: #ffffff;               /* conversation card */
+  --bg-card: #ffffff;
+  --bg-card-muted: #f6f8fb;           /* pale color field inside a card (settings rows, file list) */
+  --bg-sunken: #f2f4f8;
+  /* Sidebar panel: a translucent white card over the vibrancy canvas. */
+  --bg-sidebar: rgba(255, 255, 255, 0.62);
+  --sidebar-edge: rgba(22, 32, 56, 0.06);
+  --bg-sidebar-hover: rgba(22, 32, 56, 0.045);
+  --bg-sidebar-sel-inactive: rgba(22, 32, 56, 0.06);
+  --bg-sidebar-sel: var(--accent-tint);
+  --bg-menu-hover: rgba(22, 32, 56, 0.05);
   --bg-elevated: #ffffff;
-  --bg-control: rgba(0, 0, 0, 0.04);
-  --bg-control-hover: rgba(0, 0, 0, 0.07);
-  --bg-control-pressed: rgba(0, 0, 0, 0.1);
-  --bg-code: #f5f5f7;
-  --bg-statusline: rgba(246, 246, 246, 0.92);
-  --statusline-backdrop: saturate(180%) blur(20px);
+  --bg-control: rgba(22, 32, 56, 0.045);
+  --bg-control-hover: rgba(22, 32, 56, 0.075);
+  --bg-control-pressed: rgba(22, 32, 56, 0.1);
+  --bg-code: #f5f7fa;
+  --bg-statusline: transparent;
+  --statusline-backdrop: none;
   --bg-terminal: #ffffff;
   --fg-terminal: #1d1d1f;
-  --cursor-terminal: #007aff;
-  --selection-terminal: rgba(0, 122, 255, 0.2);
+  --cursor-terminal: #1b6ef3;
+  --selection-terminal: rgba(27, 110, 243, 0.2);
+  --bg-backdrop: rgba(20, 26, 38, 0.28);
 
-  /* Status */
-  --ok: #34c759;   --ok-text: #248a3d;
-  --warn: #ff9500; --warn-text: #c93400;
-  --crit: #ff3b30; --crit-text: #d70015;
-  --meter-track: rgba(0, 0, 0, 0.08);
+  /* Status (solid points) */
+  --ok: #30c46c;   --ok-text: #1b7a41;
+  --warn: #f5a524; --warn-text: #a45a00;
+  --crit: #ff4d40; --crit-text: #c62a20;
+  --run: #3b82f6;  --run-text: #1a5fd6;
+  --meter-track: rgba(22, 32, 56, 0.08);
+
+  /* Status pastels (pills, notices) */
+  --run-bg: #e8f0ff;
+  --wait-bg: #fff3dd;
+  --ok-bg: #e4f7eb;
+  --crit-bg: #fdeae8;
+  --neutral-bg: rgba(22, 32, 56, 0.05);
 
   /* Diff */
-  --diff-add-bg: #e6f4ea; --diff-add-fg: #1a7f37; --diff-add-gutter: #ccebd5;
-  --diff-del-bg: #fdecea; --diff-del-fg: #cf222e; --diff-del-gutter: #f8d0d0;
+  --diff-add-bg: #e8f6ec; --diff-add-fg: #1a7f37; --diff-add-gutter: #d2eedb;
+  --diff-del-bg: #fdeeed; --diff-del-fg: #cf222e; --diff-del-gutter: #f8d6d6;
 
   /* Spacing (4pt) */
   --space-1: 4px;
@@ -75,55 +99,73 @@
   --space-4: 16px;
   --space-5: 20px;
   --space-6: 24px;
+  --space-7: 28px;
   --space-8: 32px;
+  --space-10: 40px;
 
   /* Radius */
-  --radius-control: 6px;
-  --radius-card: 8px;
-  --radius-popover: 10px;
-  --radius-dialog: 12px;
+  --radius-control: 8px;
+  --radius-card: 14px;
+  --radius-card-lg: 18px;
+  --radius-panel: 16px;
+  --radius-popover: 14px;
+  --radius-dialog: 20px;
   --radius-capsule: 999px;
   --radius-menu: 14px;
-  --radius-menu-item: 8px;
+  --radius-menu-item: 9px;
   --radius-composer: 22px;
-  --radius-row: 9px;
+  --radius-row: 10px;
 
-  /* Elevation */
-  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.06), 0 0 0 0.5px rgba(0, 0, 0, 0.1);
-  --shadow-popover: 0 8px 28px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.12);
-  --shadow-control: 0 0.5px 1px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.12);
-  /* Composer card: hairline + soft lift, deepens on focus. */
-  --shadow-composer: 0 0 0 1px rgba(0, 0, 0, 0.07), 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px -8px rgba(0, 0, 0, 0.1);
-  --shadow-composer-focus: 0 0 0 1px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.05), 0 12px 32px -10px rgba(0, 0, 0, 0.16);
+  /* Elevation: layered, low-contrast, slightly blue-tinted */
+  --shadow-hairline: 0 0 0 1px rgba(22, 32, 56, 0.06);
+  --shadow-card: 0 0 0 1px rgba(22, 32, 56, 0.05), 0 1px 2px rgba(22, 32, 56, 0.04), 0 6px 18px -8px rgba(22, 32, 56, 0.1);
+  --shadow-card-hover: 0 0 0 1px rgba(22, 32, 56, 0.07), 0 2px 4px rgba(22, 32, 56, 0.05), 0 12px 28px -10px rgba(22, 32, 56, 0.16);
+  --shadow-panel: 0 0 0 1px rgba(22, 32, 56, 0.05), 0 2px 6px rgba(22, 32, 56, 0.04), 0 16px 40px -18px rgba(22, 32, 56, 0.14);
+  --shadow-popover: 0 0 0 1px rgba(22, 32, 56, 0.08), 0 8px 20px -6px rgba(22, 32, 56, 0.14), 0 24px 48px -16px rgba(22, 32, 56, 0.18);
+  --shadow-dialog: 0 0 0 1px rgba(22, 32, 56, 0.06), 0 24px 64px -16px rgba(22, 32, 56, 0.32);
+  --shadow-control: 0 0 0 1px rgba(22, 32, 56, 0.1), 0 1px 2px rgba(22, 32, 56, 0.06);
+  /* Composer card: soft lift, accent ring on focus. */
+  --shadow-composer: 0 0 0 1px rgba(22, 32, 56, 0.07), 0 2px 4px rgba(22, 32, 56, 0.03), 0 14px 36px -14px rgba(22, 32, 56, 0.2);
+  --shadow-composer-focus: 0 0 0 1px rgba(27, 110, 243, 0.45), 0 0 0 4px rgba(27, 110, 243, 0.1), 0 16px 40px -14px rgba(22, 32, 56, 0.24);
 
-  /* Control + row heights (scaled with the type ramp) */
-  --control-h-sm: 22px;
-  --control-h: 26px;
-  --control-h-lg: 30px;
-  --seg-h: 24px;
-  --seg-h-sm: 22px;
+  /* Control + row heights */
+  --control-h-sm: 26px;
+  --control-h: 30px;
+  --control-h-lg: 36px;
+  --seg-h: 28px;
+  --seg-h-sm: 24px;
   --pill-h: 20px;
-  --row-h: 36px;       /* sidebar nav + thread row */
-  --row-h-sm: 32px;    /* sidebar project header */
+  --row-h: 34px;       /* sidebar nav + thread row */
+  --row-h-sm: 30px;    /* sidebar project header */
   --toolbar-h: 40px;
   --sidebar-header-h: 40px;
 
   /* Layout */
+  --canvas-gap: 8px;   /* canvas inset around the floating cards */
   --titlebar-h: 52px;
   --traffic-light-w: 78px;
-  --sidebar-w: 280px;
+  --sidebar-w: 284px;
   --sidebar-min-w: 200px;
   --sidebar-max-w: 320px;
   --terminal-w: 460px;
   --terminal-min-w: 280px;
   --terminal-max-w: 720px;
+  --panel-w: 460px;
+  --panel-min-w: 320px;
+  --panel-max-w: 820px;
   --statusline-h: 30px;
 
   /* Motion */
-  --dur-fast: 150ms;
-  --ease-out: ease-out;
-  --dur-pane: 200ms;
-  --ease-pane: cubic-bezier(0.2, 0, 0, 1);
+  --motion-1: 120ms;
+  --motion-2: 200ms;
+  --motion-3: 320ms;
+  --ease-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-emph: cubic-bezier(0.3, 0, 0, 1);
+  /* Legacy aliases (older component CSS). */
+  --dur-fast: var(--motion-1);
+  --ease-out: var(--ease-soft);
+  --dur-pane: var(--motion-2);
+  --ease-pane: var(--ease-soft);
 
   /* Composer */
   --bg-composer: #ffffff;
@@ -141,9 +183,11 @@
   --account-8: #a2845e;
 }
 
+/* Reduced motion: every duration token collapses, so transitions and keyframes that use them become instant. */
 @media (prefers-reduced-motion: reduce) {
   :root {
-    --dur-fast: 0ms;
-    --dur-pane: 0ms;
+    --motion-1: 0ms;
+    --motion-2: 0ms;
+    --motion-3: 0ms;
   }
 }

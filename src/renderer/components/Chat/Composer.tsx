@@ -10,6 +10,8 @@ export const COMPOSER_PLACEHOLDER = '무엇이든 요청하세요';
 /** Imperative handle: the draft screen focuses the composer, attachments insert mentions. */
 export interface ComposerHandle {
   focus(): void;
+  /** Replaces the text (suggested prompt, "편집해서 다시 보내기") and puts the caret at the end. */
+  setText(text: string): void;
 }
 
 export interface ComposerProps {
@@ -39,6 +41,9 @@ export interface ComposerProps {
   /** Visual size: the draft screen uses the roomier variant. */
   size?: 'md' | 'lg';
   handleRef?: Ref<ComposerHandle>;
+  /** Text to place in the box once per `nonce` (store composerPrefill); `onPrefillApplied` clears it. */
+  prefill?: { text: string; nonce: number } | null;
+  onPrefillApplied?: () => void;
 }
 
 const MAX_HEIGHT_PX = 240;
@@ -62,13 +67,32 @@ export const Composer = memo(function Composer({
   autoFocus = false,
   size = 'md',
   handleRef,
+  prefill = null,
+  onPrefillApplied,
 }: ComposerProps) {
   const [text, setText] = useState('');
   const [plusOpen, setPlusOpen] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const plusRef = useRef<HTMLButtonElement>(null);
 
-  useImperativeHandle(handleRef, () => ({ focus: () => taRef.current?.focus() }), []);
+  const replaceText = (next: string) => {
+    setText(next);
+    requestAnimationFrame(() => {
+      const el = taRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(next.length, next.length);
+    });
+  };
+
+  useImperativeHandle(handleRef, () => ({ focus: () => taRef.current?.focus(), setText: replaceText }), []);
+
+  useEffect(() => {
+    if (!prefill) return;
+    replaceText(prefill.text);
+    onPrefillApplied?.();
+    // One application per request (nonce); the callback identity does not matter.
+  }, [prefill?.nonce]);
 
   useEffect(() => {
     const el = taRef.current;
@@ -144,6 +168,7 @@ export const Composer = memo(function Composer({
   ];
 
   const canSend = !disabled && !busy && text.trim().length > 0;
+  const hasText = text.trim().length > 0;
 
   return (
     <div className={`hc-composer hc-composer--${size}`}>
@@ -191,7 +216,7 @@ export const Composer = memo(function Composer({
           ) : (
             <button
               type="button"
-              className="hc-send"
+              className={`hc-send${hasText ? ' hc-send--ready' : ''}`}
               aria-label="보내기"
               title="보내기 (⏎)"
               disabled={!canSend}

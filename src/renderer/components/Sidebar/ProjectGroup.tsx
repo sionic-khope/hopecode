@@ -14,7 +14,13 @@ export interface ThreadRowHandlers {
   onDeleteThread: (threadId: string, force: boolean) => Promise<typeof NEEDS_FORCE | void>;
 }
 
-export interface ProjectGroupProps extends ThreadRowHandlers {
+/** Row presentation shared by every list: unseen finished turns and the minute clock for relative times. */
+export interface ThreadRowView {
+  unseenDone: Readonly<Record<string, true>>;
+  now: number;
+}
+
+export interface ProjectGroupProps extends ThreadRowHandlers, ThreadRowView {
   project: Project;
   /** Visible threads (not archived / pinned), newest activity first. */
   threads: Thread[];
@@ -42,6 +48,8 @@ export const ProjectGroup = memo(function ProjectGroup({
   onNewChatIn,
   onRemoveProject,
   onSetTrusted,
+  unseenDone,
+  now,
 }: ProjectGroupProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -142,6 +150,8 @@ export const ProjectGroup = memo(function ProjectGroup({
                 onSetPinned={onSetPinned}
                 onSetArchived={onSetArchived}
                 onDelete={onDeleteThread}
+                done={unseenDone[thread.id] === true}
+                now={now}
               />
             ))
           )}

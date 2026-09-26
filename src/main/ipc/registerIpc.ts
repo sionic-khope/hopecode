@@ -13,6 +13,8 @@ import type {
   AccountPool,
   Broadcaster,
   Dialogs,
+  EditorLauncher,
+  GitService,
   PtyManager,
   SessionManager,
   Store,
@@ -24,8 +26,21 @@ import type {
 } from '../contracts';
 import type { SyncTranscriptFn } from '../session/transcriptSync';
 import { DEFAULT_THREAD_TITLE, USAGE_HISTORY_RETENTION_MS } from '../../shared/constants';
+import { DEFAULT_AGENT, isAgentKind } from '../../shared/agents';
 import { deriveThreadTitle } from '../../core/threadTitle';
-import type { AccountPatch, ChatSendResult, EffortLevel, PermissionDecision, Project, Thread } from '../../shared/types';
+import { applySettingsPatch, isEditorId, validateSettingsPatch } from '../../core/settings';
+import type {
+  AccountPatch,
+  AgentKind,
+  AppInfo,
+  AppSettings,
+  ChatSendResult,
+  EffortLevel,
+  PermissionDecision,
+  Project,
+  SharedConfigStatus,
+  Thread,
+} from '../../shared/types';
 import {
   assertReq,
   isBoolean,
@@ -76,6 +91,19 @@ export interface RegisterIpcServices {
   isTrustedSender: (url: string | undefined) => boolean;
   /** Copies a transcript between account config dirs (account removal hands threads to another account). */
   syncTranscript: SyncTranscriptFn;
+  gitService: GitService;
+  editorLauncher: EditorLauncher;
+  /** App / CLI / SDK versions and the data folder. */
+  appInfo: () => AppInfo;
+  /** Reveals the (fixed) app data folder; a no-op in headless e2e. */
+  openDataFolder: () => Promise<void>;
+  quit: () => void;
+  /** ~/.claude sharing state per account, and re-linking every account. */
+  sharedConfig: { status(): Promise<SharedConfigStatus>; relink(): Promise<SharedConfigStatus> };
+  /** Called after `settings:update` stored a change (main re-applies poll interval etc.). */
+  onSettingsChanged?: (next: AppSettings, prev: AppSettings) => void;
+  /** Fixture / headless e2e run (bootstrap `testMode`: no system notifications). */
+  testMode?: boolean;
 }
 
 type Handlers = { [K in InvokeChannel]: (req: unknown) => Promise<InvokeResponse<K>> };
@@ -121,11 +149,15 @@ function buildHandlers(s: RegisterIpcServices): Handlers {
     return project as Project;
   }
 
-  /** New idle thread in `project` (git worktree when the folder is a repo). Not stored or broadcast. */
+  /**
+   * New idle thread in `project`: its own git worktree when the setting allows it and the folder is a repo,
+   * otherwise the project folder itself. Not stored or broadcast.
+   */
   async function createThreadRecord(
     project: Project,
     opts: {
       title: string;
+      agent?: AgentKind;
       model?: string;
       permissionMode: Thread['permissionMode'];
       effort?: EffortLevel | null;
@@ -134,19 +166,22 @@ function buildHandlers(s: RegisterIpcServices): Handlers {
   ): Promise<Thread> {
     const id = randomUUID();
     const shortId = id.slice(0, 8);
-    const { cwd, worktree } = await worktreeManager.create(project.path, shortId, { trusted: project.trusted });
     const settings = store.get().settings;
+    const { cwd, worktree } = settings.useWorktree
+      ? await worktreeManager.create(project.path, shortId, { trusted: project.trusted })
+      : { cwd: project.path, worktree: undefined };
     const now = Date.now();
     return {
       id,
       projectId: project.id,
+      agent: opts.agent ?? DEFAULT_AGENT,
       title: opts.title,
       cwd,
       ...(worktree ? { worktree } : {}),
       model: opts.model ?? settings.defaultModel,
       resolvedModel: null,
       permissionMode: opts.permissionMode,
-      effort: opts.effort ?? null,
+      effort: opts.effort === undefined ? settings.defaultEffort : opts.effort,
       pinnedAccountId: opts.pinnedAccountId ?? null,
       pinned: false,
       archived: false,
@@ -163,6 +198,41 @@ function buildHandlers(s: RegisterIpcServices): Handlers {
     };
   }
 
+  /** Closes the runner and pty, removes the history, the worktree (when asked) and the thread record. */
+  async function deleteThread(thread: Thread, removeWorktree: boolean, force: boolean): Promise<void> {
+    const project = store.get().projects.find((p) => p.id === thread.projectId);
+    const worktree = removeWorktree && project ? thread.worktree : undefined;
+    await sessionManager.closeThread(thread.id).catch((err: unknown) => console.error('[ipc] closeThread failed', err));
+    ptyManager.kill(thread.id);
+    await threadLog.remove(thread.id).catch((err: unknown) => console.error('[ipc] threadLog.remove failed', err));
+    if (worktree && project) {
+      await worktreeManager
+        .remove(project.path, worktree, { force })
+        .catch((err: unknown) => console.error('[ipc] worktree remove failed', err));
+    }
+    store.update((draft) => {
+      draft.threads = draft.threads.filter((t) => t.id !== thread.id);
+    });
+  }
+
+  /** Thread plus its project folder (git operations run in `thread.cwd`, based on the project's branch). */
+  function requireThreadFolder(channel: string, req: unknown): { thread: Thread; projectPath: string } {
+    assertReq(channel, isPlainObject(req), 'threadId required');
+    const thread = requireThread(channel, (req as { threadId?: unknown }).threadId);
+    const project = store.get().projects.find((p) => p.id === thread.projectId);
+    return { thread, projectPath: project?.path ?? thread.cwd };
+  }
+
+  /** Repo-relative path from the renderer: non-empty, relative, no NUL; GitService re-checks containment. */
+  function requireRelPath(channel: string, path: unknown): string {
+    assertReq(
+      channel,
+      isNonEmptyString(path) && path.length <= 4096 && !path.includes('\0') && !isAbsolute(path),
+      'path must be a relative path',
+    );
+    return path as string;
+  }
+
   return {
     'app:bootstrap': async () => {
       const state = store.get();
@@ -175,6 +245,7 @@ function buildHandlers(s: RegisterIpcServices): Handlers {
         appVersion: s.appVersion,
         homeDir: homedir(),
         pendingPermissions: sessionManager.pendingPermissions(),
+        testMode: s.testMode === true,
       };
     },
 
@@ -284,6 +355,7 @@ function buildHandlers(s: RegisterIpcServices): Handlers {
       assertReq(channel, isOptionalString(r.model), 'model must be a string');
       assertReq(channel, r.permissionMode === undefined || isUiPermissionMode(r.permissionMode), 'invalid permissionMode');
       assertReq(channel, r.effort === undefined || r.effort === null || isEffortLevel(r.effort), 'invalid effort');
+      assertReq(channel, r.agent === undefined || isAgentKind(r.agent), 'invalid agent');
       assertReq(
         channel,
         r.pinnedAccountId === undefined || isNullableString(r.pinnedAccountId),
@@ -300,6 +372,7 @@ function buildHandlers(s: RegisterIpcServices): Handlers {
 
       const thread = await createThreadRecord(project, {
         title: deriveThreadTitle(text),
+        agent: r.agent as AgentKind | undefined,
         model: r.model as string | undefined,
         permissionMode: mode,
         effort: (r.effort as EffortLevel | null | undefined) ?? null,
@@ -407,19 +480,15 @@ function buildHandlers(s: RegisterIpcServices): Handlers {
       if (worktree && force !== true && (await worktreeManager.isDirty(worktree.path))) {
         return { ok: false, reason: 'worktree-dirty' };
       }
-
-      await sessionManager.closeThread(threadId).catch((err: unknown) => console.error('[ipc] closeThread failed', err));
-      ptyManager.kill(threadId);
-      await threadLog.remove(threadId).catch((err: unknown) => console.error('[ipc] threadLog.remove failed', err));
-      if (worktree && project) {
-        await worktreeManager
-          .remove(project.path, worktree, { force: force === true })
-          .catch((err: unknown) => console.error('[ipc] worktree remove failed', err));
-      }
-      store.update((draft) => {
-        draft.threads = draft.threads.filter((t) => t.id !== threadId);
-      });
+      await deleteThread(thread, removeWorktree, force === true);
       return { ok: true };
+    },
+
+    'threads:deleteArchived': async () => {
+      // The renderer confirmed "모두 삭제" (worktrees go too, uncommitted changes included).
+      const archived = store.get().threads.filter((t) => t.archived);
+      for (const thread of archived) await deleteThread(thread, true, true);
+      return { deleted: archived.length };
     },
 
     'thread:setModel': async (req) => {
@@ -654,6 +723,86 @@ function buildHandlers(s: RegisterIpcServices): Handlers {
       );
       const { threadId, data } = req as { threadId: string; data: string };
       ptyManager.write(threadId, data);
+    },
+
+    'settings:update': async (req) => {
+      const checked = validateSettingsPatch(req);
+      assertReq('settings:update', checked.ok, checked.ok ? '' : checked.error);
+      const patch = (checked as { ok: true; patch: Parameters<typeof applySettingsPatch>[1] }).patch;
+      const prev = store.get().settings;
+      const next = applySettingsPatch(prev, patch);
+      store.update((draft) => {
+        draft.settings = next;
+      });
+      s.onSettingsChanged?.(next, prev);
+      broadcaster.emit('settings:updated', next);
+      return next;
+    },
+
+    'app:info': async () => s.appInfo(),
+
+    'app:openDataFolder': async () => {
+      await s.openDataFolder();
+    },
+
+    'app:quit': async () => {
+      s.quit();
+    },
+
+    'config:sharedStatus': async () => s.sharedConfig.status(),
+
+    'config:relink': async () => s.sharedConfig.relink(),
+
+    'editor:list': async () => s.editorLauncher.list(),
+
+    'editor:open': async (req) => {
+      assertReq('editor:open', isPlainObject(req) && isEditorId(req.editor), 'threadId/editor required');
+      const { thread } = requireThreadFolder('editor:open', req);
+      // Only the thread's own folder is ever handed to another app.
+      await s.editorLauncher.open((req as { editor: Parameters<EditorLauncher['open']>[0] }).editor, thread.cwd);
+    },
+
+    'git:changes': async (req) => {
+      const { thread, projectPath } = requireThreadFolder('git:changes', req);
+      return s.gitService.changes(thread.cwd, projectPath);
+    },
+
+    'git:fileDiff': async (req) => {
+      const { thread, projectPath } = requireThreadFolder('git:fileDiff', req);
+      const path = requireRelPath('git:fileDiff', (req as { path?: unknown }).path);
+      return s.gitService.fileDiff(thread.cwd, projectPath, path);
+    },
+
+    'git:revertFile': async (req) => {
+      const { thread } = requireThreadFolder('git:revertFile', req);
+      const path = requireRelPath('git:revertFile', (req as { path?: unknown }).path);
+      return s.gitService.revertFile(thread.cwd, path);
+    },
+
+    'git:commit': async (req) => {
+      const { thread } = requireThreadFolder('git:commit', req);
+      const message = (req as { message?: unknown }).message;
+      assertReq('git:commit', isString(message) && message.length <= 10_000, 'message must be a string');
+      return s.gitService.commit(thread.cwd, message as string);
+    },
+
+    'git:merge': async (req) => {
+      const { thread, projectPath } = requireThreadFolder('git:merge', req);
+      if (!thread.worktree) return { ok: false, error: 'worktree 스레드가 아닙니다' };
+      return s.gitService.merge(thread.cwd, projectPath);
+    },
+
+    'git:remoteInfo': async (req) => {
+      const { thread, projectPath } = requireThreadFolder('git:remoteInfo', req);
+      return s.gitService.remoteInfo(thread.cwd, projectPath);
+    },
+
+    'git:pushPr': async (req) => {
+      const { thread, projectPath } = requireThreadFolder('git:pushPr', req);
+      const { title, body } = req as { title?: unknown; body?: unknown };
+      assertReq('git:pushPr', isNonEmptyString(title) && title.length <= 300, 'title required');
+      assertReq('git:pushPr', isString(body) && body.length <= 20_000, 'body must be a string');
+      return s.gitService.pushAndOpenPr(thread.cwd, projectPath, title as string, body as string);
     },
 
     'pty:resize': async (req) => {

@@ -6,6 +6,7 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { SHARED_CONFIG_ENTRIES } from '../../shared/constants';
 import type { ConfigDirLinks } from '../contracts';
+import type { SharedConfigEntry, SharedConfigStatus, SharedEntryState } from '../../shared/types';
 
 export function defaultClaudeDir(): string {
   return join(homedir(), '.claude');
@@ -86,4 +87,37 @@ export function createConfigDirLinks(defaultSourceDir: string = defaultClaudeDir
     linkSharedConfig: (configDir, sourceDir) => linkSharedConfig(configDir, sourceDir ?? defaultSourceDir),
     verifyLinks,
   };
+}
+
+/**
+ * Link state of every shared entry per account config dir (read-only): `linked` = symlink to the source entry that
+ * resolves, `broken` = our symlink whose target is gone, `conflict` = a real file / foreign link in its place,
+ * `not-linked` = nothing there yet.
+ */
+export async function sharedConfigStatus(
+  accounts: readonly { id: string; configDir: string }[],
+  sourceDir: string = defaultClaudeDir(),
+): Promise<SharedConfigStatus> {
+  const src = resolve(sourceDir);
+  const entries: SharedConfigEntry[] = [];
+  for (const name of SHARED_CONFIG_ENTRIES) {
+    const source = join(src, name);
+    const inSource = (await lstatOrNull(source)) !== null;
+    const byAccount: Record<string, SharedEntryState> = {};
+    for (const account of accounts) {
+      const target = join(account.configDir, name);
+      const st = await lstatOrNull(target);
+      let state: SharedEntryState = 'not-linked';
+      if (st?.isSymbolicLink()) {
+        const dest = await readlink(target).catch(() => null);
+        if (dest !== source) state = 'conflict';
+        else state = (await stat(target).then(() => true).catch(() => false)) ? 'linked' : 'broken';
+      } else if (st) {
+        state = 'conflict';
+      }
+      byAccount[account.id] = state;
+    }
+    entries.push({ name, inSource, byAccount });
+  }
+  return { sourceDir: src, entries };
 }

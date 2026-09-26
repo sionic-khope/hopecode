@@ -3,24 +3,33 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { join } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, powerMonitor } from 'electron';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, powerMonitor, shell } from 'electron';
 import {
+  CLIENT_APP_NAME,
   ENV_FIXTURE_PROJECT,
   ENV_FIXTURES,
   ENV_SMOKE,
   LOGIN_URL_HOSTS,
   QUIT_DISPOSE_TIMEOUT_MS,
 } from '../shared/constants';
+import type { EventChannel, EventPayload } from '../shared/ipc';
+import type { AppInfo } from '../shared/types';
 import { isAppUrl } from './appUrl';
 import { openExternalSafe } from './externalUrl';
 import { createAccountPool } from './accounts/accountPool';
-import { createConfigDirLinks } from './accounts/configDirLinks';
+import { createConfigDirLinks, defaultClaudeDir, sharedConfigStatus } from './accounts/configDirLinks';
 import { createCredentials } from './accounts/credentials';
 import { startLoginFlow } from './accounts/loginFlow';
 import { createClaudeBinary } from './claudeBinary';
 import type { Broadcaster, Dialogs, QueryFn, TrustChoice, UsagePoller } from './contracts';
 import { createFixtureQuery } from './fixtures/fakeQuery';
+import { createFixtureEditorLauncher } from './fixtures/fixtureEditors';
+import { createFixturePublisher } from './fixtures/fixtureGit';
+import { createEditorLauncher } from './editors/editorLauncher';
+import { createGitPublisher, createGitService } from './git/gitService';
+import { createModelCatalog, probeModels } from './models/modelCatalog';
 import {
   createFixtureCredentials,
   createFixtureDialogs,
@@ -175,8 +184,15 @@ async function startServices(): Promise<Services> {
   const shellEnv = createShellEnv();
   await shellEnv.init();
 
-  // Single broadcaster shared by every service.
-  const broadcaster = createBroadcaster(() => BrowserWindow.getAllWindows());
+  // Single broadcaster shared by every service. Permission traffic also refreshes the Dock badge.
+  const windowsBroadcaster = createBroadcaster(() => BrowserWindow.getAllWindows());
+  let refreshBadge: () => void = () => {};
+  const broadcaster: Broadcaster = {
+    emit<K extends EventChannel>(channel: K, payload: EventPayload<K>) {
+      windowsBroadcaster.emit(channel, payload);
+      if (channel === 'permission:request' || channel === 'permission:cancel') refreshBadge();
+    },
+  };
 
   const dataDir = userDataDir();
   // Files from builds that predate the private modes (L7) are tightened once per start.
@@ -199,17 +215,23 @@ async function startServices(): Promise<Services> {
   const claudeBinary = createClaudeBinary();
   let cliVersion = claudeBinary.getCliVersion();
 
+  const modelCatalog = createModelCatalog({ filePath: join(dataDir, 'models.json'), broadcaster });
+  await modelCatalog.load();
+
   if (fixtures) seedFixtureAccounts(store, accountsDir());
   const credentials = fixtures ? createFixtureCredentials() : createCredentials();
   const fixtureRunCommand = fixtures ? createFixtureRunCommand() : undefined;
 
   // AccountPool <-> UsagePoller are mutually dependent; connected through callbacks.
   let usagePoller: UsagePoller | null = null;
+  let probeModelsOnce: () => void = () => {};
+  // Fixture mode links from an empty dir inside HOPECODE_HOME instead of the user's ~/.claude.
+  const sharedSourceDir = fixtures ? join(hopecodeHome(), 'fixture-claude') : defaultClaudeDir();
+  const configLinks = createConfigDirLinks(sharedSourceDir);
   const accountPool = createAccountPool({
     store,
     accountsDir,
-    // Fixture mode links from an empty dir inside HOPECODE_HOME instead of the user's ~/.claude.
-    links: createConfigDirLinks(fixtures ? join(hopecodeHome(), 'fixture-claude') : undefined),
+    links: configLinks,
     startLogin: (input) =>
       startLoginFlow(
         {
@@ -224,7 +246,11 @@ async function startServices(): Promise<Services> {
     credentials,
     broadcaster,
     usageHistory,
-    onAccountAdded: (account) => void usagePoller?.refresh(account.id),
+    onAccountAdded: (account) => {
+      void usagePoller?.refresh(account.id);
+      // First account of a fresh install: learn the real model list right away.
+      if (!modelCatalog.get()) probeModelsOnce();
+    },
   });
 
   const poller = createUsagePoller({
@@ -235,6 +261,8 @@ async function startServices(): Promise<Services> {
     history: usageHistory,
     // No broadcaster: registerIpc forwards onUpdate as usage:updated.
     watchAccounts: (cb) => accountPool.onChange(() => cb()),
+    // Settings > 계정 > 사용량 조회 간격; read before every poll.
+    pollIntervalMs: () => store.get().settings.usagePollIntervalSec * 1000,
   });
   usagePoller = poller;
 
@@ -261,15 +289,69 @@ async function startServices(): Promise<Services> {
     onCliVersion: (v) => {
       cliVersion = v;
     },
+    models: modelCatalog,
     ...(fixtures ? { waitTickMs: FIXTURE_WAIT_TICK_MS } : {}),
   });
   session.restore();
+
+  // Dock badge: threads waiting for a permission answer (never in test runs, which have no Dock icon).
+  refreshBadge = () => {
+    if (fixtures || headless || process.platform !== 'darwin') return;
+    app.setBadgeCount(new Set(session.pendingPermissions().map((r) => r.threadId)).size);
+  };
+
+  // Message-less model probe (real runs only): initialize one CLI on the first usable account, read its model list,
+  // close it. Failures keep the cached / fallback list.
+  let probing = false;
+  probeModelsOnce = () => {
+    if (fixtures || headless || probing) return;
+    const account = [...accountPool.list()].filter((a) => a.enabled).sort((a, b) => a.priority - b.priority)[0];
+    if (!account) return;
+    probing = true;
+    void (async () => {
+      try {
+        const models = await probeModels({
+          query,
+          cwd: dataDir,
+          env: shellEnv.childEnv({ configDir: account.configDir, clientApp: `${CLIENT_APP_NAME}/${app.getVersion()}` }),
+          pathToClaudeCodeExecutable: claudeBinary.resolvePath(),
+          log: (message) => console.log(message),
+        });
+        await modelCatalog.update(models);
+      } catch (err) {
+        console.error('[hopecode] model probe failed; keeping the cached model list', err);
+      } finally {
+        probing = false;
+      }
+    })();
+  };
+  probeModelsOnce();
   powerMonitor.on('resume', () => void session.reevaluate());
   poller.onUpdate(() => void session.reevaluate());
 
   // Fixture / e2e runs never open a native dialog: every question is answered by the seam.
   const dialogs: Dialogs = fixtures || headless ? createFixtureDialogs(devEnv(ENV_FIXTURE_PROJECT)) : nativeDialogs;
   const urlConfig = appUrlConfig();
+
+  const gitEnv = () => shellEnv.childEnv({});
+  // Fixture / e2e runs never push, open PRs or launch other apps: both go through recording seams.
+  const gitService = createGitService({
+    env: gitEnv,
+    publisher: fixtures || headless ? createFixturePublisher() : createGitPublisher(gitEnv),
+  });
+  const editorLauncher = fixtures || headless ? createFixtureEditorLauncher() : createEditorLauncher();
+  const sdkVersion = readSdkVersion();
+  const sharedConfig = {
+    status: () => sharedConfigStatus(accountPool.list(), sharedSourceDir),
+    async relink() {
+      for (const account of accountPool.list()) {
+        await configLinks
+          .linkSharedConfig(account.configDir)
+          .catch((err: unknown) => console.error(`[hopecode] relink failed for ${account.alias}`, err));
+      }
+      return sharedConfigStatus(accountPool.list(), sharedSourceDir);
+    },
+  };
 
   const unregisterIpc = registerIpc(ipcMain, {
     store,
@@ -285,6 +367,29 @@ async function startServices(): Promise<Services> {
     appVersion: app.getVersion(),
     isTrustedSender: (url) => isAppUrl(url, urlConfig),
     syncTranscript,
+    gitService,
+    editorLauncher,
+    appInfo: (): AppInfo => ({
+      appVersion: app.getVersion(),
+      cliVersion,
+      sdkVersion,
+      electronVersion: process.versions.electron ?? '',
+      dataDir,
+    }),
+    async openDataFolder() {
+      if (fixtures || headless) return; // never opens a Finder window in test runs
+      const error = await shell.openPath(dataDir);
+      if (error) throw new Error(error);
+    },
+    quit: () => app.quit(),
+    sharedConfig,
+    testMode: fixtures || headless,
+    onSettingsChanged: (next, prev) => {
+      // A new interval applies now: poll every account once, which reschedules on the new interval.
+      if (next.usagePollIntervalSec !== prev.usagePollIntervalSec) void poller.refresh().catch(() => {});
+      // Automatic switching turned back on: threads waiting on their own account may move now.
+      if (next.autoSwitchAccounts && !prev.autoSwitchAccounts) void session.reevaluate();
+    },
   });
 
   poller.start();
@@ -310,9 +415,36 @@ async function startServices(): Promise<Services> {
   };
 }
 
+/** @anthropic-ai/claude-agent-sdk version (its package.json sits next to the main entry; subpaths are not exported). */
+function readSdkVersion(): string | null {
+  try {
+    const pkg = JSON.parse(readFileSync(join(dirname(require.resolve('@anthropic-ai/claude-agent-sdk')), 'package.json'), 'utf8')) as {
+      version?: unknown;
+    };
+    return typeof pkg.version === 'string' ? pkg.version : null;
+  } catch {
+    return null;
+  }
+}
+
 function buildMenu(broadcaster: Broadcaster): Menu {
   return Menu.buildFromTemplate([
-    { role: 'appMenu' },
+    {
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { label: '설정…', accelerator: 'CmdOrCtrl+,', click: () => broadcaster.emit('ui:openSettings', undefined) },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' },
+      ],
+    },
     {
       label: 'File',
       submenu: [
@@ -334,6 +466,16 @@ function buildMenu(broadcaster: Broadcaster): Menu {
           label: '터미널 보기/숨기기',
           accelerator: 'CmdOrCtrl+J',
           click: () => broadcaster.emit('ui:toggleTerminal', undefined),
+        },
+        {
+          label: '변경사항 패널 보기/숨기기',
+          accelerator: 'CmdOrCtrl+Shift+D',
+          click: () => broadcaster.emit('ui:toggleChanges', undefined),
+        },
+        {
+          label: '명령 팔레트',
+          accelerator: 'CmdOrCtrl+K',
+          click: () => broadcaster.emit('ui:commandPalette', undefined),
         },
         { type: 'separator' },
         { role: 'reload' },

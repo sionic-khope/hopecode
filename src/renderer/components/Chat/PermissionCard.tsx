@@ -33,7 +33,7 @@ export function PermissionCard({ request, onDecide }: PermissionCardProps) {
 
   return (
     <div className="hc-permission" role="alertdialog" aria-label={request.title ?? request.toolName}>
-      <div className="hc-permission__title">{request.title ?? `${request.displayName ?? request.toolName} 실행을 허용할까요?`}</div>
+      <div className="hc-permission__title">{`${request.displayName ?? request.toolName} 실행을 허용할까요?`}</div>
       {request.description ? <div className="hc-permission__desc">{request.description}</div> : null}
       {inputPreview ? <pre className="hc-permission__input">{inputPreview}</pre> : null}
       <div className="hc-permission__actions">

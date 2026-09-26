@@ -5,3 +5,6 @@ export { Segmented, type SegmentedOption, type SegmentedProps } from './Segmente
 export { Switch, type SwitchProps } from './Switch';
 export { BrandMark } from './BrandMark';
 export { Menu, type MenuItemSpec, type MenuProps, type MenuSection } from './Menu';
+export { Modal, type ModalProps } from './Modal';
+export { StatusPill, type RunState, type StatusPillProps } from './StatusPill';
+export { Collapse } from './Collapse';

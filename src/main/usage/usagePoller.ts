@@ -34,7 +34,8 @@ export interface UsagePollerDeps {
   now?: () => number;
   /** 0..1, jitter source. */
   random?: () => number;
-  pollIntervalMs?: number;
+  /** Poll interval; a function is read before every poll so a settings change applies from the next one. */
+  pollIntervalMs?: number | (() => number);
 }
 
 interface PollState {
@@ -56,7 +57,9 @@ function pruneRejected(rejected: AccountUsage['rejectedUntil'], now: number): Ac
 export function createUsagePoller(deps: UsagePollerDeps): UsagePoller {
   const now = deps.now ?? Date.now;
   const random = deps.random ?? Math.random;
-  const interval = deps.pollIntervalMs ?? USAGE_POLL_INTERVAL_MS;
+  const intervalOf = deps.pollIntervalMs;
+  const currentInterval = (): number =>
+    typeof intervalOf === 'function' ? intervalOf() : (intervalOf ?? USAGE_POLL_INTERVAL_MS);
   const usageById: Record<string, AccountUsage> = {};
   const states = new Map<string, PollState>();
   const listeners = new Set<(s: PoolSnapshot) => void>();
@@ -122,6 +125,7 @@ export function createUsagePoller(deps: UsagePollerDeps): UsagePoller {
   /** Fetch once; returns the delay until the next poll. Results for an account that went away are dropped (L4). */
   async function pollOnce(account: Account): Promise<number> {
     const s = state(account.id);
+    const interval = currentInterval();
     const creds = await deps.credentials.read(account.configDir);
     if (!isActive(account.id)) return interval;
     if (creds.status !== 'ok') {

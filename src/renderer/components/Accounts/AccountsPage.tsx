@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import type { Account, AccountPatch, AccountUsage, UsageSample } from '../../../shared/types';
@@ -24,6 +24,9 @@ export interface AccountsPageProps {
   onBack?: () => void;
   /** Re-run login for an existing account (re-auth flow). Passed through to each AccountRow. */
   onReLoginAccount?: (accountId: string) => void;
+  /** Opened from "사용량": scroll the first usage chart into view (and flash the charts once). */
+  focusUsage?: boolean;
+  onFocused?: () => void;
 }
 
 /**
@@ -41,7 +44,26 @@ export function AccountsPage({
   onAddAccount,
   onBack,
   onReLoginAccount,
+  focusUsage = false,
+  onFocused,
 }: AccountsPageProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!focusUsage) return;
+    const id = requestAnimationFrame(() => {
+      const root = rootRef.current;
+      const chart = root?.querySelector<HTMLElement>('.hc-chart');
+      if (chart) {
+        const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        chart.scrollIntoView({ block: 'center', behavior: smooth ? 'smooth' : 'auto' });
+        root?.classList.add('hc-accounts-page--usage-focus');
+      }
+      onFocused?.();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [focusUsage, onFocused]);
+
   const ordered = useMemo(() => [...accounts].sort((a, b) => a.priority - b.priority), [accounts]);
   const orderedIds = useMemo(() => ordered.map((a) => a.id), [ordered]);
 
@@ -63,7 +85,7 @@ export function AccountsPage({
   const enabledCount = accounts.filter((a) => a.enabled).length;
 
   return (
-    <div className="hc-accounts-page">
+    <div className="hc-accounts-page" ref={rootRef}>
       <div className="hc-accounts-page__header">
         <div className="hc-accounts-page__title-row">
           {onBack ? (

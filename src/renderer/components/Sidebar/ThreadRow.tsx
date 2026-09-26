@@ -1,7 +1,8 @@
 import { memo, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import type { Account, Thread } from '../../../shared/types';
-import { formatResetCountdown } from '../../../core/format';
-import { IconArchive, IconPinThread, IconSpinner, IconUnarchive } from './icons';
+import { formatRelativeTime, formatResetCountdown } from '../../../core/format';
+import { StatusPill } from '../common';
+import { IconArchive, IconPinThread, IconUnarchive } from './icons';
 import { ActionMenu, ConfirmDeletePopover, type NEEDS_FORCE } from './ItemMenu';
 
 export interface ThreadRowProps {
@@ -22,6 +23,10 @@ export interface ThreadRowProps {
   onSetArchived: (threadId: string, archived: boolean) => void;
   /** Resolves NEEDS_FORCE when the worktree has uncommitted changes; `force` discards them. */
   onDelete: (threadId: string, force: boolean) => Promise<typeof NEEDS_FORCE | void>;
+  /** A turn finished while the thread was not open (green "완료" pill until it is opened). */
+  done?: boolean;
+  /** Minute clock from the sidebar (relative "3분 전" labels). */
+  now?: number;
 }
 
 /** Re-renders every 30s while waiting, so the countdown label stays fresh without a global clock. */
@@ -50,8 +55,11 @@ export const ThreadRow = memo(function ThreadRow({
   onSetPinned,
   onSetArchived,
   onDelete,
+  done = false,
+  now: listNow,
 }: ThreadRowProps) {
-  const now = useNow(thread.status === 'waiting');
+  const waitNow = useNow(thread.status === 'waiting');
+  const now = Math.max(waitNow, listNow ?? 0);
   const wrapRef = useRef<HTMLLIElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -90,18 +98,23 @@ export const ThreadRow = memo(function ThreadRow({
     }
   };
 
+  // Run state as a pastel pill; an idle thread shows how long ago it was active instead.
   const status =
     thread.status === 'running' ? (
-      <span className="hc-thread__status" title="실행 중" aria-label="실행 중">
-        <IconSpinner />
-      </span>
+      <StatusPill state="running" className="hc-thread__pill" title="실행 중" />
     ) : thread.status === 'waiting' ? (
-      <span className="hc-thread__meta hc-thread__meta--waiting" title="한도 초기화까지 대기 중">
+      <StatusPill state="waiting" className="hc-thread__pill hc-thread__meta hc-thread__meta--waiting" title="한도 초기화까지 대기 중">
         {countdown ?? '대기 중'}
-      </span>
+      </StatusPill>
     ) : thread.status === 'error' ? (
-      <span className="hc-thread__status hc-thread__status--error" title="오류" aria-label="오류" />
-    ) : null;
+      <StatusPill state="error" className="hc-thread__pill" title="오류" />
+    ) : done ? (
+      <StatusPill state="done" className="hc-thread__pill" title="새 응답이 있습니다" />
+    ) : (
+      <span className="hc-thread__time" title={new Date(thread.updatedAt).toLocaleString()}>
+        {formatRelativeTime(thread.updatedAt, now)}
+      </span>
+    );
 
   return (
     <li
