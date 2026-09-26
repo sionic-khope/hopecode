@@ -5,6 +5,7 @@ import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import {
+  bottomTerminal,
   bootstrapState,
   chooseFixtureFolder,
   createSandbox,
@@ -155,7 +156,7 @@ test('terminal: shell exit shows 다시 시작, which starts a new shell', async
   const app = page.locator('.app');
   if (!(await app.getAttribute('class'))?.includes('app--terminal-open')) await menuShortcut(run.app, 'CmdOrCtrl+J');
   await expect(app).toHaveClass(/app--terminal-open/);
-  const terminal = page.getByTestId('terminal');
+  const terminal = bottomTerminal(page);
   await terminal.locator('.xterm').click();
   await page.keyboard.type('exit\n');
   const exited = terminal.locator('.app__terminal-exited');

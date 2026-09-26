@@ -1,4 +1,4 @@
-/* Conversation header toolbar + right panel. Tokens only. */
+/* Conversation header toolbar + right panel + bottom terminal. Tokens only. */
 
 /* ---------- Header ---------- */
 .hc-chat-header {
@@ -152,6 +152,19 @@
   padding: 0 var(--space-3) 0 var(--space-4);
   border-bottom: 1px solid var(--separator);
 }
+.hc-panel__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--lh-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--label);
+}
+.hc-panel__title svg {
+  color: var(--label-secondary);
+}
 .hc-panel__body {
   flex: 1;
   min-height: 0;
@@ -159,15 +172,6 @@
   flex-direction: column;
 }
 .hc-panel__body > * {
-  flex: 1;
-  min-height: 0;
-}
-.hc-panel__terminal {
-  display: flex;
-  flex-direction: column;
-  background: var(--bg-terminal);
-}
-.hc-panel__terminal > * {
   flex: 1;
   min-height: 0;
 }
@@ -180,6 +184,124 @@
   font-size: var(--text-sm);
   line-height: var(--lh-sm);
   color: var(--label-tertiary);
+}
+
+/* ---------- Bottom terminal (docked under the conversation, ⌘J) ----------
+   The section animates its height; the inner block keeps the full height, anchored to the top, so the header
+   leads as the panel slides up and the shell is not refitted on every animation frame. */
+.hc-bottom {
+  --hc-bottom-h-clamped: min(var(--hc-bottom-h, 280px), 70vh);
+  position: relative;
+  flex: none;
+  height: 0;
+  overflow: hidden;
+  background: var(--bg-terminal);
+  box-shadow: inset 0 1px 0 var(--separator);
+  transition: height var(--motion-3) var(--ease-soft);
+}
+.hc-bottom--open {
+  height: var(--hc-bottom-h-clamped);
+}
+.app--resizing-rows .hc-bottom {
+  transition: none;
+}
+.app--resizing-rows {
+  cursor: row-resize;
+}
+.app--resizing-rows * {
+  -webkit-user-select: none;
+  user-select: none;
+}
+.hc-bottom__inner {
+  position: absolute;
+  inset: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  height: var(--hc-bottom-h-clamped);
+  opacity: 0;
+  transform: translateY(var(--space-3));
+  transition:
+    opacity var(--motion-2) var(--ease-soft),
+    transform var(--motion-3) var(--ease-soft);
+}
+.hc-bottom--open .hc-bottom__inner {
+  opacity: 1;
+  transform: none;
+}
+.hc-bottom__handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  height: 6px;
+  cursor: row-resize;
+  outline: none;
+}
+.hc-bottom__handle::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 50%;
+  width: 36px;
+  height: 4px;
+  margin-left: -18px;
+  border-radius: var(--radius-capsule);
+  background: var(--separator-strong);
+  opacity: 0;
+  transition: opacity var(--motion-1) var(--ease-soft);
+}
+.hc-bottom__handle:hover::after,
+.hc-bottom__handle:focus-visible::after,
+.app--resizing-rows .hc-bottom__handle::after {
+  opacity: 1;
+}
+.hc-bottom__header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 32px;
+  padding: 0 var(--space-2) 0 var(--space-4);
+  border-bottom: 1px solid var(--separator);
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+}
+.hc-bottom__title {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: var(--weight-semibold);
+  color: var(--label);
+}
+.hc-bottom__title svg {
+  color: var(--label-secondary);
+}
+.hc-bottom__cwd {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  color: var(--label-tertiary);
+}
+.hc-bottom__spacer {
+  flex: 1;
+}
+.hc-bottom__header .hc-btn--icon {
+  width: 24px;
+  height: 24px;
+}
+.hc-bottom__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.hc-bottom__body > * {
+  flex: 1;
+  min-height: 0;
 }
 
 /* ---------- Shortcuts / about modals ---------- */

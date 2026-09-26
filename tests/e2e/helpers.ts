@@ -233,3 +233,8 @@ export async function screenshotOf(
   );
   await locator.screenshot({ path: join(dir, `${name}.png`) });
 }
+
+/** The shell docked under the conversation (⌘J): inside the chat column, never in the right panel. */
+export function bottomTerminal(page: Page) {
+  return page.getByTestId('chat').getByTestId('bottom-panel').getByTestId('terminal');
+}

@@ -2,7 +2,7 @@
 // changes and terminal, sidebar + profile menu, settings, accounts, command palette) and checks the design
 // tokens the new language depends on (flat panes, display face on titles, primary blue).
 import { expect, test } from '@playwright/test';
-import { createSandbox, launch, menuShortcut, openDraft, openFromMore, screenshot, startThread, type Launched, type Sandbox } from './helpers';
+import { bottomTerminal, createSandbox, launch, menuShortcut, openDraft, openFromMore, screenshot, startThread, type Launched, type Sandbox } from './helpers';
 
 const SHOTS =
   process.env['HOPECODE_REDESIGN_SCREENSHOTS'] ??
@@ -53,7 +53,7 @@ test('conversation: permission card, then the Edit diff', async () => {
   await screenshot(page, 'v5-conversation-diff', SHOTS);
 });
 
-test('right panel: changes tab with a diff, then the terminal tab', async () => {
+test('right panel: changes with a diff, then the bottom terminal beside it', async () => {
   const { page } = run;
   await menuShortcut(run.app, 'CmdOrCtrl+Shift+D');
   const panel = page.getByTestId('changes-panel');
@@ -67,8 +67,9 @@ test('right panel: changes tab with a diff, then the terminal tab', async () => 
 
   await menuShortcut(run.app, 'CmdOrCtrl+J');
   await expect(page.locator('.app')).toHaveClass(/app--terminal-open/);
-  await expect(page.getByTestId('terminal').locator('.xterm')).toBeVisible();
+  await expect(bottomTerminal(page).locator('.xterm')).toBeVisible();
   await page.mouse.move(5, 700);
+  await expect(page.getByTestId('changes-panel')).toBeVisible();
   await screenshot(page, 'v5-panel-terminal', SHOTS);
   await menuShortcut(run.app, 'CmdOrCtrl+J');
   await expect(page.locator('.app')).toHaveClass(/app--terminal-closed/);

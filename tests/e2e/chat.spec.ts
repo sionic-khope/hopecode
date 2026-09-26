@@ -2,6 +2,7 @@
 // T6 per-thread model, U1 ctx from getContextUsage, R1 terminal cwd = worktree.
 import { expect, test } from '@playwright/test';
 import {
+  bottomTerminal,
   bootstrapState,
   createSandbox,
   launch,
@@ -82,13 +83,13 @@ test('terminal opens a shell in the thread worktree', async () => {
   const { page } = run;
   const { threads } = await bootstrapState(page);
   await menuShortcut(run.app, 'CmdOrCtrl+J');
-  const term = page.getByTestId('terminal').locator('.xterm');
+  const term = bottomTerminal(page).locator('.xterm');
   await expect(term).toBeVisible();
   await term.click();
   await page.keyboard.type('echo "CWD=[$(pwd -P)]"\n');
   // macOS tmpdir is a /var -> /private/var symlink; compare on the worktree-relative tail.
   const tail = threads[0].cwd.slice(threads[0].cwd.indexOf('/home/worktrees/'));
-  const rows = page.getByTestId('terminal').locator('.xterm-rows');
+  const rows = bottomTerminal(page).locator('.xterm-rows');
   // The output line (not the echoed command) reads `CWD=[/private/var/.../home/worktrees/<slug>/<id>]`.
   await expect
     .poll(async () => ((await rows.textContent()) ?? '').replace(/\s+/g, ''), { timeout: 20_000 })

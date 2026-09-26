@@ -120,6 +120,12 @@ export interface InvokeMap {
     req: { threadId: string; cols: number; rows: number; projectId?: string };
     res: { ptyId: string; replay: string };
   };
+  /** Kills the session's shell (if any) and spawns a fresh one in the same cwd (same `projectId` rule as
+   *  `pty:open`). The old shell's late exit is not broadcast (the id already maps to the new shell). */
+  'pty:restart': {
+    req: { threadId: string; cols: number; rows: number; projectId?: string };
+    res: { ptyId: string };
+  };
   'pty:write': { req: { threadId: string; data: string }; res: void };
   'pty:resize': { req: { threadId: string; cols: number; rows: number }; res: void };
 
@@ -247,6 +253,7 @@ export const INVOKE_CHANNELS = [
   'usage:refresh',
   'usage:history',
   'pty:open',
+  'pty:restart',
   'pty:write',
   'pty:resize',
   'settings:update',

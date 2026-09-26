@@ -15,6 +15,7 @@ function makeProject(id: string, over: Partial<Project> = {}): Project {
 }
 
 interface FakePtyManager extends PtyManager {
+  kills: string[];
   opens: { threadId: string; cwd: string; cols: number; rows: number }[];
   writes: { threadId: string; data: string }[];
   resizes: { threadId: string; cols: number; rows: number }[];
@@ -24,7 +25,9 @@ function createFakePtyManager(): FakePtyManager {
   const opens: FakePtyManager['opens'] = [];
   const writes: FakePtyManager['writes'] = [];
   const resizes: FakePtyManager['resizes'] = [];
+  const kills: string[] = [];
   return {
+    kills,
     opens,
     writes,
     resizes,
@@ -38,7 +41,9 @@ function createFakePtyManager(): FakePtyManager {
     resize(threadId, cols, rows) {
       resizes.push({ threadId, cols, rows });
     },
-    kill() {},
+    kill(threadId) {
+      kills.push(threadId);
+    },
     killAll() {},
   };
 }
@@ -132,6 +137,41 @@ describe('pty:open (draft session)', () => {
     await expect(ipcMain.invoke('pty:open', { threadId: 'not-a-thread', cols: 80, rows: 24 })).rejects.toThrow(
       InvalidIpcRequestError,
     );
+    expect(pty.opens).toEqual([]);
+  });
+});
+
+describe('pty:restart', () => {
+  it('kills the thread shell and reopens it in the thread cwd', async () => {
+    const store = createMemoryStore({ threads: [makeThread('t1', { cwd: '/work/t1-worktree' })] });
+    const pty = createFakePtyManager();
+    const ipcMain = setup(store, pty);
+
+    const res = await ipcMain.invoke('pty:restart', { threadId: 't1', cols: 100, rows: 30 });
+    expect(res).toEqual({ ptyId: 't1' });
+    expect(pty.kills).toEqual(['t1']);
+    expect(pty.opens).toEqual([{ threadId: 't1', cwd: '/work/t1-worktree', cols: 100, rows: 30 }]);
+  });
+
+  it('reopens the draft shell in the given project folder', async () => {
+    const store = createMemoryStore({ projects: [makeProject('p1', { path: '/work/p1' })] });
+    const pty = createFakePtyManager();
+    const ipcMain = setup(store, pty);
+
+    await ipcMain.invoke('pty:restart', { threadId: DRAFT_PTY_SESSION_ID, cols: 80, rows: 24, projectId: 'p1' });
+    expect(pty.kills).toEqual([DRAFT_PTY_SESSION_ID]);
+    expect(pty.opens).toEqual([{ threadId: DRAFT_PTY_SESSION_ID, cwd: '/work/p1', cols: 80, rows: 24 }]);
+  });
+
+  it('rejects an unknown session id without killing anything', async () => {
+    const store = createMemoryStore();
+    const pty = createFakePtyManager();
+    const ipcMain = setup(store, pty);
+
+    await expect(ipcMain.invoke('pty:restart', { threadId: 'not-a-thread', cols: 80, rows: 24 })).rejects.toThrow(
+      InvalidIpcRequestError,
+    );
+    expect(pty.kills).toEqual([]);
     expect(pty.opens).toEqual([]);
   });
 });

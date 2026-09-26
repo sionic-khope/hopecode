@@ -1,12 +1,13 @@
 // v3: profile row + menu, shortcuts / about modals, settings (persisted and applied by main), agent picker,
 // suggested prompts, reduced motion, changes panel after a fixture Edit, commit / merge / Push + PR (fixture
-// publisher: nothing leaves the machine), terminal tab, command palette, code block copy, Fable 5.1 model menu.
+// publisher: nothing leaves the machine), bottom terminal, command palette, code block copy, Fable 5.1 model menu.
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import {
+  bottomTerminal,
   bootstrapState,
   chooseFixtureFolder,
   createSandbox,
@@ -117,7 +118,8 @@ test('키보드 단축키 and 앱 정보 modals', async () => {
   const shortcuts = page.getByRole('dialog', { name: '키보드 단축키' });
   await expect(shortcuts).toBeVisible();
   await expect(shortcuts).toContainText('명령 팔레트');
-  await expect(shortcuts).toContainText('변경사항 패널 보기/숨기기');
+  await expect(shortcuts).toContainText('변경사항 패널 열기/닫기');
+  await expect(shortcuts).toContainText('하단 터미널 열기/닫기');
   await screenshot(page, 'v3-shortcuts', SHOTS);
   await page.keyboard.press('Escape');
   await expect(shortcuts).toHaveCount(0);
@@ -284,18 +286,27 @@ test('Push + PR goes through a confirm naming the remote and branches (fixture p
   expect(git(origin, 'branch', '--list')).toBe('');
 });
 
-test('terminal lives in the right panel as a tab (⌘J)', async () => {
+test('terminal docks under the conversation (⌘J); ⌘⇧D opens 변경사항 beside it', async () => {
   const { page } = run;
   const app = page.locator('.app');
+  // Earlier specs may leave 변경사항 open: start with only the terminal.
+  if (await app.evaluate((el) => el.classList.contains('app--panel-open'))) await menuShortcut(run.app, 'CmdOrCtrl+Shift+D');
+  await expect(app).toHaveClass(/app--panel-closed/);
   await menuShortcut(run.app, 'CmdOrCtrl+J');
   await expect(app).toHaveClass(/app--terminal-open/);
-  await expect(page.getByTestId('terminal').locator('.xterm')).toBeVisible();
-  await expect(page.getByRole('radiogroup', { name: '패널' }).getByRole('radio', { name: /터미널/ })).toHaveAttribute('aria-checked', 'true');
-  await page.getByRole('radiogroup', { name: '패널' }).getByRole('radio', { name: /변경사항/ }).click();
+  await expect(bottomTerminal(page).locator('.xterm')).toBeVisible();
+  // No tab strip anywhere: the right panel carries only 변경사항.
+  await expect(page.getByRole('radiogroup', { name: '패널' })).toHaveCount(0);
+  await expect(app).toHaveClass(/app--panel-closed/);
+  await menuShortcut(run.app, 'CmdOrCtrl+Shift+D');
   await expect(page.getByTestId('changes-panel')).toBeVisible();
-  await expect(app).toHaveClass(/app--terminal-closed/);
+  // Opening 변경사항 leaves the terminal where it is.
+  await expect(app).toHaveClass(/app--terminal-open/);
+  await expect(bottomTerminal(page).locator('.xterm')).toBeVisible();
   await menuShortcut(run.app, 'CmdOrCtrl+Shift+D');
   await expect(app).toHaveClass(/app--panel-closed/);
+  await menuShortcut(run.app, 'CmdOrCtrl+J');
+  await expect(app).toHaveClass(/app--terminal-closed/);
 });
 
 test('command palette (⌘K): search, then run a command and jump to a thread', async () => {

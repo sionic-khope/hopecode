@@ -21,8 +21,8 @@ export const SHORTCUTS: readonly { group: string; items: readonly { keys: string
   {
     group: '패널',
     items: [
-      { keys: ['⌘', 'J'], label: '터미널 보기/숨기기' },
-      { keys: ['⌘', '⇧', 'D'], label: '변경사항 패널 보기/숨기기' },
+      { keys: ['⌘', 'J'], label: '하단 터미널 열기/닫기' },
+      { keys: ['⌘', '⇧', 'D'], label: '변경사항 패널 열기/닫기' },
     ],
   },
   {

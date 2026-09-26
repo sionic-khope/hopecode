@@ -539,12 +539,12 @@ function buildMenu(broadcaster: Broadcaster): Menu {
           click: () => broadcaster.emit('ui:toggleSidebar', undefined),
         },
         {
-          label: '터미널 보기/숨기기',
+          label: '하단 터미널 열기/닫기',
           accelerator: 'CmdOrCtrl+J',
           click: () => broadcaster.emit('ui:toggleTerminal', undefined),
         },
         {
-          label: '변경사항 패널 보기/숨기기',
+          label: '변경사항 패널 열기/닫기',
           accelerator: 'CmdOrCtrl+Shift+D',
           click: () => broadcaster.emit('ui:toggleChanges', undefined),
         },

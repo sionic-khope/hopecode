@@ -48,7 +48,7 @@ export function GlyphList(props: GlyphProps) {
   );
 }
 
-/** 터미널 패널 toggle: window with a bottom strip. */
+/** 하단 터미널 toggle: window with a bottom strip. */
 export function GlyphPanelBottom(props: GlyphProps) {
   return (
     <svg {...base} {...props}>

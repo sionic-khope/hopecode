@@ -2,6 +2,7 @@
 // next send resumes the same SDK session.
 import { expect, test, type Page } from '@playwright/test';
 import {
+  bottomTerminal,
   bootstrapState,
   createSandbox,
   launch,
@@ -13,7 +14,7 @@ import {
 } from './helpers';
 
 async function terminalText(page: Page): Promise<string> {
-  return ((await page.getByTestId('terminal').locator('.xterm-rows').textContent()) ?? '').replace(/\s+/g, '');
+  return ((await bottomTerminal(page).locator('.xterm-rows').textContent()) ?? '').replace(/\s+/g, '');
 }
 
 test('terminal shell state is kept per thread across thread switches', async () => {
@@ -27,17 +28,17 @@ test('terminal shell state is kept per thread across thread switches', async () 
 
     await threads.nth(0).click();
     await menuShortcut(app, 'CmdOrCtrl+J');
-    await page.getByTestId('terminal').locator('.xterm').click();
+    await bottomTerminal(page).locator('.xterm').click();
     await page.keyboard.type('export HOPECODE_X=1; echo "SET=[$HOPECODE_X]"\n');
     await expect.poll(() => terminalText(page), { timeout: 20_000 }).toContain('SET=[1]');
 
     await threads.nth(1).click();
-    await page.getByTestId('terminal').locator('.xterm').click();
+    await bottomTerminal(page).locator('.xterm').click();
     await page.keyboard.type('echo "B=[${HOPECODE_X:-unset}]"\n');
     await expect.poll(() => terminalText(page), { timeout: 20_000 }).toContain('B=[unset]');
 
     await threads.nth(0).click();
-    await page.getByTestId('terminal').locator('.xterm').click();
+    await bottomTerminal(page).locator('.xterm').click();
     await page.keyboard.type('echo "BACK=[$HOPECODE_X]"\n');
     await expect.poll(() => terminalText(page), { timeout: 20_000 }).toContain('BACK=[1]');
     // Scrollback from before the switch is still there.

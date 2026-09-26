@@ -16,7 +16,8 @@ import type { PullRequestInfo } from '../shared/nav';
 import { AboutModal, ShortcutsModal } from './components/Shell/AppModals';
 import { ChatHeader } from './components/Shell/ChatHeader';
 import { WindowToolbar } from './components/Shell/WindowToolbar';
-import { RightPanel, forgetTerminalSize } from './components/Shell/RightPanel';
+import { RightPanel } from './components/Shell/RightPanel';
+import { BottomPanel, forgetTerminalSize } from './components/Shell/BottomPanel';
 import { NEEDS_FORCE } from './components/Sidebar/ItemMenu';
 import { ProfileRow } from './components/Sidebar/ProfileRow';
 import { Sidebar } from './components/Sidebar/Sidebar';
@@ -44,6 +45,8 @@ import {
   selectModels,
   selectPanel,
   selectPanelWidth,
+  selectTerminalHeight,
+  selectTerminalOpen,
   selectPoolSnapshot,
   selectProjects,
   selectRoute,
@@ -112,7 +115,8 @@ const loadEditorList = () => invoke('editor:list');
 
 /**
  * Shell: a pale canvas carrying floating cards: sidebar (⌘B) with the profile footer | conversation, draft,
- * accounts or settings | right panel (변경사항 / 터미널, ⌘⇧D / ⌘J); a thin statusline underneath.
+ * accounts or settings, with the terminal docked under it (⌘J) | right panel (변경사항, ⌘⇧D); a thin statusline
+ * underneath.
  */
 export function App() {
   const projects = useAppStore(selectProjects);
@@ -123,6 +127,8 @@ export function App() {
   const route = useAppStore(selectRoute);
   const panel = useAppStore(selectPanel);
   const panelWidth = useAppStore(selectPanelWidth);
+  const terminalOpen = useAppStore(selectTerminalOpen);
+  const terminalHeight = useAppStore(selectTerminalHeight);
   const sidebarCollapsed = useAppStore(selectSidebarCollapsed);
   const selectedThreadId = useAppStore(selectSelectedThreadId);
   const activeThread = useAppStore(selectSelectedThread);
@@ -138,6 +144,7 @@ export function App() {
   const [sendError, setSendError] = useState<string | null>(null);
   const [editors, setEditors] = useState<EditorInfo[]>([]);
   const [resizing, setResizing] = useState(false);
+  const [resizingTerminal, setResizingTerminal] = useState(false);
   const [addAccountRequest, setAddAccountRequest] = useState(0);
   const [firstMessages, setFirstMessages] = useState<Record<string, string>>({});
 
@@ -259,9 +266,11 @@ export function App() {
     setAddAccountRequest((n) => n + 1);
   }, []);
   const onTogglePanel = useCallback((tab: PanelTab) => useAppStore.getState().togglePanel(tab), []);
-  const onSelectTab = useCallback((tab: PanelTab) => useAppStore.getState().setPanel(tab), []);
   const onClosePanel = useCallback(() => useAppStore.getState().setPanel(null), []);
   const onResizePanel = useCallback((width: number) => useAppStore.getState().setPanelWidth(width), []);
+  const onToggleTerminal = useCallback(() => useAppStore.getState().toggleTerminal(), []);
+  const onCloseTerminal = useCallback(() => useAppStore.getState().setTerminalOpen(false), []);
+  const onResizeTerminal = useCallback((height: number) => useAppStore.getState().setTerminalHeight(height), []);
 
   const onLoadEditors = useCallback(() => {
     void loadEditorList()
@@ -348,6 +357,9 @@ export function App() {
   const activeProject = activeThread ? (projects.find((p) => p.id === activeThread.projectId) ?? null) : null;
   // The panel belongs to the conversation view; other routes keep it closed without forgetting the tab.
   const shownPanel = route === 'chat' ? panel : null;
+  const shownTerminal = route === 'chat' && terminalOpen;
+  const draftProject = draft.projectId ? (projects.find((p) => p.id === draft.projectId) ?? null) : null;
+  const terminalCwd = activeThread ? activeThread.cwd : (draftProject?.path ?? homeDir);
   const profileAccount = useMemo(() => {
     const byId = activeThread?.activeAccountId ? accounts.find((a) => a.id === activeThread.activeAccountId) : undefined;
     return byId ?? [...accounts].filter((a) => a.enabled).sort((a, b) => a.priority - b.priority)[0] ?? accounts[0] ?? null;
@@ -400,14 +412,14 @@ export function App() {
       },
       {
         id: 'panel-terminal',
-        title: panel === 'terminal' ? '터미널 닫기' : '터미널 열기',
+        title: terminalOpen ? '하단 터미널 닫기' : '하단 터미널 열기',
         group: '패널',
         shortcut: '⌘J',
         icon: <GlyphTerminal />,
         keywords: ['terminal', 'shell'],
         run: () => {
           s().setRoute('chat');
-          s().togglePanel('terminal');
+          s().toggleTerminal();
         },
       },
       ...(activeThread && primaryEditor
@@ -439,6 +451,7 @@ export function App() {
     editors,
     settings.defaultEditor,
     panel,
+    terminalOpen,
     activeThread,
     sidebarCollapsed,
     onSelectThread,
@@ -464,10 +477,11 @@ export function App() {
 
   const shellClass = [
     'app',
-    shownPanel === 'terminal' ? 'app--terminal-open' : 'app--terminal-closed',
+    shownTerminal ? 'app--terminal-open' : 'app--terminal-closed',
     shownPanel ? 'app--panel-open' : 'app--panel-closed',
     sidebarCollapsed ? 'app--sidebar-collapsed' : '',
     resizing ? 'app--resizing' : '',
+    resizingTerminal ? 'app--resizing-rows' : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -546,11 +560,13 @@ export function App() {
               accounts={accounts}
               draftPinnedAccountId={draft.pinnedAccountId}
               panel={shownPanel}
+              terminalOpen={shownTerminal}
               editors={editors}
               defaultEditor={settings.defaultEditor}
               homeDir={homeDir}
               onRename={onRenameActive}
               onTogglePanel={onTogglePanel}
+              onToggleTerminal={onToggleTerminal}
               onOpenEditor={onOpenEditor}
               onLoadEditors={onLoadEditors}
               onPinAccount={onPinAccount}
@@ -567,10 +583,12 @@ export function App() {
                 accounts={accounts}
                 draftPinnedAccountId={draft.pinnedAccountId}
                 panel={shownPanel}
+                terminalOpen={shownTerminal}
                 editors={editors}
                 defaultEditor={settings.defaultEditor}
                 homeDir={homeDir}
                 onTogglePanel={onTogglePanel}
+                onToggleTerminal={onToggleTerminal}
                 onOpenEditor={onOpenEditor}
                 onLoadEditors={onLoadEditors}
                 onPinAccount={onPinAccount}
@@ -656,15 +674,23 @@ export function App() {
             </div>
           ) : null}
         </div>
+        <BottomPanel
+          open={shownTerminal}
+          sessionId={activeThread?.id ?? DRAFT_PTY_SESSION_ID}
+          draftProjectId={activeThread ? null : draft.projectId}
+          cwd={terminalCwd}
+          homeDir={homeDir}
+          height={terminalHeight}
+          onResize={onResizeTerminal}
+          onResizing={setResizingTerminal}
+          onClose={onCloseTerminal}
+        />
       </main>
       <section className="app__panel" aria-label="오른쪽 패널">
         <RightPanel
           tab={shownPanel}
           thread={activeThread}
-          terminalSessionId={activeThread?.id ?? DRAFT_PTY_SESSION_ID}
-          draftProjectId={draft.projectId}
           width={panelWidth}
-          onTab={onSelectTab}
           onClose={onClosePanel}
           onResize={onResizePanel}
           onResizing={setResizing}

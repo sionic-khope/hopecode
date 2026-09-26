@@ -784,6 +784,27 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
       return ptyManager.open(threadId, cwd, cols, rows);
     },
 
+    'pty:restart': async (req) => {
+      assertReq(
+        'pty:restart',
+        isPlainObject(req) && isNonEmptyString(req.threadId) && isFiniteNumber(req.cols) && isFiniteNumber(req.rows),
+        'threadId/cols/rows required',
+      );
+      const { threadId, cols, rows, projectId } = req as {
+        threadId: string;
+        cols: number;
+        rows: number;
+        projectId?: unknown;
+      };
+      assertReq('pty:restart', projectId === undefined || isNonEmptyString(projectId), 'projectId must be a string');
+      requirePtySessionId('pty:restart', threadId);
+      const cwd = resolvePtyCwd('pty:restart', threadId, projectId as string | undefined);
+      // kill + open back to back: the old process's exit arrives later and is ignored (the id maps to the new shell).
+      ptyManager.kill(threadId);
+      const { ptyId } = ptyManager.open(threadId, cwd, cols, rows);
+      return { ptyId };
+    },
+
     'pty:write': async (req) => {
       assertReq(
         'pty:write',

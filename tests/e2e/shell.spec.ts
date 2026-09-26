@@ -1,6 +1,6 @@
 // S1 layout + ⌘J, S2 fonts, U1/U2/U4/U5/U6 statusline + popover over the fixture pool (100/40/0).
 import { expect, test } from '@playwright/test';
-import { createSandbox, launch, menuShortcut, screenshot, type Launched, type Sandbox } from './helpers';
+import { bottomTerminal, createSandbox, launch, menuShortcut, screenshot, type Launched, type Sandbox } from './helpers';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -34,7 +34,7 @@ test('3-pane layout, ⌘J toggles the terminal pane', async () => {
 
   await menuShortcut(run.app, 'CmdOrCtrl+J');
   await expect(app).toHaveClass(/app--terminal-open/);
-  await expect.poll(async () => (await page.getByTestId('terminal').boundingBox())?.width ?? 0).toBeGreaterThan(300);
+  await expect.poll(async () => (await bottomTerminal(page).boundingBox())?.width ?? 0).toBeGreaterThan(300);
   await menuShortcut(run.app, 'CmdOrCtrl+J');
   await expect(app).toHaveClass(/app--terminal-closed/);
 });

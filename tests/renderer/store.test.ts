@@ -339,6 +339,27 @@ describe('ui state', () => {
     expect(selectors.selectTerminalOpen(useAppStore.getState())).toBe(true);
   });
 
+  it('the bottom terminal and the right (changes) panel open independently', () => {
+    useAppStore.setState({ terminalOpen: false, panel: null });
+    useAppStore.getState().toggleTerminal();
+    useAppStore.getState().togglePanel('changes');
+    expect(selectors.selectTerminalOpen(useAppStore.getState())).toBe(true);
+    expect(selectors.selectPanel(useAppStore.getState())).toBe('changes');
+    useAppStore.getState().togglePanel('changes');
+    expect(selectors.selectTerminalOpen(useAppStore.getState())).toBe(true);
+    expect(selectors.selectPanel(useAppStore.getState())).toBeNull();
+    useAppStore.getState().setTerminalOpen(false);
+    expect(selectors.selectTerminalOpen(useAppStore.getState())).toBe(false);
+  });
+
+  it('clampTerminalHeight keeps the bottom terminal between 120px and 70% of the window', async () => {
+    const { clampTerminalHeight } = await import('../../src/renderer/store/appStore');
+    expect(clampTerminalHeight(40, 1000)).toBe(120);
+    expect(clampTerminalHeight(300, 1000)).toBe(300);
+    expect(clampTerminalHeight(900, 1000)).toBe(700);
+    expect(clampTerminalHeight(Number.NaN, 1000)).toBe(280);
+  });
+
   it('setRoute switches between chat and accounts', () => {
     useAppStore.getState().setRoute('accounts');
     expect(selectors.selectRoute(useAppStore.getState())).toBe('accounts');

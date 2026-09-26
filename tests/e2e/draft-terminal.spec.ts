@@ -4,6 +4,7 @@
 import { homedir } from 'node:os';
 import { expect, test } from '@playwright/test';
 import {
+  bottomTerminal,
   chooseFixtureFolder,
   createSandbox,
   launch,
@@ -29,7 +30,7 @@ test.afterAll(async () => {
 });
 
 async function pwdOutput(page: Launched['page']) {
-  const rows = page.getByTestId('terminal').locator('.xterm-rows');
+  const rows = bottomTerminal(page).locator('.xterm-rows');
   return ((await rows.textContent()) ?? '').replace(/\s+/g, '');
 }
 
@@ -42,7 +43,7 @@ test('⌘J on the empty draft (0 threads) opens the terminal in the home folder'
 
   await menuShortcut(run.app, 'CmdOrCtrl+J');
   await expect(app).toHaveClass(/app--terminal-open/);
-  const term = page.getByTestId('terminal').locator('.xterm');
+  const term = bottomTerminal(page).locator('.xterm');
   await expect(term).toBeVisible();
 
   await term.click();
@@ -55,11 +56,11 @@ test('⌘J on the empty draft (0 threads) opens the terminal in the home folder'
 
 test('changing the draft folder chip reopens the terminal in that folder', async () => {
   const { page } = run;
-  await expect(page.getByTestId('terminal').locator('.xterm')).toBeVisible();
+  await expect(bottomTerminal(page).locator('.xterm')).toBeVisible();
 
   await chooseFixtureFolder(page, sandbox);
 
-  const term = page.getByTestId('terminal').locator('.xterm');
+  const term = bottomTerminal(page).locator('.xterm');
   await expect(term).toBeVisible();
   await term.click();
   await page.keyboard.type('echo "CWD=[$(pwd -P)]"\n');

@@ -6,6 +6,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
+  bottomTerminal,
   bootstrapState,
   createSandbox,
   launch,
@@ -59,7 +60,7 @@ async function expectComposerWithoutWindowControls(page: Page) {
   await expect(composer.getByRole('button', { name: /^모델:/ })).toBeVisible();
 }
 
-test('draft: composer has no terminal / account controls; the top-right terminal toggle opens the draft shell', async () => {
+test('draft: composer has no terminal / account controls; the top-right bottom-panel toggle opens the draft shell under the chat', async () => {
   const { page } = run;
   await openDraft(page);
   await expectComposerWithoutWindowControls(page);
@@ -72,14 +73,20 @@ test('draft: composer has no terminal / account controls; the top-right terminal
   await expect(bar.getByRole('button', { name: '환경' })).toBeDisabled();
 
   const app = page.locator('.app');
-  const terminalToggle = bar.getByRole('button', { name: '터미널 패널' });
+  const terminalToggle = bar.getByRole('button', { name: '하단 터미널' });
   await expect(app).toHaveClass(/app--terminal-closed/);
+  await expect(terminalToggle).toHaveAttribute('title', '하단 터미널 열기 (⌘J)');
   await terminalToggle.click();
   await expect(app).toHaveClass(/app--terminal-open/);
   await expect(terminalToggle).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByTestId('terminal').locator('.xterm')).toBeVisible();
+  await expect(terminalToggle).toHaveAttribute('title', '하단 터미널 닫기 (⌘J)');
+  // The right panel stays closed and its toggle stays off: the terminal is not a right-panel tab.
+  await expect(app).toHaveClass(/app--panel-closed/);
+  await expect(bar.getByRole('button', { name: '변경사항 패널' })).toHaveAttribute('aria-pressed', 'false');
+  await expect(bottomTerminal(page).locator('.xterm')).toBeVisible();
   await terminalToggle.click();
   await expect(app).toHaveClass(/app--terminal-closed/);
+  await expect(terminalToggle).toHaveAttribute('aria-pressed', 'false');
 
   // 더보기 in the draft: only the account pin (it applies to the chat about to start).
   await bar.getByRole('button', { name: '더보기' }).click();
@@ -98,13 +105,13 @@ test('thread: toolbar order, terminal and changes toggles', async () => {
 
   const bar = toolbar(page);
   const names = await bar.getByRole('button').evaluateAll((els) => els.map((el) => el.getAttribute('aria-label')));
-  expect(names).toEqual(['더보기', '공유', '환경', '터미널 패널', '변경사항 패널']);
+  expect(names).toEqual(['더보기', '공유', '환경', '하단 터미널', '변경사항 패널']);
 
   const app = page.locator('.app');
-  const terminalToggle = bar.getByRole('button', { name: '터미널 패널' });
+  const terminalToggle = bar.getByRole('button', { name: '하단 터미널' });
   await terminalToggle.click();
   await expect(app).toHaveClass(/app--terminal-open/);
-  await expect(page.getByTestId('terminal').locator('.xterm')).toBeVisible();
+  await expect(bottomTerminal(page).locator('.xterm')).toBeVisible();
   await terminalToggle.click();
   await expect(app).toHaveClass(/app--terminal-closed/);
 
@@ -128,7 +135,8 @@ test('env popover: change counts from git:changes, click opens the changes tab',
   await changes.click();
   await expect(envPopover(page)).toHaveCount(0);
   await expect(page.getByTestId('changes-panel')).toBeVisible();
-  await expect(page.getByRole('radiogroup', { name: '패널' }).getByRole('radio', { name: /변경사항/ })).toHaveAttribute('aria-checked', 'true');
+  await expect(page.locator('.hc-panel__title')).toHaveText('변경사항');
+  await expect(page.locator('.app__panel').getByRole('radio')).toHaveCount(0);
   await expect(page.getByTestId('changes-panel').locator('.hc-changes__file[data-path="README.md"]')).toBeVisible();
   await toolbar(page).getByRole('button', { name: '변경사항 패널' }).click();
 });

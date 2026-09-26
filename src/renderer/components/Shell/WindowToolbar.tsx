@@ -23,10 +23,13 @@ export interface WindowToolbarProps {
   /** Draft's account pin (used while `thread` is null). */
   draftPinnedAccountId: string | null;
   panel: PanelTab | null;
+  /** Bottom terminal panel (under the conversation) is open. */
+  terminalOpen: boolean;
   editors: EditorInfo[];
   defaultEditor: EditorId | null;
   homeDir: string | null;
   onTogglePanel: (tab: PanelTab) => void;
+  onToggleTerminal: () => void;
   onOpenEditor: (editor: EditorId) => void;
   onLoadEditors: () => void;
   /** Thread pin, or the draft's when `thread` is null. */
@@ -49,7 +52,7 @@ type Flash = { kind: 'ok' | 'error'; text: string } | null;
 
 /**
  * Top-right window controls, left to right: 더보기 (open in editor, account pin, rename / pin / archive / delete),
- * 공유 (Markdown file / clipboard), 환경 (git state + actions, subagents, sources), terminal panel, changes panel.
+ * 공유 (Markdown file / clipboard), 환경 (git state + actions, subagents, sources), bottom terminal, changes panel.
  */
 export function WindowToolbar({
   thread,
@@ -57,10 +60,12 @@ export function WindowToolbar({
   accounts,
   draftPinnedAccountId,
   panel,
+  terminalOpen,
   editors,
   defaultEditor,
   homeDir,
   onTogglePanel,
+  onToggleTerminal,
   onOpenEditor,
   onLoadEditors,
   onPinAccount,
@@ -271,11 +276,11 @@ export function WindowToolbar({
       <span className="hc-wtb__sep" aria-hidden />
       <button
         type="button"
-        className={`hc-toolbar-btn hc-toolbar-btn--icon${panel === 'terminal' ? ' hc-toolbar-btn--on' : ''}`}
-        aria-label="터미널 패널"
-        aria-pressed={panel === 'terminal'}
-        title="터미널 (⌘J)"
-        onClick={() => onTogglePanel('terminal')}
+        className={`hc-toolbar-btn hc-toolbar-btn--icon${terminalOpen ? ' hc-toolbar-btn--on' : ''}`}
+        aria-label="하단 터미널"
+        aria-pressed={terminalOpen}
+        title={terminalOpen ? '하단 터미널 닫기 (⌘J)' : '하단 터미널 열기 (⌘J)'}
+        onClick={onToggleTerminal}
       >
         <GlyphPanelBottom />
       </button>
@@ -284,7 +289,7 @@ export function WindowToolbar({
         className={`hc-toolbar-btn hc-toolbar-btn--icon${panel === 'changes' ? ' hc-toolbar-btn--on' : ''}`}
         aria-label="변경사항 패널"
         aria-pressed={panel === 'changes'}
-        title="변경사항 (⌘⇧D)"
+        title="변경사항 패널 (⌘⇧D)"
         onClick={() => onTogglePanel('changes')}
       >
         <GlyphPanelRight />

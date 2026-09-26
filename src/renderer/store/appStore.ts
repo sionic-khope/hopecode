@@ -70,6 +70,36 @@ function readPanelWidth(): number {
   }
 }
 
+const TERMINAL_HEIGHT_KEY = 'hopecode.terminalHeight';
+export const TERMINAL_MIN_HEIGHT = 120;
+/** Upper bound as a share of the window height. */
+export const TERMINAL_MAX_HEIGHT_RATIO = 0.7;
+export const TERMINAL_DEFAULT_HEIGHT = 280;
+
+/** Bottom terminal height, clamped to [120px, 70% of the window]; per-viewer convenience (localStorage, guarded). */
+export function clampTerminalHeight(height: number, viewportHeight = globalThis.innerHeight): number {
+  if (!Number.isFinite(height)) return TERMINAL_DEFAULT_HEIGHT;
+  const max = Number.isFinite(viewportHeight) && viewportHeight > 0 ? Math.max(TERMINAL_MIN_HEIGHT, viewportHeight * TERMINAL_MAX_HEIGHT_RATIO) : Infinity;
+  return Math.round(Math.min(max, Math.max(TERMINAL_MIN_HEIGHT, height)));
+}
+
+function readTerminalHeight(): number {
+  try {
+    const raw = globalThis.localStorage?.getItem(TERMINAL_HEIGHT_KEY);
+    return raw ? clampTerminalHeight(Number(raw)) : TERMINAL_DEFAULT_HEIGHT;
+  } catch {
+    return TERMINAL_DEFAULT_HEIGHT;
+  }
+}
+
+function writeTerminalHeight(height: number): void {
+  try {
+    globalThis.localStorage?.setItem(TERMINAL_HEIGHT_KEY, String(height));
+  } catch {
+    // Not persisted; the height still applies for this session.
+  }
+}
+
 function writePanelWidth(width: number): void {
   try {
     globalThis.localStorage?.setItem(PANEL_WIDTH_KEY, String(width));
@@ -114,8 +144,8 @@ export function defaultDraftProjectId(projects: readonly Project[], threads: rea
 
 export type Route = 'chat' | 'accounts' | 'settings' | 'prs' | 'schedule' | 'plugins';
 
-/** Right panel tab (null = panel closed). */
-export type PanelTab = 'changes' | 'terminal';
+/** Right panel content (null = panel closed). The terminal lives in its own bottom panel (`terminalOpen`). */
+export type PanelTab = 'changes';
 
 /** App-level modal opened from the profile menu / palette. */
 export type AppModal = 'shortcuts' | 'about';
@@ -250,6 +280,9 @@ export interface AppStoreState {
   /** Right panel tab, or null when closed. */
   panel: PanelTab | null;
   panelWidth: number;
+  /** Bottom terminal panel (under the conversation, ⌘J); independent of the right panel. */
+  terminalOpen: boolean;
+  terminalHeight: number;
   paletteOpen: boolean;
   modal: AppModal | null;
   /** Accounts route opened from "사용량": scroll to the usage charts once. */
@@ -285,6 +318,7 @@ export interface AppStoreState {
   togglePanel: (tab: PanelTab) => void;
   setPanel: (tab: PanelTab | null) => void;
   setPanelWidth: (width: number) => void;
+  setTerminalHeight: (height: number) => void;
   setPaletteOpen: (open: boolean) => void;
   setModal: (modal: AppModal | null) => void;
   /** Accounts route, optionally scrolled to the usage charts. */
@@ -355,6 +389,8 @@ export interface AppStoreState {
   ) => Promise<{ ptyId: string; replay: string }>;
   writeTerminal: (threadId: string, data: string) => Promise<void>;
   resizeTerminal: (threadId: string, cols: number, rows: number) => Promise<void>;
+  /** Kills the session's shell and spawns a fresh one in the same folder (the bottom panel's 재시작). */
+  restartTerminal: (threadId: string, cols: number, rows: number, projectId?: string) => Promise<void>;
 
   // -- event application (also called directly by store/events.ts subscribers) --
   applyBootstrap: (payload: BootstrapPayload) => void;
@@ -388,6 +424,8 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
   chatScrolled: false,
   panel: null,
   panelWidth: readPanelWidth(),
+  terminalOpen: false,
+  terminalHeight: readTerminalHeight(),
   paletteOpen: false,
   modal: null,
   accountsFocus: null,
@@ -426,14 +464,19 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
       return { selectedThreadId: threadId, unseenDone };
     }),
   setRoute: (route) => set({ route }),
-  toggleTerminal: () => get().togglePanel('terminal'),
-  setTerminalOpen: (open) => set((s) => ({ panel: open ? 'terminal' : s.panel === 'terminal' ? null : s.panel })),
+  toggleTerminal: () => set((s) => ({ terminalOpen: !s.terminalOpen })),
+  setTerminalOpen: (open) => set({ terminalOpen: open }),
   togglePanel: (tab) => set((s) => ({ panel: s.panel === tab ? null : tab })),
   setPanel: (tab) => set({ panel: tab }),
   setPanelWidth: (width) => {
     const next = clampPanelWidth(width);
     writePanelWidth(next);
     set({ panelWidth: next });
+  },
+  setTerminalHeight: (height) => {
+    const next = clampTerminalHeight(height);
+    writeTerminalHeight(next);
+    set({ terminalHeight: next });
   },
   setPaletteOpen: (open) => set({ paletteOpen: open }),
   setModal: (modal) => set({ modal, paletteOpen: false }),
@@ -739,6 +782,16 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
 
   resizeTerminal: async (threadId, cols, rows) => {
     await invoke('pty:resize', { threadId, cols, rows });
+  },
+
+  restartTerminal: async (threadId, cols, rows, projectId) => {
+    const result = await invoke('pty:restart', { threadId, cols, rows, ...(projectId ? { projectId } : {}) });
+    set((s) => ({
+      ptyStatusByThread: {
+        ...s.ptyStatusByThread,
+        [threadId]: { ptyId: result.ptyId, running: true, lastExitCode: null },
+      },
+    }));
   },
 
   applyBootstrap: (payload) =>
