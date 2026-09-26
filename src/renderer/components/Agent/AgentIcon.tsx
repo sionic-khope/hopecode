@@ -2,8 +2,8 @@ import { agentDescriptor } from '../../../shared/agents';
 import type { AgentKind } from '../../../shared/types';
 import { GlyphAgent } from '../common/glyphs';
 
-// Optional official agent logos: whatever SVG/PNG sits under src/renderer/assets/agents/ is bundled; nothing there
-// (the default) is fine too, the neutral Hopecode glyph is shown instead. Hopecode never draws a vendor's mark itself.
+// Agent logos bundled from src/renderer/assets/agents/ (claude-code.svg is the official Claude mark); when one is
+// missing, the neutral Hopecode glyph is shown instead.
 const bundled = import.meta.glob<string>('../../assets/agents/*.{svg,png}', { eager: true, query: '?url', import: 'default' });
 
 /** Bundled logo URL for an agent (its `iconAsset`, e.g. `agents/claude-code.svg`), or null. */
