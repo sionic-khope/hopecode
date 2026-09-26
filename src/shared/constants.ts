@@ -119,6 +119,12 @@ export const SHELL_ENV_TIMEOUT_MS = 5_000;
 export const FALLBACK_PATH_ENTRIES: readonly string[] = ['/opt/homebrew/bin', '/usr/local/bin', '~/.local/bin'];
 export const PTY_RING_BUFFER_BYTES = 256 * 1024;
 export const TERMINAL_TERM = 'xterm-256color';
+/**
+ * Reserved `pty:*` session id for the draft ("new chat", no thread yet) screen's terminal tab, so ⌘J / the
+ * terminal button work before a thread exists. Its shell runs in the draft's selected project folder (or
+ * `os.homedir()` when none is picked) and is torn down and reopened when that folder changes.
+ */
+export const DRAFT_PTY_SESSION_ID = 'draft';
 
 /** Entries of ~/.claude shared into each account config dir via symlink (only if present). */
 export const SHARED_CONFIG_ENTRIES: readonly string[] = [

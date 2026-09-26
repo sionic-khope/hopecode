@@ -49,7 +49,7 @@ import {
   useAppStore,
   type PanelTab,
 } from './store';
-import { ACCOUNT_COLORS, DAY_MS, MINUTE_MS } from '../shared/constants';
+import { ACCOUNT_COLORS, DAY_MS, DRAFT_PTY_SESSION_ID, MINUTE_MS } from '../shared/constants';
 import type {
   ChatSendResult,
   EditorId,
@@ -498,7 +498,7 @@ export function App() {
               </WindowButton>
             </div>
           ) : null}
-          {/* The Accounts / Settings pages and the draft screen carry their own headings; the bar stays a drag region. */}
+          {/* The Accounts / Settings pages carry their own headings; the bar stays a drag region. */}
           {route === 'chat' && activeThread ? (
             <ChatHeader
               thread={activeThread}
@@ -563,6 +563,8 @@ export function App() {
                 onAttachFiles={onAttachToDraft}
                 defaultModelLabel={defaultModelLabel}
                 homeDir={homeDir}
+                terminalOpen={shownPanel === 'terminal'}
+                onToggleTerminal={() => onTogglePanel('terminal')}
               />
             )}
           </div>
@@ -577,6 +579,8 @@ export function App() {
         <RightPanel
           tab={shownPanel}
           thread={activeThread}
+          terminalSessionId={activeThread?.id ?? DRAFT_PTY_SESSION_ID}
+          draftProjectId={draft.projectId}
           width={panelWidth}
           onTab={onSelectTab}
           onClose={onClosePanel}

@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import type { Account, EffortLevel, ModelOption, Project, UiPermissionMode } from '../../../shared/types';
 import { useAppStore, type DraftState } from '../../store';
-import { BrandMark } from '../common';
+import { BrandMark, Button } from '../common';
 import { GlyphBranch, GlyphChanges, GlyphCode, GlyphTerminal } from '../common/glyphs';
 import { Composer, type ComposerHandle } from './Composer';
 import { AccountChip, AgentChip, FolderChip, ModelPicker, PermissionChip } from './ComposerControls';
@@ -22,6 +22,9 @@ export interface DraftViewProps {
   /** What the `default` model runs as (e.g. "Fable 5"). */
   defaultModelLabel: string;
   homeDir: string | null;
+  /** Right panel's 터미널 tab (⌘J opens the draft session, in the folder chip's project or the home folder). */
+  terminalOpen: boolean;
+  onToggleTerminal: () => void;
 }
 
 /** Starter prompts on the empty screen; a click puts the text in the composer (nothing is sent). */
@@ -63,6 +66,8 @@ export function DraftView({
   onAttachFiles,
   defaultModelLabel,
   homeDir,
+  terminalOpen,
+  onToggleTerminal,
 }: DraftViewProps) {
   const [folderOpen, setFolderOpen] = useState(false);
   /** Bumped by every send without a folder: re-keys the chip so its pulse replays. */
@@ -155,6 +160,17 @@ export function DraftView({
             />
             <PermissionChip value={draft.permissionMode} onChange={setMode} />
             <AccountChip accounts={accounts} pinnedAccountId={draft.pinnedAccountId} onChange={setPin} />
+            <Button
+              variant="plain"
+              size="sm"
+              icon
+              aria-label="터미널 패널"
+              aria-pressed={terminalOpen}
+              title="터미널 (⌘J)"
+              onClick={onToggleTerminal}
+            >
+              <GlyphTerminal width={15} height={15} />
+            </Button>
           </>
         }
         trailing={

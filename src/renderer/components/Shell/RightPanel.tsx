@@ -1,17 +1,25 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { Thread } from '../../../shared/types';
+import { DRAFT_PTY_SESSION_ID } from '../../../shared/constants';
 import { on } from '../../api';
 import { useAppStore, selectPtyStatus, type PanelTab, PANEL_MAX_WIDTH, PANEL_MIN_WIDTH } from '../../store';
 import { Button, Segmented } from '../common';
 import { GlyphChanges, GlyphClose, GlyphTerminal } from '../common/glyphs';
 import { ChangesPanel } from '../Changes/ChangesPanel';
 import { TerminalPane } from '../Terminal/TerminalPane';
+import { resetTerminalEntry } from '../Terminal/terminalRegistry';
 import './Shell.css';
 
 export interface RightPanelProps {
   tab: PanelTab | null;
-  /** Thread shown in the chat pane (null: draft / no thread). */
+  /** Thread shown in the chat pane (null: draft / no thread -- the terminal tab still works, via the draft
+   *  session). */
   thread: Thread | null;
+  /** pty session id the terminal tab attaches to: the open thread's id, or `DRAFT_PTY_SESSION_ID` when no
+   *  thread is open yet. */
+  terminalSessionId: string;
+  /** Project the draft terminal's shell should run in (ignored once `thread` is set -- its own cwd is used). */
+  draftProjectId: string | null;
   width: number;
   onTab: (tab: PanelTab) => void;
   onClose: () => void;
@@ -24,7 +32,17 @@ export interface RightPanelProps {
  * Right panel (변경사항 / 터미널 tabs). Slides open with the grid column; the left edge is a drag handle
  * (also arrow keys when focused) whose width persists per viewer.
  */
-export function RightPanel({ tab, thread, width, onTab, onClose, onResize, onResizing }: RightPanelProps) {
+export function RightPanel({
+  tab,
+  thread,
+  terminalSessionId,
+  draftProjectId,
+  width,
+  onTab,
+  onClose,
+  onResize,
+  onResizing,
+}: RightPanelProps) {
   const drag = useRef<{ startX: number; startWidth: number } | null>(null);
   // The last tab stays rendered while the panel slides closed.
   const [shownTab, setShownTab] = useState<PanelTab>(tab ?? 'changes');
@@ -94,10 +112,10 @@ export function RightPanel({ tab, thread, width, onTab, onClose, onResize, onRes
           )
         ) : (
           <div className="hc-panel__terminal" data-testid="terminal">
-            {tab === 'terminal' && thread ? (
-              <ThreadTerminal threadId={thread.id} />
+            {tab === 'terminal' ? (
+              <SessionTerminal sessionId={terminalSessionId} draftProjectId={thread ? null : draftProjectId} />
             ) : (
-              <PanelEmpty text="스레드를 열면 그 작업 폴더에서 셸이 열립니다" />
+              <PanelEmpty text="터미널을 열면 여기에 셸이 표시됩니다" />
             )}
           </div>
         )}
@@ -121,40 +139,65 @@ export function forgetTerminalSize(threadId: string): void {
   lastTerminalSize.delete(threadId);
 }
 
-const subscribeOutput = (threadId: string, onChunk: (data: string) => void) =>
+const subscribeOutput = (sessionId: string, onChunk: (data: string) => void) =>
   on('pty:data', (payload) => {
-    if (payload.threadId === threadId) onChunk(payload.data);
+    if (payload.threadId === sessionId) onChunk(payload.data);
   });
 
-const getInitialContent = async (threadId: string) => {
-  const size = lastTerminalSize.get(threadId) ?? { cols: 80, rows: 24 };
-  const { replay } = await useAppStore.getState().openTerminal(threadId, size.cols, size.rows);
+const getInitialContent = async (sessionId: string, projectId: string | undefined) => {
+  const size = lastTerminalSize.get(sessionId) ?? { cols: 80, rows: 24 };
+  const { replay } = await useAppStore.getState().openTerminal(sessionId, size.cols, size.rows, projectId);
   return replay;
 };
 
-function ThreadTerminal({ threadId }: { threadId: string }) {
-  const pty = useAppStore((s) => selectPtyStatus(s, threadId));
-  // Bumped by Restart: remounts TerminalPane, which re-seeds the (reset) entry from a fresh `pty:open`.
+/**
+ * Terminal tab content for one pty session: a real thread's, or the draft's (`DRAFT_PTY_SESSION_ID`) before any
+ * thread exists. For the draft session, changing `draftProjectId` (the folder chip) reopens the shell in the
+ * new folder -- main kills the old one and spawns a fresh one there (ptyManager.open, cwd mismatch).
+ */
+function SessionTerminal({ sessionId, draftProjectId }: { sessionId: string; draftProjectId: string | null }) {
+  const pty = useAppStore((s) => selectPtyStatus(s, sessionId));
+  // Bumped by Restart, or a draft folder change: remounts TerminalPane, which re-seeds the (reset) entry
+  // from a fresh `pty:open`.
   const [generation, setGeneration] = useState(0);
   const exited = pty !== undefined && !pty.running;
+  const isDraft = sessionId === DRAFT_PTY_SESSION_ID;
+  const prevDraftProjectId = useRef(draftProjectId);
+
+  useEffect(() => {
+    if (!isDraft || prevDraftProjectId.current === draftProjectId) return;
+    prevDraftProjectId.current = draftProjectId;
+    // The old shell's exit never reaches pty:exit (main replaces it synchronously): reset the entry
+    // ourselves so the remount below re-seeds from the freshly reopened session instead of reusing content
+    // seeded from the old folder.
+    resetTerminalEntry(sessionId);
+    setGeneration((g) => g + 1);
+  }, [isDraft, sessionId, draftProjectId]);
 
   const onResize = useCallback(
     (cols: number, rows: number) => {
-      lastTerminalSize.set(threadId, { cols, rows });
-      void useAppStore.getState().resizeTerminal(threadId, cols, rows);
+      lastTerminalSize.set(sessionId, { cols, rows });
+      void useAppStore.getState().resizeTerminal(sessionId, cols, rows);
     },
-    [threadId],
+    [sessionId],
+  );
+  // Stable across unrelated re-renders (TerminalPane re-attaches whenever this reference changes) -- only
+  // the draft session's projectId ever legitimately changes it.
+  const draftProjectIdForOpen = isDraft ? (draftProjectId ?? undefined) : undefined;
+  const onGetInitialContent = useCallback(
+    (id: string) => getInitialContent(id, draftProjectIdForOpen),
+    [draftProjectIdForOpen],
   );
   return (
     <div className="app__terminal-host">
       <TerminalPane
         key={generation}
-        sessionId={threadId}
+        sessionId={sessionId}
         onData={(data) => {
-          if (!exited) void useAppStore.getState().writeTerminal(threadId, data);
+          if (!exited) void useAppStore.getState().writeTerminal(sessionId, data);
         }}
         subscribeOutput={subscribeOutput}
-        getInitialContent={getInitialContent}
+        getInitialContent={onGetInitialContent}
         onResize={onResize}
       />
       {exited ? (

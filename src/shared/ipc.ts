@@ -89,7 +89,13 @@ export interface InvokeMap {
   };
   'usage:refresh': { req: { accountId?: string }; res: PoolSnapshot };
   'usage:history': { req: { accountId: string; rangeMs: number }; res: UsageSample[] };
-  'pty:open': { req: { threadId: string; cols: number; rows: number }; res: { ptyId: string; replay: string } };
+  /** `projectId` is only consulted for the draft session (`threadId: 'draft'`): its project's folder becomes
+   *  the shell's cwd, falling back to the user's home folder when omitted or unknown. Ignored for a real thread
+   *  (its own cwd is used). */
+  'pty:open': {
+    req: { threadId: string; cols: number; rows: number; projectId?: string };
+    res: { ptyId: string; replay: string };
+  };
   'pty:write': { req: { threadId: string; data: string }; res: void };
   'pty:resize': { req: { threadId: string; cols: number; rows: number }; res: void };
 

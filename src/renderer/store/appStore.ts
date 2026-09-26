@@ -333,7 +333,13 @@ export interface AppStoreState {
   refreshUsage: (accountId?: string) => Promise<PoolSnapshot>;
   fetchUsageHistory: (accountId: string, rangeMs: number) => Promise<UsageSample[]>;
 
-  openTerminal: (threadId: string, cols: number, rows: number) => Promise<{ ptyId: string; replay: string }>;
+  /** `projectId` is only consulted for the draft session (`threadId: DRAFT_PTY_SESSION_ID`). */
+  openTerminal: (
+    threadId: string,
+    cols: number,
+    rows: number,
+    projectId?: string,
+  ) => Promise<{ ptyId: string; replay: string }>;
   writeTerminal: (threadId: string, data: string) => Promise<void>;
   resizeTerminal: (threadId: string, cols: number, rows: number) => Promise<void>;
 
@@ -691,8 +697,8 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
 
   fetchUsageHistory: async (accountId, rangeMs) => invoke('usage:history', { accountId, rangeMs }),
 
-  openTerminal: async (threadId, cols, rows) => {
-    const result = await invoke('pty:open', { threadId, cols, rows });
+  openTerminal: async (threadId, cols, rows, projectId) => {
+    const result = await invoke('pty:open', { threadId, cols, rows, ...(projectId ? { projectId } : {}) });
     set((s) => ({
       ptyStatusByThread: {
         ...s.ptyStatusByThread,

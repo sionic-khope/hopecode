@@ -69,6 +69,10 @@
 .hc-btn--plain:active:not(:disabled) {
   background: var(--bg-control-pressed);
 }
+.hc-btn--plain[aria-pressed='true'] {
+  background: var(--accent-tint-strong);
+  color: var(--accent-strong);
+}
 .hc-btn--destructive {
   background: var(--bg-elevated);
   color: var(--crit-text);

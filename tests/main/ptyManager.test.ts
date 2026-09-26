@@ -77,4 +77,25 @@ describe('ptyManager', () => {
     second.exitCb?.({ exitCode: 3 });
     expect(broadcaster.of('pty:exit')).toEqual([{ threadId: 't1', code: 3 }]);
   });
+
+  it('reopening the same session id with a different cwd kills the old shell and spawns a fresh one there', () => {
+    procs.length = 0;
+    const broadcaster = createRecordingBroadcaster();
+    const mgr = createPtyManager({ shellEnv: createStaticShellEnv(), broadcaster });
+
+    mgr.open('draft', '/home/fixture', 80, 24);
+    const first = procs[0]!;
+    expect(first.killed).toBe(false);
+
+    // Same id, new cwd (the draft's folder chip changed): the old shell is replaced, not resized.
+    const reopened = mgr.open('draft', '/work/other-project', 80, 24);
+    expect(first.killed).toBe(true);
+    expect(reopened.replay).toBe(''); // fresh shell, nothing to replay
+    expect(procs).toHaveLength(2);
+
+    // Reopening again with the same (new) cwd reuses the session instead of respawning.
+    procs[1]!.dataCb?.('hello');
+    expect(mgr.open('draft', '/work/other-project', 80, 24).replay).toBe('hello');
+    expect(procs).toHaveLength(2);
+  });
 });

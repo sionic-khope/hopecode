@@ -58,6 +58,9 @@ export class RingBuffer {
 interface Session {
   proc: IPty;
   buffer: RingBuffer;
+  /** cwd the shell was spawned with; `open()` respawns when a later call for the same id asks for a different one
+   *  (the draft session's folder chip changed -- a real thread's cwd never changes after it is created). */
+  cwd: string;
 }
 
 export interface PtyManagerDeps {
@@ -77,7 +80,7 @@ export function createPtyManager(deps: PtyManagerDeps): PtyManager {
       cwd,
       env: deps.shellEnv.childEnv({ term: TERMINAL_TERM }),
     });
-    const session: Session = { proc, buffer: new RingBuffer(PTY_RING_BUFFER_BYTES) };
+    const session: Session = { proc, buffer: new RingBuffer(PTY_RING_BUFFER_BYTES), cwd };
 
     proc.onData((data) => {
       if (sessions.get(threadId) !== session) return;
@@ -107,8 +110,13 @@ export function createPtyManager(deps: PtyManagerDeps): PtyManager {
     open(threadId, cwd, cols, rows) {
       const existing = sessions.get(threadId);
       if (existing) {
-        existing.proc.resize(cols, rows);
-        return { ptyId: threadId, replay: existing.buffer.toString() };
+        if (existing.cwd === cwd) {
+          existing.proc.resize(cols, rows);
+          return { ptyId: threadId, replay: existing.buffer.toString() };
+        }
+        // Same session id, different cwd (the draft's folder chip changed): drop the old shell and
+        // reopen it in the new folder instead of resizing it in place.
+        killSession(threadId);
       }
       spawnSession(threadId, cwd, cols, rows);
       return { ptyId: threadId, replay: '' };

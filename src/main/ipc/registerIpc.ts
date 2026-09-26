@@ -25,7 +25,7 @@ import type {
   WorktreeManager,
 } from '../contracts';
 import type { SyncTranscriptFn } from '../session/transcriptSync';
-import { DEFAULT_THREAD_TITLE, USAGE_HISTORY_RETENTION_MS } from '../../shared/constants';
+import { DEFAULT_THREAD_TITLE, DRAFT_PTY_SESSION_ID, USAGE_HISTORY_RETENTION_MS } from '../../shared/constants';
 import { DEFAULT_AGENT, isAgentKind } from '../../shared/agents';
 import { deriveThreadTitle } from '../../core/threadTitle';
 import { applySettingsPatch, isEditorId, validateSettingsPatch } from '../../core/settings';
@@ -147,6 +147,29 @@ function buildHandlers(s: RegisterIpcServices): Handlers {
     const project = store.get().projects.find((p) => p.id === projectId);
     assertReq(channel, !!project, `project not found: ${String(projectId)}`);
     return project as Project;
+  }
+
+  /**
+   * A `pty:*` session id is either a real thread id or the reserved draft id (no thread yet, ⌘J from the
+   * "new chat" screen) -- anything else is refused (H1: only `pty:open` used to validate this; `pty:write` /
+   * `pty:resize` now do too).
+   */
+  function requirePtySessionId(channel: string, threadId: unknown): string {
+    assertReq(channel, isNonEmptyString(threadId), 'threadId must be a non-empty string');
+    if (threadId === DRAFT_PTY_SESSION_ID) return threadId;
+    requireThread(channel, threadId);
+    return threadId;
+  }
+
+  /**
+   * cwd for a `pty:open`: the thread's own cwd, or -- for the draft session -- the given project's folder
+   * (only a project the store actually knows about; the renderer never hands main a raw path) falling back to
+   * the user's home folder.
+   */
+  function resolvePtyCwd(channel: string, threadId: string, projectId: string | undefined): string {
+    if (threadId !== DRAFT_PTY_SESSION_ID) return requireThread(channel, threadId).cwd;
+    const project = projectId !== undefined ? store.get().projects.find((p) => p.id === projectId) : undefined;
+    return project?.path ?? homedir();
   }
 
   /**
@@ -710,9 +733,16 @@ function buildHandlers(s: RegisterIpcServices): Handlers {
         isPlainObject(req) && isNonEmptyString(req.threadId) && isFiniteNumber(req.cols) && isFiniteNumber(req.rows),
         'threadId/cols/rows required',
       );
-      const { threadId, cols, rows } = req as { threadId: string; cols: number; rows: number };
-      const thread = requireThread('pty:open', threadId);
-      return ptyManager.open(threadId, thread.cwd, cols, rows);
+      const { threadId, cols, rows, projectId } = req as {
+        threadId: string;
+        cols: number;
+        rows: number;
+        projectId?: unknown;
+      };
+      assertReq('pty:open', projectId === undefined || isNonEmptyString(projectId), 'projectId must be a string');
+      requirePtySessionId('pty:open', threadId);
+      const cwd = resolvePtyCwd('pty:open', threadId, projectId as string | undefined);
+      return ptyManager.open(threadId, cwd, cols, rows);
     },
 
     'pty:write': async (req) => {
@@ -722,6 +752,7 @@ function buildHandlers(s: RegisterIpcServices): Handlers {
         'threadId/data required',
       );
       const { threadId, data } = req as { threadId: string; data: string };
+      requirePtySessionId('pty:write', threadId);
       ptyManager.write(threadId, data);
     },
 
@@ -812,6 +843,7 @@ function buildHandlers(s: RegisterIpcServices): Handlers {
         'threadId/cols/rows required',
       );
       const { threadId, cols, rows } = req as { threadId: string; cols: number; rows: number };
+      requirePtySessionId('pty:resize', threadId);
       ptyManager.resize(threadId, cols, rows);
     },
   };

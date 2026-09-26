@@ -18,6 +18,9 @@ mac:
   identity: "-"
   category: public.app-category.developer-tools
 npmRebuild: true
+# node-pty's spawn-helper binary must keep its +x bit through pack/unpack, or pty.spawn() fails and the
+# terminal never opens (H1). Belt-and-suspenders on top of npmRebuild: see scripts/afterPack.mjs.
+afterPack: scripts/afterPack.mjs
 # Harden the packaged Electron binary (L4). ASAR integrity needs the macOS build to embed the asar hash
 # (electron-builder does this when the fuse is on).
 electronFuses:
