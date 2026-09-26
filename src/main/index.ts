@@ -449,6 +449,11 @@ function buildMenu(broadcaster: Broadcaster): Menu {
       label: 'File',
       submenu: [
         { label: '새 채팅', accelerator: 'CmdOrCtrl+N', click: () => broadcaster.emit('ui:newThread', undefined) },
+        {
+          label: 'New Task Start',
+          accelerator: 'CmdOrCtrl+Shift+N',
+          click: () => broadcaster.emit('ui:newTaskStart', undefined),
+        },
         { type: 'separator' },
         { role: 'close' },
       ],

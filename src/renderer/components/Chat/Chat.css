@@ -872,6 +872,43 @@ button.hc-chip--warn[aria-expanded='true'] {
   line-height: var(--lh-xs);
   color: var(--accent);
 }
+
+/* "New Task Start": the emphasized action right below the composer. */
+.hc-newtask-row {
+  width: min(var(--composer-max-w), calc(100% - 2 * var(--space-6)));
+  margin: var(--space-3) auto 0;
+  display: flex;
+  justify-content: center;
+  animation: hc-draft-in var(--motion-3) 90ms var(--ease-soft) both;
+}
+.hc-newtask-btn {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 18px;
+  border-radius: var(--radius-capsule);
+  background: var(--accent);
+  color: var(--label-on-accent);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  box-shadow: 0 1px 2px rgba(27, 110, 243, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  cursor: pointer;
+  transition:
+    transform var(--motion-1) var(--ease-soft),
+    box-shadow var(--motion-1) var(--ease-soft);
+}
+.hc-newtask-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(27, 110, 243, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+.hc-newtask-btn:active {
+  transform: translateY(0) scale(0.98);
+}
+.hc-newtask-btn:focus-visible {
+  box-shadow: var(--focus-ring);
+}
 @keyframes hc-draft-in {
   from {
     opacity: 0;
@@ -973,7 +1010,8 @@ button.hc-chip--warn[aria-expanded='true'] {
     opacity: 1;
   }
   .hc-chip--attention,
-  .hc-suggest > li {
+  .hc-suggest > li,
+  .hc-newtask-row {
     animation: none;
   }
 }

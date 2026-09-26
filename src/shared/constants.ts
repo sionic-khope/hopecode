@@ -21,6 +21,16 @@ export const DEFAULT_THREAD_TITLE = '새 채팅';
 /** Auto titles (first user message) are cut to this many characters. */
 export const THREAD_TITLE_MAX_CHARS = 40;
 
+/** "New Task Start" default request template (settings' 일반 section resets to this). */
+export const DEFAULT_NEW_TASK_TEMPLATE = `작업 시작 전에 다음을 순서대로 해 주세요.
+1. git pull로 base 브랜치를 최신 상태로 맞추기
+2. 이번 작업용 worktree와 branch 만들기
+3. CLAUDE.md, context.md를 읽고 프로젝트 규칙과 컨텍스트 파악하기
+4. 최근 변경사항(CHANGES.md 또는 git log 최근 커밋) 확인하기
+5. 파악한 내용을 짧게 요약하고 다음 지시를 기다리기`;
+/** `newTaskTemplate` upper bound (settings:update). */
+export const NEW_TASK_TEMPLATE_MAX_CHARS = 4000;
+
 /**
  * Model list shown until the SDK reported one (startup probe cache or a live session). Values mirror the CLI's
  * supportedModels() rows; `default` runs as Fable 5.1 until a session says otherwise.
@@ -51,6 +61,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   notifications: true,
   defaultEditor: null,
   tosNoticeAcknowledged: false,
+  newTaskTemplate: DEFAULT_NEW_TASK_TEMPLATE,
 };
 
 /** Startup model probe: give up on `initializationResult()` after this long (the cached / fallback list stays). */

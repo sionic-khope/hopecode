@@ -568,4 +568,42 @@ describe('draft / new chat', () => {
     useAppStore.getState().toggleSidebar();
     expect(useAppStore.getState().sidebarCollapsed).toBe(!before);
   });
+
+  it('startNewTask fills the draft composer with the template, keeping an already-open draft as is', () => {
+    const p1: Project = { id: 'p1', name: 'hopecode', path: '/a', trusted: true, createdAt: 1 };
+    useAppStore.setState({
+      projects: [p1],
+      route: 'chat',
+      selectedThreadId: null,
+      draft: { ...useAppStore.getState().draft, projectId: 'p1', model: 'sonnet' },
+      settings: { ...DEFAULT_SETTINGS, newTaskTemplate: 'Start on {project} ({date})' },
+    });
+
+    useAppStore.getState().startNewTask();
+
+    const s = useAppStore.getState();
+    expect(s.route).toBe('chat');
+    expect(s.selectedThreadId).toBeNull();
+    // Already an empty draft: newDraft() must not have reset it (model is untouched).
+    expect(s.draft).toMatchObject({ projectId: 'p1', model: 'sonnet' });
+    expect(s.composerPrefill).toMatchObject({ target: 'draft', mode: 'prepend' });
+    expect(s.composerPrefill?.text).toContain('Start on hopecode (');
+  });
+
+  it('startNewTask switches away from an open thread to a fresh draft first', () => {
+    useAppStore.setState({
+      threads: [makeThread({ id: 't1' })],
+      selectedThreadId: 't1',
+      route: 'chat',
+      settings: { ...DEFAULT_SETTINGS },
+    });
+
+    useAppStore.getState().startNewTask();
+
+    const s = useAppStore.getState();
+    expect(s.selectedThreadId).toBeNull();
+    expect(s.route).toBe('chat');
+    expect(s.composerPrefill?.target).toBe('draft');
+    expect(s.composerPrefill?.mode).toBe('prepend');
+  });
 });

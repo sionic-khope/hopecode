@@ -5,6 +5,7 @@ import { BrandMark } from '../common';
 import { GlyphBranch, GlyphChanges, GlyphCode, GlyphTerminal } from '../common/glyphs';
 import { Composer, type ComposerHandle } from './Composer';
 import { AccountChip, AgentChip, FolderChip, ModelPicker, PermissionChip } from './ComposerControls';
+import { BoltIcon } from './icons';
 import './Chat.css';
 
 export interface DraftViewProps {
@@ -167,6 +168,17 @@ export function DraftView({
           />
         }
       />
+      <div className="hc-newtask-row">
+        <button
+          type="button"
+          className="hc-newtask-btn"
+          data-testid="new-task-start"
+          onClick={() => useAppStore.getState().startNewTask()}
+        >
+          <BoltIcon width={15} height={15} />
+          New Task Start
+        </button>
+      </div>
       {/* Reserved line so the alert never shifts the composer. */}
       <div className="hc-draft__hint" role={needFolder ? 'alert' : undefined}>
         {needFolder ? '먼저 작업할 폴더를 선택하세요' : null}

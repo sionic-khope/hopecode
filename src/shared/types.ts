@@ -163,6 +163,11 @@ export interface AppSettings {
   defaultEditor: EditorId | null;
   /** Multi-account ToS notice shown once on first account add. */
   tosNoticeAcknowledged: boolean;
+  /**
+   * "New Task Start" composer template (draft screen button / ⌘⇧N / command palette). `{project}` / `{date}` are
+   * substituted before it lands in the composer. Never empty (falls back to the default); at most 4000 chars.
+   */
+  newTaskTemplate: string;
 }
 
 /** Fields `settings:update` may change (the ToS acknowledgement has its own flow). */

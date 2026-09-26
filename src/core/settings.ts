@@ -1,9 +1,11 @@
 // AppSettings validation shared by the store migration (whatever state.json holds) and `settings:update`
 // (renderer input). Pure: no fs, no Electron.
 import {
+  DEFAULT_NEW_TASK_TEMPLATE,
   DEFAULT_SETTINGS,
   EFFORT_LEVELS,
   IDLE_CLOSE_MAX_MINUTES,
+  NEW_TASK_TEMPLATE_MAX_CHARS,
   UI_PERMISSION_MODES,
   USAGE_POLL_MAX_SEC,
   USAGE_POLL_MIN_SEC,
@@ -76,6 +78,14 @@ export function validateSettingsPatch(raw: unknown): SettingsPatchResult {
       case 'defaultEditor':
         if (value !== null && !isEditorId(value)) return { ok: false, error: 'defaultEditor must be an editor id or null' };
         patch.defaultEditor = value;
+        break;
+      case 'newTaskTemplate':
+        if (typeof value !== 'string') return { ok: false, error: 'newTaskTemplate must be a string' };
+        if (value.length > NEW_TASK_TEMPLATE_MAX_CHARS) {
+          return { ok: false, error: `newTaskTemplate must be at most ${NEW_TASK_TEMPLATE_MAX_CHARS} characters` };
+        }
+        // Blank is not a valid template: it silently falls back to the default instead of being rejected.
+        patch.newTaskTemplate = value.trim().length === 0 ? DEFAULT_NEW_TASK_TEMPLATE : value;
         break;
       default:
         return { ok: false, error: `unknown setting: ${key}` };

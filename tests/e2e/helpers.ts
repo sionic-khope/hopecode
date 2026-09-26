@@ -150,7 +150,14 @@ export async function bootstrapState(
  */
 export async function menuShortcut(
   app: ElectronApplication,
-  accelerator: 'CmdOrCtrl+J' | 'CmdOrCtrl+N' | 'CmdOrCtrl+B' | 'CmdOrCtrl+K' | 'CmdOrCtrl+,' | 'CmdOrCtrl+Shift+D',
+  accelerator:
+    | 'CmdOrCtrl+J'
+    | 'CmdOrCtrl+N'
+    | 'CmdOrCtrl+B'
+    | 'CmdOrCtrl+K'
+    | 'CmdOrCtrl+,'
+    | 'CmdOrCtrl+Shift+D'
+    | 'CmdOrCtrl+Shift+N',
 ): Promise<void> {
   await app.evaluate(({ Menu, BrowserWindow }, acc) => {
     type Item = { accelerator?: string | null; submenu?: { items: Item[] } | null; click: (...args: unknown[]) => void };

@@ -152,6 +152,8 @@ export interface EventMap {
   'ui:commandPalette': void;
   /** Menu View > 변경사항 패널 (⌘⇧D). */
   'ui:toggleChanges': void;
+  /** Menu File > New Task Start (⌘⇧N). */
+  'ui:newTaskStart': void;
 }
 
 export type InvokeChannel = keyof InvokeMap;
@@ -230,6 +232,7 @@ export const EVENT_CHANNELS = [
   'ui:openSettings',
   'ui:commandPalette',
   'ui:toggleChanges',
+  'ui:newTaskStart',
 ] as const satisfies readonly EventChannel[];
 
 type Missing<All, Listed> = Exclude<All, Listed>;

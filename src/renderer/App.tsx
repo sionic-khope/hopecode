@@ -5,6 +5,7 @@ import { invoke, on } from './api';
 import { AccountsPage } from './components/Accounts/AccountsPage';
 import { AddAccountDialog, type LoginStatus } from './components/Accounts/AddAccountDialog';
 import { ChatView, DraftView } from './components/Chat';
+import { BoltIcon } from './components/Chat/icons';
 import { CommandPalette, type PaletteCommand } from './components/Palette/CommandPalette';
 import { SettingsPage } from './components/Settings/SettingsPage';
 import { AboutModal, ShortcutsModal } from './components/Shell/AppModals';
@@ -344,6 +345,15 @@ export function App() {
     const primaryEditor = editors.find((e) => e.id === settings.defaultEditor) ?? editors[0];
     const actions: PaletteCommand[] = [
       { id: 'new-chat', title: '새 채팅', group: '작업', shortcut: '⌘N', keywords: ['new', 'chat', 'draft'], run: () => s().newDraft() },
+      {
+        id: 'new-task-start',
+        title: 'New Task Start',
+        group: '작업',
+        shortcut: '⌘⇧N',
+        icon: <BoltIcon />,
+        keywords: ['new task', 'start', 'template', 'worktree'],
+        run: () => s().startNewTask(),
+      },
       { id: 'settings', title: '설정', group: '작업', shortcut: '⌘,', icon: <GlyphSettings />, keywords: ['settings', 'preferences'], run: onOpenSettings },
       { id: 'accounts', title: '계정 관리', group: '작업', icon: <GlyphPeople />, keywords: ['accounts'], run: onOpenAccounts },
       { id: 'usage', title: '사용량', group: '작업', icon: <GlyphChart />, keywords: ['usage', 'limit'], run: onOpenUsage },

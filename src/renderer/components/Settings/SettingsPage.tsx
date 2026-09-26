@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { EFFORT_LEVELS, IDLE_CLOSE_MAX_MINUTES, UI_PERMISSION_MODES, USAGE_POLL_MAX_SEC, USAGE_POLL_MIN_SEC } from '../../../shared/constants';
+import {
+  DEFAULT_NEW_TASK_TEMPLATE,
+  EFFORT_LEVELS,
+  IDLE_CLOSE_MAX_MINUTES,
+  NEW_TASK_TEMPLATE_MAX_CHARS,
+  UI_PERMISSION_MODES,
+  USAGE_POLL_MAX_SEC,
+  USAGE_POLL_MIN_SEC,
+} from '../../../shared/constants';
 import type {
   Account,
   AppSettings,
@@ -84,9 +92,11 @@ export function SettingsPage({
   const [deleting, setDeleting] = useState(false);
   const [idleDraft, setIdleDraft] = useState(String(settings.idleCloseMinutes));
   const [pollDraft, setPollDraft] = useState(settings.usagePollIntervalSec);
+  const [templateDraft, setTemplateDraft] = useState(settings.newTaskTemplate);
 
   useEffect(() => setIdleDraft(String(settings.idleCloseMinutes)), [settings.idleCloseMinutes]);
   useEffect(() => setPollDraft(settings.usagePollIntervalSec), [settings.usagePollIntervalSec]);
+  useEffect(() => setTemplateDraft(settings.newTaskTemplate), [settings.newTaskTemplate]);
 
   useEffect(() => {
     let live = true;
@@ -110,6 +120,19 @@ export function SettingsPage({
       return;
     }
     if (n !== settings.idleCloseMinutes) save({ idleCloseMinutes: n });
+  };
+
+  const commitTemplate = () => {
+    // Mirrors the core validation (core/settings.ts): blank falls back to the default. Applied to the local draft
+    // right away so the textarea reflects it even when that also happens to be what `settings` already held (the
+    // sync effect below only fires on a *value* change, which a round-trip to the same default would not be).
+    const next = templateDraft.trim().length === 0 ? DEFAULT_NEW_TASK_TEMPLATE : templateDraft;
+    setTemplateDraft(next);
+    if (templateDraft !== settings.newTaskTemplate) save({ newTaskTemplate: templateDraft });
+  };
+  const resetTemplate = () => {
+    setTemplateDraft(DEFAULT_NEW_TASK_TEMPLATE);
+    save({ newTaskTemplate: DEFAULT_NEW_TASK_TEMPLATE });
   };
 
   const modelOptions = models.length > 0 ? models : [{ value: 'default', label: 'Default' }];
@@ -202,6 +225,28 @@ export function SettingsPage({
         </Row>
         <Row label="알림" hint="창이 뒤에 있을 때 턴 완료, 권한 요청, 계정 전환을 알립니다">
           <Switch size="md" checked={settings.notifications} aria-label="알림" onChange={(notifications) => save({ notifications })} />
+        </Row>
+        <Row
+          label="New Task Start 템플릿"
+          hint="새 채팅 화면의 'New Task Start' 버튼(⌘⇧N)이 입력창에 붙여넣는 문구입니다. {project}는 폴더 이름, {date}는 오늘 날짜로 바뀝니다"
+          stack
+        >
+          <textarea
+            className="hc-settings__textarea"
+            aria-label="New Task Start 템플릿"
+            maxLength={NEW_TASK_TEMPLATE_MAX_CHARS}
+            value={templateDraft}
+            onChange={(e) => setTemplateDraft(e.target.value)}
+            onBlur={commitTemplate}
+          />
+          <div className="hc-settings__textarea-footer">
+            <span className="hc-settings__char-count">
+              {templateDraft.length} / {NEW_TASK_TEMPLATE_MAX_CHARS}
+            </span>
+            <Button variant="secondary" size="sm" onClick={resetTemplate}>
+              기본값으로 되돌리기
+            </Button>
+          </div>
         </Row>
       </Section>
 
@@ -353,9 +398,22 @@ function Section({ title, description, action, children }: { title: string; desc
   );
 }
 
-function Row({ label, hint, hintMono = false, children }: { label: string; hint?: string; hintMono?: boolean; children: ReactNode }) {
+function Row({
+  label,
+  hint,
+  hintMono = false,
+  stack = false,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  hintMono?: boolean;
+  /** Full-width control stacked below the label (a textarea) instead of the usual side-by-side layout. */
+  stack?: boolean;
+  children: ReactNode;
+}) {
   return (
-    <div className="hc-settings__row">
+    <div className={`hc-settings__row${stack ? ' hc-settings__row--stack' : ''}`}>
       <div className="hc-settings__row-text">
         <div className="hc-settings__row-label">{label}</div>
         {hint ? <div className={`hc-settings__row-hint${hintMono ? ' hc-settings__row-hint--mono' : ''}`}>{hint}</div> : null}

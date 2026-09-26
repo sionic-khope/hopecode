@@ -41,8 +41,11 @@ export interface ComposerProps {
   /** Visual size: the draft screen uses the roomier variant. */
   size?: 'md' | 'lg';
   handleRef?: Ref<ComposerHandle>;
-  /** Text to place in the box once per `nonce` (store composerPrefill); `onPrefillApplied` clears it. */
-  prefill?: { text: string; nonce: number } | null;
+  /**
+   * Text to place in the box once per `nonce` (store composerPrefill); `onPrefillApplied` clears it.
+   * `mode: 'prepend'` keeps whatever the box already held, with `text` placed in front (empty box: just `text`).
+   */
+  prefill?: { text: string; nonce: number; mode?: 'replace' | 'prepend' } | null;
   onPrefillApplied?: () => void;
 }
 
@@ -89,7 +92,12 @@ export const Composer = memo(function Composer({
 
   useEffect(() => {
     if (!prefill) return;
-    replaceText(prefill.text);
+    if (prefill.mode === 'prepend') {
+      const current = taRef.current?.value ?? '';
+      replaceText(current.trim().length === 0 ? prefill.text : `${prefill.text}\n\n${current}`);
+    } else {
+      replaceText(prefill.text);
+    }
     onPrefillApplied?.();
     // One application per request (nonce); the callback identity does not matter.
   }, [prefill?.nonce]);

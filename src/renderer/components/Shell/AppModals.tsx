@@ -11,6 +11,7 @@ export const SHORTCUTS: readonly { group: string; items: readonly { keys: string
     group: '일반',
     items: [
       { keys: ['⌘', 'N'], label: '새 채팅' },
+      { keys: ['⌘', '⇧', 'N'], label: 'New Task Start' },
       { keys: ['⌘', 'K'], label: '명령 팔레트' },
       { keys: ['⌘', ','], label: '설정' },
       { keys: ['⌘', 'B'], label: '사이드바 보기/숨기기' },

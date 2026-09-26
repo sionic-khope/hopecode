@@ -109,6 +109,51 @@
   gap: var(--space-2);
 }
 
+/* Full-width control stacked below the label (New Task Start 템플릿 textarea). */
+.hc-settings__row--stack {
+  flex-direction: column;
+  align-items: stretch;
+  min-height: 0;
+  gap: var(--space-2);
+}
+.hc-settings__row--stack .hc-settings__row-control {
+  flex: none;
+  width: 100%;
+  align-items: stretch;
+}
+
+.hc-settings__textarea {
+  width: 100%;
+  min-height: 120px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 10px;
+  background: var(--bg-card-muted);
+  box-shadow: inset 0 0 0 1px rgba(22, 32, 56, 0.1);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  line-height: var(--lh-sm);
+  color: var(--label);
+  resize: vertical;
+  transition: box-shadow var(--motion-1) var(--ease-soft);
+}
+.hc-settings__textarea:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--accent), var(--focus-ring);
+}
+.hc-settings__textarea-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: 6px;
+}
+.hc-settings__char-count {
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--label-tertiary);
+}
+
 /* Number field with a unit. */
 .hc-settings__number {
   display: inline-flex;

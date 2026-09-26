@@ -6,6 +6,7 @@ import { invoke } from '../api';
 import type { InvokeResponse } from '../../shared/ipc';
 import { DEFAULT_SETTINGS } from '../../shared/constants';
 import { DEFAULT_AGENT } from '../../shared/agents';
+import { fillNewTaskTemplate } from '../../core/newTaskTemplate';
 import type {
   Account,
   AccountPatch,
@@ -111,13 +112,15 @@ export type PanelTab = 'changes' | 'terminal';
 export type AppModal = 'shortcuts' | 'about';
 
 /**
- * Text to place in a composer (suggested prompt, "편집해서 다시 보내기"). `target` is a thread id or 'draft';
- * `nonce` makes a repeat of the same text still apply.
+ * Text to place in a composer (suggested prompt, "편집해서 다시 보내기", "New Task Start"). `target` is a thread id
+ * or 'draft'; `nonce` makes a repeat of the same text still apply. `mode: 'prepend'` keeps whatever the box already
+ * held, with `text` placed in front (New Task Start); the default `'replace'` overwrites it.
  */
 export interface ComposerPrefill {
   target: string;
   text: string;
   nonce: number;
+  mode?: 'replace' | 'prepend';
 }
 
 export interface LoginSessionState {
@@ -276,8 +279,11 @@ export interface AppStoreState {
   /** Accounts route, optionally scrolled to the usage charts. */
   openAccounts: (focus?: 'usage') => void;
   clearAccountsFocus: () => void;
-  prefillComposer: (target: string, text: string) => void;
+  prefillComposer: (target: string, text: string, mode?: ComposerPrefill['mode']) => void;
   clearComposerPrefill: () => void;
+  /** "New Task Start" (draft button / ⌘⇧N / palette): ensures an empty draft is showing, then prepends the
+   * settings' template (placeholders filled) to whatever the composer already holds. */
+  startNewTask: () => void;
   bumpGitRevision: (threadId: string) => void;
   updateSettings: (patch: SettingsPatch) => Promise<AppSettings>;
   deleteArchivedThreads: () => Promise<number>;
@@ -412,9 +418,19 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
   setModal: (modal) => set({ modal, paletteOpen: false }),
   openAccounts: (focus) => set({ route: 'accounts', accountsFocus: focus ?? null }),
   clearAccountsFocus: () => set({ accountsFocus: null }),
-  prefillComposer: (target, text) =>
-    set((s) => ({ composerPrefill: { target, text, nonce: (s.composerPrefill?.nonce ?? 0) + 1 } })),
+  prefillComposer: (target, text, mode = 'replace') =>
+    set((s) => ({ composerPrefill: { target, text, mode, nonce: (s.composerPrefill?.nonce ?? 0) + 1 } })),
   clearComposerPrefill: () => set({ composerPrefill: null }),
+  startNewTask: () => {
+    const s = get();
+    // Already an empty draft: keep it (its folder, model, etc.) and just prepend the template. Otherwise this
+    // behaves like ⌘N first, so the template lands in a fresh draft.
+    if (!(s.route === 'chat' && s.selectedThreadId === null)) s.newDraft();
+    const { draft, projects, settings } = get();
+    const projectName = draft.projectId ? (projects.find((p) => p.id === draft.projectId)?.name ?? null) : null;
+    const filled = fillNewTaskTemplate(settings.newTaskTemplate, projectName);
+    get().prefillComposer('draft', filled, 'prepend');
+  },
   bumpGitRevision: (threadId) => set((s) => ({ gitRevision: { ...s.gitRevision, [threadId]: (s.gitRevision[threadId] ?? 0) + 1 } })),
   updateSettings: async (patch) => {
     const settings = await invoke('settings:update', patch);
