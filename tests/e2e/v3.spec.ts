@@ -306,7 +306,9 @@ test('command palette (⌘K): search, then run a command and jump to a thread', 
   await expect(page.getByTestId('settings')).toBeVisible();
 
   await menuShortcut(run.app, 'CmdOrCtrl+K');
+  await expect(page.getByRole('combobox', { name: '명령 검색' })).toBeFocused();
   await page.keyboard.type('README 인사말');
+  await expect(palette.getByRole('option').first()).toContainText('README 인사말을 바꿔 주세요');
   await page.keyboard.press('Enter');
   await expect(page.locator('.app__thread-name')).toHaveText('README 인사말을 바꿔 주세요');
 });
