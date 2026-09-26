@@ -7,6 +7,7 @@ import {
   launch,
   menuShortcut,
   openDraft,
+  openFromMore,
   screenshot,
   type Launched,
   type Sandbox,
@@ -85,7 +86,7 @@ test('⌘⇧N runs the same action from the menu only (no renderer keydown doubl
 
 test('settings: changing the template applies to the next New Task Start; blank reverts to the default', async () => {
   const { page } = run;
-  await page.getByTestId('sidebar').getByRole('button', { name: /^설정/ }).click();
+  await openFromMore(page, '설정');
   const settingsPage = page.getByTestId('settings');
   await expect(settingsPage).toBeVisible();
   const textarea = settingsPage.getByRole('textbox', { name: 'New Task Start 템플릿' });
@@ -101,7 +102,7 @@ test('settings: changing the template applies to the next New Task Start; blank 
   await expect(page.locator('.hc-composer__textarea')).toHaveValue(/커스텀 New Task 템플릿/);
 
   // Reset button: back to the default template.
-  await page.getByTestId('sidebar').getByRole('button', { name: /^설정/ }).click();
+  await openFromMore(page, '설정');
   await page.getByTestId('settings').getByRole('button', { name: '기본값으로 되돌리기' }).click();
   await expect.poll(async () => textarea.inputValue()).toContain('작업 시작 전에');
 

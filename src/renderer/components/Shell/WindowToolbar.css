@@ -1,0 +1,49 @@
+/* Top-right window toolbar (더보기 · 공유 · 환경 | 터미널 · 변경사항). Tokens only. */
+.hc-wtb {
+  position: relative;
+  margin-left: auto;
+  gap: 2px;
+}
+.hc-wtb__sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: var(--separator);
+}
+/* Share / export feedback: a pill left of the buttons, gone after a few seconds. */
+.hc-wtb__flash {
+  position: absolute;
+  right: calc(100% + var(--space-2));
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  padding: 4px 10px;
+  border-radius: var(--radius-capsule);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-hairline);
+  color: var(--label-secondary);
+  font-size: var(--text-xs);
+  animation: hc-wtb-flash-in var(--motion-2) var(--ease-soft);
+}
+.hc-wtb__flash--ok {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.hc-wtb__flash--error {
+  color: var(--crit);
+  background: var(--crit-bg);
+}
+@keyframes hc-wtb-flash-in {
+  from {
+    opacity: 0;
+    transform: translateY(calc(-50% + 4px));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%);
+  }
+}
+/* Draft screen: the bar holds only the toolbar. */
+.hc-chat-header--draft {
+  justify-content: flex-end;
+}

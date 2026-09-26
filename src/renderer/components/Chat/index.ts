@@ -8,7 +8,7 @@ export { PermissionCard, type PermissionCardProps } from './PermissionCard';
 export { SystemNotice, type SystemNoticeProps } from './SystemNotice';
 export { DraftView, type DraftViewProps } from './DraftView';
 export {
-  AccountChip,
+  accountPinSection,
   EFFORT_LABEL,
   FolderChip,
   FolderTag,

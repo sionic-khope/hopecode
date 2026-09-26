@@ -1,6 +1,7 @@
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import type {
   ChatEvent,
+  ChatImage,
   ChatReducerState,
   RateLimitInfoLite,
   RunnerSignal,
@@ -40,6 +41,56 @@ function extractToolResultText(content: unknown): string {
       .join('\n');
   }
   return '';
+}
+
+const IMAGE_MEDIA_TYPES: ReadonlySet<string> = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+
+/** Largest base64 payload kept on a chat item (10 MB decoded); bigger images are dropped. */
+export const MAX_INLINE_IMAGE_BASE64 = Math.ceil((10 * 1024 * 1024 * 4) / 3);
+
+function toChatImage(mediaType: unknown, data: unknown): ChatImage | null {
+  if (typeof mediaType !== 'string' || !IMAGE_MEDIA_TYPES.has(mediaType)) return null;
+  if (typeof data !== 'string' || data.length === 0 || data.length > MAX_INLINE_IMAGE_BASE64) return null;
+  return { mediaType: mediaType as ChatImage['mediaType'], data };
+}
+
+/**
+ * Base64 image blocks of a tool_result (`{type:'image', source:{type:'base64', media_type, data}}`), falling back
+ * to the Read tool's structured output (`tool_use_result: {type:'image', file:{base64, type}}`).
+ */
+export function extractToolResultImages(content: unknown, toolUseResult: unknown): ChatImage[] {
+  const images: ChatImage[] = [];
+  if (Array.isArray(content)) {
+    for (const block of content) {
+      if (!block || typeof block !== 'object' || (block as { type?: unknown }).type !== 'image') continue;
+      const source = (block as { source?: Record<string, unknown> }).source;
+      if (!source || source.type !== 'base64') continue;
+      const image = toChatImage(source.media_type, source.data);
+      if (image) images.push(image);
+    }
+  }
+  if (images.length === 0 && toolUseResult && typeof toolUseResult === 'object') {
+    const r = toolUseResult as { type?: unknown; file?: { base64?: unknown; type?: unknown } };
+    if (r.type === 'image' && r.file) {
+      const image = toChatImage(r.file.type, r.file.base64);
+      if (image) images.push(image);
+    }
+  }
+  return images;
+}
+
+/** `parent_tool_use_id` of an SDK message (non-empty string) or undefined for the main conversation. */
+function parentOf(m: Record<string, unknown>): string | undefined {
+  const parent = m.parent_tool_use_id;
+  return typeof parent === 'string' && parent.length > 0 ? parent : undefined;
+}
+
+function isAsyncLaunch(toolUseResult: unknown): boolean {
+  return (
+    !!toolUseResult &&
+    typeof toolUseResult === 'object' &&
+    (toolUseResult as { status?: unknown }).status === 'async_launched'
+  );
 }
 
 function extractStructuredPatch(toolUseResult: unknown): StructuredPatchHunk[] | undefined {
@@ -87,6 +138,8 @@ export function reduceSdkMessage(state: ChatReducerState, msg: SdkMessageLike, n
   switch (m.type) {
     case 'stream_event': {
       const event = m.event;
+      // Subagent deltas are skipped: their complete assistant messages carry the text (grouped by parent).
+      if (parentOf(m)) break;
       if (event?.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
         const text: string = typeof event.delta.text === 'string' ? event.delta.text : '';
         let itemId = next.streamingItemId;
@@ -102,16 +155,23 @@ export function reduceSdkMessage(state: ChatReducerState, msg: SdkMessageLike, n
 
     case 'assistant': {
       const blocks: any[] = Array.isArray(m.message?.content) ? m.message.content : [];
+      const parent = parentOf(m);
       let sawOutput = false;
 
       for (const block of blocks) {
         if (block?.type === 'text') {
-          const id = next.streamingItemId ?? allocId('text');
-          events.push({
-            type: 'item-upsert',
-            item: { type: 'assistant-text', id, text: typeof block.text === 'string' ? block.text : '', createdAt: now },
-          });
-          next = { ...next, streamingItemId: null, streamingText: '' };
+          const text = typeof block.text === 'string' ? block.text : '';
+          if (parent) {
+            // Subagent text never touches the main conversation's streaming item.
+            events.push({
+              type: 'item-upsert',
+              item: { type: 'assistant-text', id: allocId('text'), text, createdAt: now, parentToolUseId: parent },
+            });
+          } else {
+            const id = next.streamingItemId ?? allocId('text');
+            events.push({ type: 'item-upsert', item: { type: 'assistant-text', id, text, createdAt: now } });
+            next = { ...next, streamingItemId: null, streamingText: '' };
+          }
           sawOutput = true;
         } else if (block?.type === 'tool_use') {
           const id = allocId('tool');
@@ -122,6 +182,7 @@ export function reduceSdkMessage(state: ChatReducerState, msg: SdkMessageLike, n
             name: block.name,
             input: (block.input ?? {}) as Record<string, unknown>,
             createdAt: now,
+            ...(parent ? { parentToolUseId: parent } : {}),
           };
           next = { ...next, pendingTools: { ...next.pendingTools, [block.id]: item } };
           events.push({ type: 'item-upsert', item });
@@ -149,11 +210,21 @@ export function reduceSdkMessage(state: ChatReducerState, msg: SdkMessageLike, n
             const result = extractToolResultText(block.content);
             const isError = block.is_error === true;
             const patch = extractStructuredPatch(m.tool_use_result);
-            const updated: ToolItem = { ...pending, result, isError, ...(patch ? { patch } : {}) };
+            const images = extractToolResultImages(block.content, m.tool_use_result);
+            const background = !isError && isAsyncLaunch(m.tool_use_result);
+            const updated: ToolItem = {
+              ...pending,
+              result,
+              isError,
+              ...(patch ? { patch } : {}),
+              ...(images.length > 0 ? { images } : {}),
+              ...(background ? { taskStatus: 'running' as const } : { completedAt: now }),
+            };
 
             const remaining = { ...next.pendingTools };
             delete remaining[toolUseId];
             next = { ...next, pendingTools: remaining };
+            if (background) next = { ...next, backgroundTools: { ...next.backgroundTools, [toolUseId]: updated } };
 
             events.push({ type: 'item-upsert', item: updated });
           }
@@ -172,6 +243,17 @@ export function reduceSdkMessage(state: ChatReducerState, msg: SdkMessageLike, n
         });
       } else if (m.subtype === 'api_retry') {
         if (m.error === 'rate_limit') signals.push({ type: 'rate-limit-hit' });
+      } else if (m.subtype === 'task_notification' && typeof m.tool_use_id === 'string') {
+        // A background subagent settled: its launch card turns done / failed.
+        const toolUseId = m.tool_use_id as string;
+        const launched = next.backgroundTools?.[toolUseId];
+        if (launched && (m.status === 'completed' || m.status === 'failed' || m.status === 'stopped')) {
+          const updated: ToolItem = { ...launched, taskStatus: m.status, completedAt: now };
+          const remaining = { ...next.backgroundTools };
+          delete remaining[toolUseId];
+          next = { ...next, backgroundTools: remaining };
+          events.push({ type: 'item-upsert', item: updated });
+        }
       }
       break;
     }

@@ -15,6 +15,7 @@ import {
 import type {
   Account,
   ChatEvent,
+  ChatImage,
   ChatItem,
   ChatReducerState,
   ChatSendResult,
@@ -27,6 +28,7 @@ import type {
   UiPermissionMode,
 } from '../../shared/types';
 import type { Broadcaster, ClaudeBinary, QueryFn, ShellEnv, Store, ThreadLog, UsagePoller } from '../contracts';
+import { changedImagesBetween, type ImageSnapshot } from '../images/imageFiles';
 import type { PermissionBroker } from './permissionBroker';
 import type { SyncTranscriptFn } from './transcriptSync';
 
@@ -47,6 +49,11 @@ export interface ThreadRunnerDeps {
   onCliVersion?: (version: string) => void;
   /** A Query reported its init message (the manager refreshes the model catalog from the first live session). */
   onSessionInit?: () => void;
+  /**
+   * Changed image files of a folder (git status); taken at turn start and end so the turn's new / modified images
+   * become a gallery item. Omitted = no galleries.
+   */
+  scanImages?: (cwd: string) => Promise<ImageSnapshot | null>;
   now: () => number;
   log: (message: string, err?: unknown) => void;
 }
@@ -73,6 +80,8 @@ interface TurnState {
   reason?: TurnEndReason;
   gotOutput: boolean;
   lastRateLimit?: RateLimitInfoLite;
+  /** Image snapshot of the thread folder at turn start (null: not a repo / no scanner). */
+  imagesBefore: ImageSnapshot | null;
   done: Promise<void>;
   resolve: () => void;
 }
@@ -165,22 +174,24 @@ export class ThreadRunner {
   // Public API
   // -------------------------------------------------------------------------
 
-  async send(text: string): Promise<ChatSendResult> {
+  async send(text: string, images: ChatImage[] = []): Promise<ChatSendResult> {
     const thread = this.thread();
+    const attached = images.length > 0 ? { images } : {};
     if (thread.status === 'waiting') {
       const prev = thread.pendingPrompt;
       const merged: PendingPrompt = {
         text: prev?.kind === 'continue' ? `${CONTINUE_PROMPT}\n\n${text}` : text,
         kind: 'original',
+        ...(prev?.images || images.length > 0 ? { images: [...(prev?.images ?? []), ...images] } : {}),
       };
       this.patch({ pendingPrompt: merged });
-      this.emitItem({ type: 'user', id: this.newId('user'), text, createdAt: this.deps.now() });
+      this.emitItem({ type: 'user', id: this.newId('user'), text, createdAt: this.deps.now(), ...attached });
       return { accepted: true, reason: 'waiting' };
     }
     if (this.busy || thread.status === 'running') return { accepted: false, reason: 'busy' };
     this.clearIdleTimer();
     this.abortRequested = false;
-    return this.runTurn({ text, kind: 'original' }, new Set(), null, text);
+    return this.runTurn({ text, kind: 'original', ...attached }, new Set(), null, text);
   }
 
   /** Waiting thread re-evaluation (WaitScheduler). `due` -> refresh usage before picking. */
@@ -385,7 +396,8 @@ export class ThreadRunner {
     }
 
     if (userText !== null) {
-      this.emitItem({ type: 'user', id: this.newId('user'), text: userText, createdAt: this.deps.now() });
+      const attached = prompt.images && prompt.images.length > 0 ? { images: prompt.images } : {};
+      this.emitItem({ type: 'user', id: this.newId('user'), text: userText, createdAt: this.deps.now(), ...attached });
     }
 
     if (decision.type === 'waiting') {
@@ -434,6 +446,9 @@ export class ThreadRunner {
       return retried;
     }
 
+    // Taken before the prompt goes out, so files the turn writes are never part of the baseline.
+    const imagesBefore = this.deps.scanImages ? await this.scanImages() : null;
+
     if (this.closed) {
       this.busy = false;
       await this.closeQuery();
@@ -452,7 +467,7 @@ export class ThreadRunner {
 
     let resolve!: () => void;
     const done = new Promise<void>((r) => (resolve = r));
-    const turn: TurnState = { active, accountId, ended: false, gotOutput: false, done, resolve };
+    const turn: TurnState = { active, accountId, ended: false, gotOutput: false, imagesBefore, done, resolve };
     this.turn = turn;
     // A partial text left by an earlier cut-off turn is finalized; streaming state starts clean (M2).
     this.flushPartial(active);
@@ -463,7 +478,7 @@ export class ThreadRunner {
     this.emitEvent({ type: 'turn-start', accountId });
     active.input.push({
       type: 'user',
-      message: { role: 'user', content: prompt.text },
+      message: { role: 'user', content: promptContent(prompt) },
       parent_tool_use_id: null,
       origin: { kind: 'human' },
     });
@@ -509,6 +524,8 @@ export class ThreadRunner {
     this.abortRequested = false;
     this.emitEvent({ type: 'turn-end', ok: reason === undefined, ...(reason ? { reason } : {}) });
     this.patch({ status: 'idle', pendingPrompt: null });
+    await this.emitImageGallery(turn);
+    if (this.closed) return;
 
     const active = this.active;
     if (active && active === turn.active) {
@@ -590,6 +607,8 @@ export class ThreadRunner {
       // Always set so the UI can switch to bypassPermissions at runtime via setPermissionMode.
       allowDangerouslySkipPermissions: true,
       includePartialMessages: true,
+      // Subagent text arrives with parent_tool_use_id so the chat nests it under the Task/Agent card.
+      forwardSubagentText: true,
       canUseTool: this.deps.broker.canUseToolFor(this.threadId),
       // Repo `.claude` settings (hooks, permissions) only load for a folder the user trusted.
       settingSources: trusted ? ['user', 'project', 'local'] : ['user'],
@@ -672,7 +691,7 @@ export class ThreadRunner {
   }
 
   private handleMessage(active: ActiveQuery, msg: SDKMessage): void {
-    if (active.flushedPartialId !== null) {
+    if (active.flushedPartialId !== null && !isSubagentMessage(msg)) {
       // The complete message of a block flushed early (rate-limit cut) reuses the flushed item's id (upsert).
       if (msg.type === 'assistant' && active.reducer.streamingItemId === null && hasTextBlock(msg)) {
         active.reducer = { ...active.reducer, streamingItemId: active.flushedPartialId };
@@ -763,6 +782,26 @@ export class ThreadRunner {
     }
   }
 
+  private scanImages(): Promise<ImageSnapshot | null> {
+    const scan = this.deps.scanImages;
+    if (!scan) return Promise.resolve(null);
+    return scan(this.thread().cwd).catch((err: unknown) => {
+      this.deps.log('[session] image scan failed', err);
+      return null;
+    });
+  }
+
+  /** Images created / changed in the thread folder during `turn` -> one gallery item at the end of the turn. */
+  private async emitImageGallery(turn: TurnState): Promise<void> {
+    const before = turn.imagesBefore;
+    if (!before || this.closed) return;
+    const after = await this.scanImages();
+    if (!after || this.closed) return;
+    const paths = changedImagesBetween(before, after);
+    if (paths.length === 0) return;
+    this.emitItem({ type: 'image-gallery', id: this.newId('images'), paths, createdAt: this.deps.now() });
+  }
+
   private hitTurn(turn: TurnState, reason: TurnEndReason): void {
     this.endTurn(turn, reason);
     turn.active.q.interrupt().catch((err: unknown) => this.deps.log('[session] interrupt after rejection failed', err));
@@ -848,6 +887,23 @@ export class ThreadRunner {
       .append(this.threadId, item)
       .catch((err: unknown) => this.deps.log('[session] thread log append failed', err));
   }
+}
+
+/** SDK user content for a prompt: plain text, or image blocks followed by the text. */
+function promptContent(prompt: PendingPrompt): SDKUserMessage['message']['content'] {
+  if (!prompt.images || prompt.images.length === 0) return prompt.text;
+  return [
+    ...prompt.images.map((img) => ({
+      type: 'image' as const,
+      source: { type: 'base64' as const, media_type: img.mediaType, data: img.data },
+    })),
+    { type: 'text' as const, text: prompt.text },
+  ];
+}
+
+function isSubagentMessage(msg: SDKMessage): boolean {
+  const parent = (msg as { parent_tool_use_id?: unknown }).parent_tool_use_id;
+  return typeof parent === 'string' && parent.length > 0;
 }
 
 function hasTextBlock(msg: SDKMessage): boolean {

@@ -1,4 +1,5 @@
-/* Shell: a pale canvas with floating cards (sidebar, conversation, right panel) over a thin statusline. */
+/* Shell: flat panes split by hairlines -- blue-white sidebar, pale conversation pane, white right panel -- over a
+   thin statusline. Cards live inside the panes, not around them. */
 .app {
   display: grid;
   grid-template-columns: var(--app-sidebar-w, var(--sidebar-w)) minmax(0, 1fr) var(--app-panel-w, 0px);
@@ -45,8 +46,7 @@
   min-width: calc(var(--sidebar-w) - var(--canvas-gap));
   border-radius: var(--radius-panel);
   background: var(--bg-sidebar);
-  box-shadow: var(--shadow-panel);
-  backdrop-filter: saturate(160%) blur(20px);
+  box-shadow: inset -1px 0 0 var(--sidebar-edge);
   overflow: hidden;
   transition:
     opacity var(--motion-2) var(--ease-soft),
@@ -117,6 +117,7 @@
   box-shadow: var(--shadow-panel);
   overflow: hidden;
 }
+/* Collapsed sidebar: the chat pane meets the window edge, so the pane itself carries no edge. */
 .app--panel-open .app__chat {
   margin-right: 0;
 }
@@ -127,12 +128,21 @@
 .app__titlebar--chat {
   gap: var(--space-2);
   padding: 0 var(--space-3) 0 var(--space-5);
-  border-bottom: 1px solid transparent;
-  transition: border-color var(--motion-1) var(--ease-soft);
+  background: var(--bg-pane-header);
+  border-bottom: 1px solid var(--separator);
+  transition: box-shadow var(--motion-2) var(--ease-soft);
 }
-/* Divider only once the transcript scrolls under the title. */
+/* Pages and the draft have no thread header: the bar melts into the pane (its window controls still sit there). */
+.app__titlebar--chat:not(:has(.hc-chat-header)),
+.app__titlebar--chat:has(.hc-chat-header--draft) {
+  background: transparent;
+  border-bottom-color: transparent;
+}
+/* Once the transcript scrolls under the title the bar lifts off it with a soft drop. */
 .app__titlebar--scrolled {
-  border-bottom-color: var(--separator);
+  box-shadow: 0 8px 20px -14px rgba(12, 30, 80, 0.22);
+  position: relative;
+  z-index: 3;
 }
 .app__thread-title {
   flex: 1;
@@ -152,8 +162,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--text-lg);
-  line-height: var(--lh-lg);
+  font-family: var(--font-display);
+  font-size: 17px;
+  line-height: 24px;
   font-weight: var(--weight-semibold);
   letter-spacing: var(--tracking-title);
   color: var(--label);
@@ -173,6 +184,11 @@
   white-space: nowrap;
   font-size: var(--text-sm);
   line-height: var(--lh-nav);
+  color: var(--label-tertiary);
+}
+.app__thread-project::before {
+  content: '#';
+  margin-right: 2px;
   color: var(--label-tertiary);
 }
 
@@ -206,7 +222,7 @@
 @keyframes hc-view-in {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translateY(calc(var(--rise-y) / 2));
   }
   to {
     opacity: 1;
@@ -241,6 +257,8 @@
   align-items: center;
   gap: var(--space-2);
   padding: 0 var(--space-4);
+  background: var(--bg-statusline);
+  border-top: 1px solid var(--separator);
   font-family: var(--font-ui);
   font-size: var(--text-status);
   line-height: var(--lh-status);

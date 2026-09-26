@@ -13,6 +13,7 @@ import type {
   ThreadLog,
   UsagePoller,
 } from '../contracts';
+import { snapshotChangedImages, type ImageSnapshot } from '../images/imageFiles';
 import { createPermissionBroker, type PermissionBroker } from './permissionBroker';
 import { ThreadRunner } from './threadRunner';
 import { syncTranscript as defaultSyncTranscript, type SyncTranscriptFn } from './transcriptSync';
@@ -38,6 +39,8 @@ export interface SessionManagerDeps {
   now?: () => number;
   log?: (message: string, err?: unknown) => void;
   waitTickMs?: number;
+  /** Turn-end image galleries (default: `git status` of the thread folder). */
+  scanImages?: (cwd: string) => Promise<ImageSnapshot | null>;
 }
 
 export interface SessionManagerImpl extends SessionManager {
@@ -81,6 +84,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManagerIm
         onWaiting: (id, waiting) => (waiting ? scheduler.track(id) : scheduler.untrack(id)),
         onCliVersion: deps.onCliVersion,
         onSessionInit: refreshModelsOnce,
+        scanImages: deps.scanImages ?? ((cwd) => snapshotChangedImages(cwd, deps.shellEnv.childEnv({}))),
         now,
         log,
       }),
@@ -141,8 +145,8 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManagerIm
     broker,
     scheduler,
 
-    send(threadId, text) {
-      return runner(threadId).send(text);
+    send(threadId, text, images) {
+      return runner(threadId).send(text, images);
     },
     interrupt(threadId) {
       return runner(threadId).interrupt();

@@ -1,6 +1,6 @@
 // A1 (fixture login script), A2 alias / enabled toggle / thread pin, A3 usage chart rendered.
 import { expect, test } from '@playwright/test';
-import { createSandbox, launch, screenshot, sendMessage, startThread, type Launched, type Sandbox } from './helpers';
+import { createSandbox, launch, openFromMore, screenshot, sendMessage, startThread, type Launched, type Sandbox } from './helpers';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -19,7 +19,7 @@ test.afterAll(async () => {
 
 test('Accounts page lists the pool with usage charts', async () => {
   const { page } = run;
-  await page.getByTestId('sidebar').getByRole('button', { name: /^계정/ }).click();
+  await openFromMore(page, '계정');
   const pageEl = page.locator('.hc-accounts-page');
   await expect(pageEl).toBeVisible();
   for (const alias of ['Work', 'Personal', 'Spare']) await expect(pageEl).toContainText(alias);
@@ -47,11 +47,14 @@ test('+ Add Account runs the (fixture) login and fills email / plan', async () =
 test('pinning a thread to an account runs its turns on that account', async () => {
   const { page } = run;
   await startThread(page, sandbox, '[text] 계정 고정 전');
-  const pin = page.locator('.hc-composer .hc-chip--account');
+  // The account pin lives in the top-right 더보기 menu.
+  const more = page.getByRole('toolbar', { name: '스레드 도구' }).getByRole('button', { name: '더보기' });
   // Priority order would pick Personal (Work is exhausted); the pin forces Spare.
-  await pin.click();
-  await page.getByRole('menu', { name: '계정 고정' }).getByRole('menuitemradio', { name: /^Spare/ }).click();
-  await expect(pin).toContainText('Spare');
+  await more.click();
+  await page.getByRole('menu', { name: '더보기' }).getByRole('group', { name: '계정 고정' }).getByRole('menuitemradio', { name: /^Spare/ }).click();
+  await more.click();
+  await expect(page.getByRole('menu', { name: '더보기' }).getByRole('menuitemradio', { name: /^Spare/ })).toHaveAttribute('aria-checked', 'true');
+  await page.keyboard.press('Escape');
   await sendMessage(page, '[whoami] pinned');
   await expect(page.locator('.hc-messages')).toContainText('account=fixture-spare');
   await expect(page.getByTestId('sidebar').locator('.hc-thread__account')).toBeVisible();
@@ -60,7 +63,7 @@ test('pinning a thread to an account runs its turns on that account', async () =
 
 test('enable switch changes N/M, keyboard drag reorders priority', async () => {
   const { page } = run;
-  await page.getByTestId('sidebar').getByRole('button', { name: /^계정/ }).click();
+  await openFromMore(page, '계정');
   const pageEl = page.locator('.hc-accounts-page');
   await expect(pageEl).toBeVisible();
   // The page header is the only "Accounts" title; the window bar above it stays empty.

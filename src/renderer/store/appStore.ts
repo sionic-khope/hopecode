@@ -15,6 +15,7 @@ import type {
   BootstrapPayload,
   ChatEvent,
   ChatItem,
+  ChatImage,
   ChatSendResult,
   EffortLevel,
   ModelOption,
@@ -38,6 +39,14 @@ export interface DraftState {
   permissionMode: UiPermissionMode;
   effort: EffortLevel | null;
   pinnedAccountId: string | null;
+  /** "이 PR로 새 채팅": the worktree starts from this PR's head branch (cleared when the folder changes). */
+  base: DraftBase | null;
+}
+
+export interface DraftBase {
+  branch: string;
+  pr: number;
+  title: string;
 }
 
 const SIDEBAR_COLLAPSED_KEY = 'hopecode.sidebarCollapsed';
@@ -103,7 +112,7 @@ export function defaultDraftProjectId(projects: readonly Project[], threads: rea
   return newest?.id ?? null;
 }
 
-export type Route = 'chat' | 'accounts' | 'settings';
+export type Route = 'chat' | 'accounts' | 'settings' | 'prs' | 'schedule' | 'plugins';
 
 /** Right panel tab (null = panel closed). */
 export type PanelTab = 'changes' | 'terminal';
@@ -250,6 +259,8 @@ export interface AppStoreState {
   composerPrefill: ComposerPrefill | null;
   /** Bumped after a git action (commit, merge, revert) so the changes panel reloads. */
   gitRevision: Record<string, number>;
+  /** Environment popover "소스" -> changes tab: expand and reveal this file once per `nonce`. */
+  changesFocus: { threadId: string; path: string; nonce: number } | null;
   /** Fixture / e2e run (bootstrap): no system notifications. */
   testMode: boolean;
 
@@ -285,6 +296,8 @@ export interface AppStoreState {
    * settings' template (placeholders filled) to whatever the composer already holds. */
   startNewTask: () => void;
   bumpGitRevision: (threadId: string) => void;
+  /** Opens the changes tab with `path` expanded (a file the thread referenced). */
+  focusChangesFile: (threadId: string, path: string) => void;
   updateSettings: (patch: SettingsPatch) => Promise<AppSettings>;
   deleteArchivedThreads: () => Promise<number>;
   /** Opens an empty draft (⌘N / "새 채팅") in the last used folder. */
@@ -316,7 +329,7 @@ export interface AppStoreState {
   pinAccount: (threadId: string, accountId: string | null) => Promise<void>;
 
   loadChatHistory: (threadId: string) => Promise<void>;
-  sendMessage: (threadId: string, text: string) => Promise<ChatSendResult>;
+  sendMessage: (threadId: string, text: string, images?: ChatImage[]) => Promise<ChatSendResult>;
   interrupt: (threadId: string) => Promise<void>;
   respondPermission: (requestId: string, decision: PermissionDecision, message?: string) => Promise<void>;
 
@@ -381,6 +394,7 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
   unseenDone: {},
   composerPrefill: null,
   gitRevision: {},
+  changesFocus: null,
   testMode: false,
   draft: {
     projectId: null,
@@ -389,6 +403,7 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
     permissionMode: EMPTY_SETTINGS.defaultPermissionMode,
     effort: null,
     pinnedAccountId: null,
+    base: null,
   },
 
   chatItemsByThread: {},
@@ -438,6 +453,8 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
     get().prefillComposer('draft', filled, 'prepend');
   },
   bumpGitRevision: (threadId) => set((s) => ({ gitRevision: { ...s.gitRevision, [threadId]: (s.gitRevision[threadId] ?? 0) + 1 } })),
+  focusChangesFile: (threadId, path) =>
+    set((s) => ({ panel: 'changes', changesFocus: { threadId, path, nonce: (s.changesFocus?.nonce ?? 0) + 1 } })),
   updateSettings: async (patch) => {
     const settings = await invoke('settings:update', patch);
     get().applySettingsUpdated(settings);
@@ -480,10 +497,16 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
         permissionMode: safeDraftMode(s.settings.defaultPermissionMode),
         effort: s.settings.defaultEffort ?? null,
         pinnedAccountId: null,
+        base: null,
       },
     })),
 
-  setDraft: (patch) => set((s) => ({ draft: { ...s.draft, ...patch } })),
+  // A PR base belongs to its project: picking another folder drops it.
+  setDraft: (patch) =>
+    set((s) => {
+      const movedFolder = patch.projectId !== undefined && patch.projectId !== s.draft.projectId && !('base' in patch);
+      return { draft: { ...s.draft, ...patch, ...(movedFolder ? { base: null } : {}) } };
+    }),
 
   startThread: async (text) => {
     const { draft } = get();
@@ -496,6 +519,7 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
       permissionMode: draft.permissionMode,
       effort: draft.effort,
       pinnedAccountId: draft.pinnedAccountId,
+      ...(draft.base ? { baseBranch: draft.base.branch, basePr: draft.base.pr } : {}),
     });
     if (result.ok) {
       get().applyThreadUpdated(result.thread);
@@ -624,7 +648,8 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
     }));
   },
 
-  sendMessage: async (threadId, text) => invoke('chat:send', { threadId, text }),
+  sendMessage: async (threadId, text, images) =>
+    invoke('chat:send', images && images.length > 0 ? { threadId, text, images } : { threadId, text }),
 
   interrupt: async (threadId) => {
     await invoke('chat:interrupt', { threadId });

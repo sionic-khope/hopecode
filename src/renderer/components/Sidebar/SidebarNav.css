@@ -1,0 +1,20 @@
+/* Sidebar nav additions: the round + on 새 채팅 (⌘N shows on hover), the always-visible ⌘K on 검색. */
+.hc-nav__kbd--always {
+  opacity: 1;
+}
+.hc-nav__plus {
+  flex: none;
+  display: inline-flex;
+  color: var(--label-tertiary);
+  transition: color var(--motion-1) var(--ease-soft);
+}
+.hc-nav--compose:hover .hc-nav__plus,
+.hc-nav--compose:focus-visible .hc-nav__plus {
+  color: var(--accent);
+}
+.hc-nav .hc-nav__plus svg {
+  color: inherit;
+}
+.hc-nav--open {
+  background: var(--bg-sidebar-hover);
+}

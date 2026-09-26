@@ -1,25 +1,24 @@
-import { useCallback, useEffect, useState } from 'react';
-import type { Account, EffortLevel, ModelOption, PermissionDecision, Project, Thread, UiPermissionMode } from '../../../shared/types';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { ChatImage, EffortLevel, ModelOption, PermissionDecision, Project, Thread, UiPermissionMode } from '../../../shared/types';
 import { formatResetCountdown } from '../../../core/format';
 import { MINUTE_MS } from '../../../shared/constants';
 import { selectChatItems, selectStreamingItemId, useAppStore, usePendingPermissions } from '../../store';
 import { MessageList } from './MessageList';
+import { ToolPathContext } from './ToolCard';
 import { Composer } from './Composer';
-import { AccountChip, AgentChip, FolderTag, ModelPicker, PermissionChip } from './ComposerControls';
+import { AgentChip, FolderTag, ModelPicker, PermissionChip } from './ComposerControls';
 import './Chat.css';
 
 export interface ChatViewProps {
   thread: Thread;
   project: Project | null;
   models: ModelOption[];
-  accounts: Account[];
-  onSend: (threadId: string, text: string) => void;
+  onSend: (threadId: string, text: string, images?: ChatImage[]) => void;
   onInterrupt: (threadId: string) => void;
   onPermissionDecision: (requestId: string, decision: PermissionDecision) => void;
   onModelChange: (threadId: string, model: string) => void;
   onEffortChange: (threadId: string, effort: EffortLevel | null) => void;
   onPermissionModeChange: (threadId: string, mode: UiPermissionMode) => void;
-  onPinAccountChange: (threadId: string, accountId: string | null) => void;
   onAttachFiles: (threadId: string) => Promise<string[]>;
   /** What the `default` model runs as (e.g. "Fable 5"). */
   defaultModelLabel: string;
@@ -35,14 +34,12 @@ export function ChatView({
   thread,
   project,
   models,
-  accounts,
   onSend,
   onInterrupt,
   onPermissionDecision,
   onModelChange,
   onEffortChange,
   onPermissionModeChange,
-  onPinAccountChange,
   onAttachFiles,
   defaultModelLabel,
   homeDir,
@@ -56,10 +53,10 @@ export function ChatView({
   const handleModel = useCallback((m: string) => onModelChange(threadId, m), [onModelChange, threadId]);
   const handleEffort = useCallback((e: EffortLevel | null) => onEffortChange(threadId, e), [onEffortChange, threadId]);
   const handleMode = useCallback((mode: UiPermissionMode) => onPermissionModeChange(threadId, mode), [onPermissionModeChange, threadId]);
-  const handlePin = useCallback((accountId: string | null) => onPinAccountChange(threadId, accountId), [onPinAccountChange, threadId]);
   const handleSend = useCallback(
-    (text: string) => {
-      onSend(threadId, text);
+    (text: string, images?: ChatImage[]) => {
+      if (images && images.length > 0) onSend(threadId, text, images);
+      else onSend(threadId, text);
       return true;
     },
     [onSend, threadId],
@@ -67,6 +64,7 @@ export function ChatView({
   const handleInterrupt = useCallback(() => onInterrupt(threadId), [onInterrupt, threadId]);
   const handleAttach = useCallback(() => onAttachFiles(threadId), [onAttachFiles, threadId]);
   const waiting = thread.status === 'waiting';
+  const toolPaths = useMemo(() => ({ cwd: thread.cwd, home: homeDir }), [thread.cwd, homeDir]);
   const setChatScrolled = useAppStore((s) => s.setChatScrolled);
   const prefill = useAppStore((s) => (s.composerPrefill?.target === threadId ? s.composerPrefill : null));
   const clearPrefill = useCallback(() => useAppStore.getState().clearComposerPrefill(), []);
@@ -74,6 +72,7 @@ export function ChatView({
 
   return (
     <div className="hc-chat">
+      <ToolPathContext.Provider value={toolPaths}>
       <MessageList
         items={items}
         streamingItemId={streamingItemId}
@@ -82,13 +81,16 @@ export function ChatView({
         onScrolledChange={setChatScrolled}
         agent={thread.agent}
         onEditResend={handleEditResend}
+        threadId={thread.id}
       />
+      </ToolPathContext.Provider>
       {waiting ? <WaitingBanner until={thread.waitingUntil} /> : null}
       <Composer
         running={running}
         onSend={handleSend}
         onInterrupt={handleInterrupt}
         onAttachFiles={handleAttach}
+        acceptImages
         canChangeFolder={false}
         prefill={prefill}
         onPrefillApplied={clearPrefill}
@@ -103,12 +105,6 @@ export function ChatView({
               />
             ) : null}
             <PermissionChip value={thread.permissionMode} onChange={handleMode} />
-            <AccountChip
-              accounts={accounts}
-              pinnedAccountId={thread.pinnedAccountId}
-              activeAccountId={thread.activeAccountId}
-              onChange={handlePin}
-            />
           </>
         }
         trailing={

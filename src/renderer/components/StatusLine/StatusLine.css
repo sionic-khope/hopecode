@@ -1,4 +1,4 @@
-/* Statusline: a thin bar on the canvas with soft capsule segments. Container styling lives on .app__status in
+/* Statusline: a thin flat bar under the panes; segments are split by short hairlines. Container styling lives on .app__status in
    App.css; this file owns the segments, meters and the popover trigger. */
 
 .hc-statusline__trigger {
@@ -15,9 +15,11 @@
   box-shadow: var(--focus-ring);
 }
 
-/* Dividers became spacing: capsules separate themselves. */
 .hc-statusline__divider {
-  display: none;
+  flex: none;
+  width: 1px;
+  height: 12px;
+  background: var(--separator-strong);
 }
 
 .hc-statusline__segment {
@@ -25,16 +27,15 @@
   align-items: center;
   gap: 6px;
   height: 20px;
-  padding: 0 9px;
+  padding: 0 6px;
   border-radius: var(--radius-capsule);
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 0 0 1px rgba(22, 32, 56, 0.05);
+  background: transparent;
   white-space: nowrap;
   flex: none;
   transition: background-color var(--motion-1) var(--ease-soft);
 }
 .hc-statusline__trigger:hover .hc-statusline__segment {
-  background: #ffffff;
+  background: var(--bg-control);
 }
 
 .hc-statusline__label {
@@ -47,10 +48,12 @@
 
 .hc-statusline__model {
   height: 20px;
-  padding: 0 10px;
-  background: var(--accent-tint);
-  color: var(--accent-strong);
-  font-weight: var(--weight-semibold);
+  padding: 0 9px;
+  background: var(--bg-card);
+  box-shadow: inset 0 0 0 1px var(--separator-strong);
+  color: rgba(23, 23, 26, 0.72);
+  font-family: var(--font-mono);
+  font-weight: var(--weight-medium);
 }
 
 .hc-statusline__avail {
@@ -79,7 +82,7 @@
   font-weight: var(--weight-medium);
 }
 .hc-meter__track {
-  height: 6px;
+  height: 4px;
   border-radius: var(--radius-capsule);
   background: var(--meter-track);
   overflow: hidden;
@@ -94,13 +97,13 @@
     background-color var(--motion-2) var(--ease-soft);
 }
 .hc-meter__fill--ok {
-  background: linear-gradient(90deg, #5bd68c, var(--ok));
+  background: var(--ok);
 }
 .hc-meter__fill--warn {
-  background: linear-gradient(90deg, #ffc15a, var(--warn));
+  background: var(--warn);
 }
 .hc-meter__fill--crit {
-  background: linear-gradient(90deg, #ff8078, var(--crit));
+  background: var(--crit);
 }
 .hc-meter__percent {
   color: var(--label);
@@ -115,10 +118,15 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Numbers in Geist Mono: fixed-width digits keep the capsules from jittering as values tick. */
+/* Numbers in JetBrains Mono: fixed-width digits keep the capsules from jittering as values tick. */
 .hc-statusline__value,
 .hc-meter__percent,
 .hc-meter__reset {
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: var(--text-xs);
+}
+
+/* The divider before the right-aligned pool count would float alone in the middle of the bar. */
+.hc-statusline__divider:has(+ .hc-statusline__avail) {
+  display: none;
 }

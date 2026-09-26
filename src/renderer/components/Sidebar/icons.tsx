@@ -203,3 +203,58 @@ export function IconClose(props: IconProps) {
     </svg>
   );
 }
+
+/** "풀 리퀘스트": two branches merging into one. */
+export function IconPullRequest(props: IconProps) {
+  return (
+    <svg {...navBase} {...props}>
+      <circle cx="5.75" cy="4.75" r="1.75" />
+      <circle cx="5.75" cy="15.25" r="1.75" />
+      <circle cx="14.25" cy="15.25" r="1.75" />
+      <path d="M5.75 6.5v7M14.25 13.5V8.25a2.5 2.5 0 0 0-2.5-2.5H9" />
+      <path d="m10.75 4-1.75 1.75 1.75 1.75" />
+    </svg>
+  );
+}
+
+/** "예약": clock face. */
+export function IconClock(props: IconProps) {
+  return (
+    <svg {...navBase} {...props}>
+      <circle cx="10" cy="10" r="6.75" />
+      <path d="M10 6.25V10l2.5 1.75" />
+    </svg>
+  );
+}
+
+/** "플러그인": a plug. */
+export function IconPlug(props: IconProps) {
+  return (
+    <svg {...navBase} {...props}>
+      <path d="M7.25 3v3.25M12.75 3v3.25" />
+      <path d="M5 6.25h10v2.5a5 5 0 0 1-10 0v-2.5Z" />
+      <path d="M10 13.75V17" />
+    </svg>
+  );
+}
+
+/** "탐색" (more): three dots on the nav grid. */
+export function IconDots(props: IconProps) {
+  return (
+    <svg {...navBase} {...props} fill="currentColor" stroke="none">
+      <circle cx="4.75" cy="10" r="1.35" />
+      <circle cx="10" cy="10" r="1.35" />
+      <circle cx="15.25" cy="10" r="1.35" />
+    </svg>
+  );
+}
+
+/** Round `+` badge at the end of the 새 채팅 row. */
+export function IconPlusCircle(props: IconProps) {
+  return (
+    <svg width={18} height={18} viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden {...props}>
+      <circle cx="9" cy="9" r="7.25" />
+      <path d="M9 5.75v6.5M5.75 9h6.5" />
+    </svg>
+  );
+}

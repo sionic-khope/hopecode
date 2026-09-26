@@ -1,37 +1,18 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import type { EditorId, EditorInfo, Project, Thread } from '../../../shared/types';
+import type { Thread } from '../../../shared/types';
 import { formatResetCountdown } from '../../../core/format';
 import { StatusPill } from '../common';
-import { GlyphChanges, GlyphTerminal } from '../common/glyphs';
-import { CommitMenu } from '../Changes/CommitMenu';
-import type { PanelTab } from '../../store';
-import { EditorMenu } from './EditorMenu';
+import { WindowToolbar, type WindowToolbarProps } from './WindowToolbar';
 import './Shell.css';
 
-export interface ChatHeaderProps {
+export interface ChatHeaderProps extends Omit<WindowToolbarProps, 'thread' | 'onStartRename'> {
   thread: Thread;
-  project: Project | null;
-  panel: PanelTab | null;
-  editors: EditorInfo[];
-  defaultEditor: EditorId | null;
   onRename: (title: string) => Promise<void>;
-  onTogglePanel: (tab: PanelTab) => void;
-  onOpenEditor: (editor: EditorId) => void;
-  onLoadEditors: () => void;
 }
 
-/** Title (click to rename), project, run-state pill; right: open-in-editor, changes, terminal, commit. */
-export const ChatHeader = memo(function ChatHeader({
-  thread,
-  project,
-  panel,
-  editors,
-  defaultEditor,
-  onRename,
-  onTogglePanel,
-  onOpenEditor,
-  onLoadEditors,
-}: ChatHeaderProps) {
+/** Title (click or 더보기 > 이름 변경 to rename), project, run-state pill; the window toolbar on the right. */
+export const ChatHeader = memo(function ChatHeader({ thread, onRename, ...toolbar }: ChatHeaderProps) {
+  const project = toolbar.project;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(thread.title);
   const committing = useRef(false);
@@ -39,6 +20,11 @@ export const ChatHeader = memo(function ChatHeader({
   useEffect(() => {
     if (!editing) setDraft(thread.title);
   }, [thread.title, editing]);
+
+  const startRename = () => {
+    committing.current = true;
+    setEditing(true);
+  };
 
   const commit = () => {
     if (!committing.current) return;
@@ -80,10 +66,7 @@ export const ChatHeader = memo(function ChatHeader({
             className="app__thread-name no-drag"
             title="클릭해서 이름 변경"
             aria-label={`스레드 이름: ${thread.title} (이름 변경)`}
-            onClick={() => {
-              committing.current = true;
-              setEditing(true);
-            }}
+            onClick={startRename}
           >
             {thread.title}
           </button>
@@ -95,30 +78,7 @@ export const ChatHeader = memo(function ChatHeader({
           </StatusPill>
         ) : null}
       </div>
-      <div className="hc-toolbar no-drag" role="toolbar" aria-label="스레드 도구">
-        <EditorMenu editors={editors} defaultEditor={defaultEditor} onOpen={onOpenEditor} onLoad={onLoadEditors} />
-        <button
-          type="button"
-          className={`hc-toolbar-btn hc-toolbar-btn--icon${panel === 'changes' ? ' hc-toolbar-btn--on' : ''}`}
-          aria-label="변경사항 패널"
-          aria-pressed={panel === 'changes'}
-          title="변경사항 (⌘⇧D)"
-          onClick={() => onTogglePanel('changes')}
-        >
-          <GlyphChanges />
-        </button>
-        <button
-          type="button"
-          className={`hc-toolbar-btn hc-toolbar-btn--icon${panel === 'terminal' ? ' hc-toolbar-btn--on' : ''}`}
-          aria-label="터미널 패널"
-          aria-pressed={panel === 'terminal'}
-          title="터미널 (⌘J)"
-          onClick={() => onTogglePanel('terminal')}
-        >
-          <GlyphTerminal />
-        </button>
-        <CommitMenu thread={thread} />
-      </div>
+      <WindowToolbar {...toolbar} thread={thread} onStartRename={startRename} />
     </div>
   );
 });

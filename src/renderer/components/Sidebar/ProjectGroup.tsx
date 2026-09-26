@@ -26,8 +26,6 @@ export interface ProjectGroupProps extends ThreadRowHandlers, ThreadRowView {
   threads: Thread[];
   accounts: Account[];
   selectedThreadId: string | null;
-  /** Search is active: groups start expanded and empty groups say so differently. */
-  filtering?: boolean;
   onNewChatIn: (projectId: string) => void;
   onRemoveProject: (projectId: string) => Promise<void>;
   onSetTrusted: (projectId: string, trusted: boolean) => void;
@@ -39,7 +37,6 @@ export const ProjectGroup = memo(function ProjectGroup({
   threads,
   accounts,
   selectedThreadId,
-  filtering = false,
   onSelectThread,
   onRenameThread,
   onSetPinned,
@@ -56,7 +53,7 @@ export const ProjectGroup = memo(function ProjectGroup({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const headerRef = useRef<HTMLDivElement>(null);
   const untrusted = project.trusted === false;
-  const expanded = filtering || !collapsed;
+  const expanded = !collapsed;
 
   const onContextMenu = (e: MouseEvent) => {
     e.preventDefault();
@@ -136,7 +133,7 @@ export const ProjectGroup = memo(function ProjectGroup({
       {expanded ? (
         <ul className="hc-project__threads" aria-label={`${project.name} 스레드`}>
           {threads.length === 0 ? (
-            <li className="hc-project__empty">{filtering ? '일치하는 스레드 없음' : '스레드 없음'}</li>
+            <li className="hc-project__empty">스레드 없음</li>
           ) : (
             threads.map((thread) => (
               <ThreadRow

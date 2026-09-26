@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import type { GitChanges, GitRemoteInfo, Thread } from '../../../shared/types';
 import { invoke } from '../../api';
 import { ipcErrorMessage } from '../../errors';
@@ -318,11 +318,28 @@ function OutcomeLine({ outcome }: { outcome: Outcome }) {
 // Commit menu
 // ---------------------------------------------------------------------------
 
-/** Header toolbar "커밋" button + popover: commit (with an auto message), merge back, push + PR. */
-export function CommitMenu({ thread }: { thread: Thread }) {
+/** Opens the commit popover (`commit`) or goes straight to the Push + PR confirm (`push`), once per `nonce`. */
+export interface CommitMenuRequest {
+  kind: 'commit' | 'push';
+  nonce: number;
+}
+
+export interface CommitMenuProps {
+  thread: Thread;
+  /**
+   * Anchor owned by the caller (the environment button): no "커밋" trigger is rendered and the popover opens
+   * only through `request`.
+   */
+  anchorRef?: RefObject<HTMLElement | null>;
+  request?: CommitMenuRequest | null;
+}
+
+/** "커밋" popover: commit (with an auto message), merge back, push + PR. */
+export function CommitMenu({ thread, anchorRef, request = null }: CommitMenuProps) {
   const bumpGitRevision = useAppStore((s) => s.bumpGitRevision);
   const rev = useAppStore((s) => s.gitRevision[thread.id] ?? 0);
-  const triggerRef = useRef<HTMLButtonElement>(null);
+  const ownTriggerRef = useRef<HTMLButtonElement>(null);
+  const triggerRef = anchorRef ?? ownTriggerRef;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const [open, setOpen] = useState(false);
@@ -384,7 +401,8 @@ export function CommitMenu({ thread }: { thread: Thread }) {
   const isRepo = changes?.isRepo ?? true;
   const hasChanges = changes?.isRepo === true && changes.dirty;
   const counts = summarizeCounts(changes?.isRepo ? changes.files : []);
-  const branch = thread.worktree?.branch ?? (changes?.isRepo ? changes.branch : null);
+  // The checked-out branch (it changes after "브랜치 생성"); the worktree's own until git answered.
+  const branch = (changes?.isRepo ? changes.branch : null) ?? thread.worktree?.branch ?? null;
   const baseBranch = changes?.isRepo ? changes.baseBranch : (remote?.baseBranch ?? null);
   const canCommit = hasChanges && message.trim() !== '' && !committing;
   const blocker = pushBlocker(remote, remoteLoading);
@@ -440,27 +458,57 @@ export function CommitMenu({ thread }: { thread: Thread }) {
     setModal(kind);
   };
 
+  // External request (environment popover). `push` needs the remote first: the confirm opens when nothing
+  // blocks it, otherwise the popover shows why.
+  const handledRequest = useRef(request?.nonce ?? 0);
+  useEffect(() => {
+    if (!request || handledRequest.current === request.nonce) return;
+    handledRequest.current = request.nonce;
+    setOutcome(null);
+    if (request.kind === 'commit') {
+      setOpen(true);
+      return;
+    }
+    let alive = true;
+    void Promise.all([loadChanges(), invoke('git:remoteInfo', { threadId: thread.id }).catch(() => null)]).then(([fresh, info]) => {
+      if (!alive) return;
+      setRemote(info);
+      if (pushBlocker(info, false) !== null) {
+        setOpen(true);
+        return;
+      }
+      const auto = autoCommitMessage(fresh?.isRepo ? fresh.files : []);
+      setPrDraft({ title: subjectOf(auto) || (info?.branch ?? ''), body: bodyOf(auto) });
+      setModal('push');
+    });
+    return () => {
+      alive = false;
+    };
+  }, [request, loadChanges, thread.id]);
+
   return (
     <>
-      <button
-        ref={triggerRef}
-        type="button"
-        className="hc-toolbar-btn hc-toolbar-btn--split hc-commit-trigger"
-        aria-label="커밋"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        title="커밋"
-        onClick={() => {
-          if (!open) setOutcome(null);
-          setOpen((v) => !v);
-        }}
-      >
-        <CommitGlyph />
-        <span className="hc-commit-trigger__label">커밋</span>
-        <span className="hc-commit-trigger__chev">
-          <ChevronDownGlyph />
-        </span>
-      </button>
+      {anchorRef ? null : (
+        <button
+          ref={ownTriggerRef}
+          type="button"
+          className="hc-toolbar-btn hc-toolbar-btn--split hc-commit-trigger"
+          aria-label="커밋"
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          title="커밋"
+          onClick={() => {
+            if (!open) setOutcome(null);
+            setOpen((v) => !v);
+          }}
+        >
+          <CommitGlyph />
+          <span className="hc-commit-trigger__label">커밋</span>
+          <span className="hc-commit-trigger__chev">
+            <ChevronDownGlyph />
+          </span>
+        </button>
+      )}
 
       <Popover
         open={open}
@@ -540,7 +588,7 @@ export function CommitMenu({ thread }: { thread: Thread }) {
                 <span className="hc-mnu__text">
                   <span className="hc-mnu__label">원래 브랜치에 병합</span>
                   <span className="hc-mnu__desc">
-                    {thread.worktree.branch} → {baseBranch ?? '원래 브랜치'}
+                    {branch ?? thread.worktree.branch} → {baseBranch ?? '원래 브랜치'}
                   </span>
                 </span>
               </button>
@@ -565,7 +613,7 @@ export function CommitMenu({ thread }: { thread: Thread }) {
           open={modal === 'merge'}
           onClose={() => setModal(null)}
           threadId={thread.id}
-          branch={thread.worktree.branch}
+          branch={branch ?? thread.worktree.branch}
           baseBranch={baseBranch}
         />
       ) : null}

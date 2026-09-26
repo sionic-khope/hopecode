@@ -293,3 +293,75 @@ describe('reduceSdkMessage', () => {
     });
   });
 });
+
+describe('reduceSdkMessage: subagents (parent_tool_use_id) and images', () => {
+  it('tags subagent tool_use / text with parentToolUseId and leaves the main streaming item alone', () => {
+    let state = createChatReducerState('t1');
+    state = reduceSdkMessage(state, textDelta('main '), NOW).state;
+    const streamingId = state.streamingItemId;
+    // A subagent delta is ignored; its complete text becomes its own item.
+    const delta = reduceSdkMessage(state, msg({ type: 'stream_event', parent_tool_use_id: 'A', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'sub' } } }), NOW);
+    expect(delta.events).toEqual([]);
+    const sub = reduceSdkMessage(delta.state, msg({ type: 'assistant', parent_tool_use_id: 'A', message: { content: [{ type: 'text', text: 'sub text' }, { type: 'tool_use', id: 'c1', name: 'Read', input: {} }] } }), NOW);
+    expect(sub.state.streamingItemId).toBe(streamingId);
+    expect(sub.state.streamingText).toBe('main ');
+    const items = sub.events.flatMap((e) => (e.type === 'item-upsert' ? [e.item] : []));
+    expect(items.map((i) => [i.type, (i as { parentToolUseId?: string }).parentToolUseId])).toEqual([
+      ['assistant-text', 'A'],
+      ['tool', 'A'],
+    ]);
+    expect(items[0]!.id).not.toBe(streamingId);
+  });
+
+  it('sets completedAt on a tool result and keeps top-level items free of parentToolUseId', () => {
+    let state = createChatReducerState('t1');
+    const use = reduceSdkMessage(state, assistantToolUse('tu-1', 'Bash', { command: 'ls' }), NOW);
+    expect((use.events[0] as any).item).not.toHaveProperty('parentToolUseId');
+    state = use.state;
+    const done = reduceSdkMessage(state, userToolResult('tu-1', 'ok'), NOW + 500);
+    expect((done.events[0] as any).item.completedAt).toBe(NOW + 500);
+  });
+
+  it('extracts base64 image blocks of a tool_result (and the Read structured output fallback)', () => {
+    let state = createChatReducerState('t1');
+    state = reduceSdkMessage(state, assistantToolUse('img', 'Read', { file_path: 'a.png' }), NOW).state;
+    const blockResult = reduceSdkMessage(
+      state,
+      msg({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'img', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AAAA' } }, { type: 'text', text: 'caption' }] }] } }),
+      NOW,
+    );
+    expect((blockResult.events[0] as any).item).toMatchObject({ result: 'caption', images: [{ mediaType: 'image/png', data: 'AAAA' }] });
+
+    let s2 = createChatReducerState('t1');
+    s2 = reduceSdkMessage(s2, assistantToolUse('img2', 'Read', { file_path: 'b.webp' }), NOW).state;
+    const fallback = reduceSdkMessage(s2, userToolResult('img2', '', { toolUseResult: { type: 'image', file: { base64: 'BBBB', type: 'image/webp', originalSize: 3 } } }), NOW);
+    expect((fallback.events[0] as any).item.images).toEqual([{ mediaType: 'image/webp', data: 'BBBB' }]);
+  });
+
+  it('drops images of unknown media types or over the size cap', () => {
+    let state = createChatReducerState('t1');
+    state = reduceSdkMessage(state, assistantToolUse('x', 'Read', {}), NOW).state;
+    const r = reduceSdkMessage(
+      state,
+      msg({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'x', content: [
+        { type: 'image', source: { type: 'base64', media_type: 'image/bmp', data: 'AAAA' } },
+        { type: 'image', source: { type: 'url', url: 'https://example.com/a.png' } },
+      ] }] } }),
+      NOW,
+    );
+    expect((r.events[0] as any).item).not.toHaveProperty('images');
+  });
+
+  it('a background subagent stays running after its launch result until task_notification', () => {
+    let state = createChatReducerState('t1');
+    state = reduceSdkMessage(state, assistantToolUse('bg', 'Agent', { subagent_type: 'Explore' }), NOW).state;
+    const launched = reduceSdkMessage(state, userToolResult('bg', 'Async agent launched', { toolUseResult: { status: 'async_launched', agentId: 'x' } }), NOW + 1);
+    expect((launched.events[0] as any).item).toMatchObject({ taskStatus: 'running' });
+    expect((launched.events[0] as any).item).not.toHaveProperty('completedAt');
+    const settled = reduceSdkMessage(launched.state, msg({ type: 'system', subtype: 'task_notification', task_id: 'x', tool_use_id: 'bg', status: 'completed', output_file: '', summary: '' }), NOW + 9);
+    expect((settled.events[0] as any).item).toMatchObject({ toolUseId: 'bg', taskStatus: 'completed', completedAt: NOW + 9 });
+    expect(settled.state.backgroundTools?.bg).toBeUndefined();
+    // A notification for an unknown tool changes nothing.
+    expect(reduceSdkMessage(settled.state, msg({ type: 'system', subtype: 'task_notification', tool_use_id: 'nope', status: 'failed' }), NOW).events).toEqual([]);
+  });
+});

@@ -121,10 +121,10 @@ export function createFixtureRunCommand(): RunCommandFn {
 
 /**
  * Native dialog seam for e2e: `project:add` returns HOPECODE_FIXTURE_PROJECT, the trust question answers
- * Trust, the bypassPermissions warning is confirmed and the file picker returns the folder's README.md, so no
- * native dialog ever blocks a test.
+ * Trust, the bypassPermissions warning is confirmed, the file picker returns the folder's README.md and a
+ * Markdown export is saved under `exportDir` (inside HOPECODE_HOME), so no native dialog ever blocks a test.
  */
-export function createFixtureDialogs(projectPath: string | undefined): Dialogs {
+export function createFixtureDialogs(projectPath: string | undefined, exportDir?: string): Dialogs {
   return {
     async pickProjectFolder() {
       return projectPath && projectPath.trim() ? projectPath : null;
@@ -137,6 +137,11 @@ export function createFixtureDialogs(projectPath: string | undefined): Dialogs {
     },
     async pickFiles(defaultPath) {
       return defaultPath ? [join(defaultPath, 'README.md')] : [];
+    },
+    async saveMarkdown(defaultName) {
+      if (!exportDir) return null;
+      mkdirSync(exportDir, { recursive: true });
+      return join(exportDir, basename(defaultName));
     },
   };
 }

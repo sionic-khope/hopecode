@@ -81,6 +81,8 @@ export interface Project {
 export interface PendingPrompt {
   text: string;
   kind: 'original' | 'continue';
+  /** Composer image attachments sent with `text` (image content blocks). */
+  images?: ChatImage[];
 }
 
 export type ThreadStatus = 'idle' | 'running' | 'waiting' | 'error';
@@ -199,14 +201,25 @@ interface ChatItemBase {
   createdAt: number;
 }
 
+/** Base64 image carried by a chat item (tool_result image block, composer attachment). */
+export interface ChatImage {
+  mediaType: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+  /** Base64 payload without the `data:` prefix. */
+  data: string;
+}
+
 export interface UserItem extends ChatItemBase {
   type: 'user';
   text: string;
+  /** Images pasted / dropped into the composer and sent as image content blocks. */
+  images?: ChatImage[];
 }
 
 export interface AssistantTextItem extends ChatItemBase {
   type: 'assistant-text';
   text: string;
+  /** SDK `parent_tool_use_id`: text written inside the subagent started by that Task/Agent tool_use. */
+  parentToolUseId?: string;
 }
 
 export interface ToolItem extends ChatItemBase {
@@ -219,6 +232,23 @@ export interface ToolItem extends ChatItemBase {
   isError?: boolean;
   /** From Edit/Write tool_use_result.structuredPatch */
   patch?: StructuredPatchHunk[];
+  /** SDK `parent_tool_use_id`: the call ran inside the subagent started by that Task/Agent tool_use. */
+  parentToolUseId?: string;
+  /** Image blocks of the tool_result (Read of an image file, screenshots). */
+  images?: ChatImage[];
+  /** epoch ms the result arrived (or a background subagent's task_notification). */
+  completedAt?: number;
+  /**
+   * Background subagent (Task/Agent result `async_launched`): the tool_result arrives at launch, the run settles
+   * later with a task_notification. Absent for foreground calls (their result is the end of the run).
+   */
+  taskStatus?: 'running' | 'completed' | 'failed' | 'stopped';
+}
+
+/** Image files created or changed in the thread folder during one turn (paths relative to the thread cwd). */
+export interface ImageGalleryItem extends ChatItemBase {
+  type: 'image-gallery';
+  paths: string[];
 }
 
 export interface SystemNoticeItem extends ChatItemBase {
@@ -227,7 +257,7 @@ export interface SystemNoticeItem extends ChatItemBase {
   text: string;
 }
 
-export type ChatItem = UserItem | AssistantTextItem | ToolItem | SystemNoticeItem;
+export type ChatItem = UserItem | AssistantTextItem | ToolItem | SystemNoticeItem | ImageGalleryItem;
 
 export type TurnEndReason = 'rate_limited' | 'interrupted' | 'error' | 'auth';
 
@@ -278,6 +308,8 @@ export interface ChatReducerState {
   outputEmitted: boolean;
   /** Monotonic counter for deterministic ids. */
   seq: number;
+  /** Background subagent tool items (result `async_launched`) awaiting their task_notification, by toolUseId. */
+  backgroundTools?: Record<string, ToolItem>;
 }
 
 // ---------------------------------------------------------------------------
@@ -489,6 +521,10 @@ export interface ThreadStartRequest {
   permissionMode?: UiPermissionMode;
   effort?: EffortLevel | null;
   pinnedAccountId?: string | null;
+  /** Start the worktree from this branch (a PR head) instead of the project's HEAD. */
+  baseBranch?: string;
+  /** PR number of `baseBranch`: fetched as `pull/<n>/head` when the branch is not on the remote (forks). */
+  basePr?: number;
 }
 
 /**

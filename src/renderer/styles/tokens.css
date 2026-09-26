@@ -1,96 +1,108 @@
-/* Design tokens. Light only.
-   Direction: a friendly agent desktop. A pale cool canvas (#EDF0F5) carries floating white cards (sidebar panel,
-   conversation, right panel) with soft layered shadows and generous radii; the one accent is the logo's caret
-   blue (#1B6EF3), and run states get pastel points (running blue, waiting amber, done green, error red). */
+/* Design tokens. Light only. See docs/design-notes.md for the language these values express.
+   Direction (v5): a calm, flat workspace. A pale blue-white pane (#F8FAFF) next to a slightly deeper blue-white
+   sidebar (#F3F7FF); content sits on white cards with a 1px hairline instead of shadows; one saturated blue
+   (#0053FD) for primary actions and selection, a soft blue wash (#E6EEFF) for selected rows and chips, and a
+   rare terracotta (#CF806D) for the agent's own marks. Titles use a Korean serif display face (Hahmlet),
+   everything else IBM Plex Sans KR, code JetBrains Mono. */
 :root {
   color-scheme: light;
 
-  /* Typography: Geist (UI) + Geist Mono (code, terminal, statusline), bundled locally (fonts.css).
-     Korean glyphs fall back to Apple SD Gothic Neo, then the system stack. */
-  --font-ui: 'Geist', 'Apple SD Gothic Neo', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
-  --font-mono: 'Geist Mono', 'Apple SD Gothic Neo', ui-monospace, 'SF Mono', Menlo, monospace;
-  --text-2xs: 11px;    --lh-2xs: 14px;
-  --text-xs: 12px;     --lh-xs: 16px;
-  --text-sm: 13px;     --lh-sm: 18px;
-  --text-md: 14px;     --lh-md: 20px;   /* sidebar, controls, default body */
-  --text-chat: 15px;   --lh-chat: 24px; /* conversation body */
-  --text-nav: 14px;    --lh-nav: 20px;  /* sidebar nav + thread rows */
-  --text-lg: 16px;     --lh-lg: 22px;
-  --text-xl: 22px;     --lh-xl: 28px;
-  --text-2xl: 28px;    --lh-2xl: 34px;  /* greeting / page titles */
-  --text-status: 12px; --lh-status: 16px;
-  --mono-sm: 13px;     --lh-mono-sm: 20px; /* inline code, code blocks, diffs */
-  --mono-term: 14px;   --lh-mono-term: 20px; /* xterm (mirrored in terminalTheme.ts) */
-  --tracking-ui: -0.005em;
-  --tracking-title: -0.018em;
+  /* Typography */
+  --font-ui: 'IBM Plex Sans KR', 'Apple SD Gothic Neo', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  --font-display: 'Hahmlet', 'IBM Plex Sans KR', 'Apple SD Gothic Neo', serif;
+  --font-mono: 'JetBrains Mono', 'IBM Plex Sans KR', ui-monospace, 'SF Mono', Menlo, monospace;
+  --text-2xs: 10.5px;  --lh-2xs: 14px;
+  --text-xs: 11px;     --lh-xs: 16px;
+  --text-sm: 12px;     --lh-sm: 18px;
+  --text-md: 13px;     --lh-md: 20px;   /* sidebar, controls, default body */
+  --text-chat: 14px;   --lh-chat: 23px; /* conversation body (Hangul needs the taller line) */
+  --text-nav: 13px;    --lh-nav: 20px;  /* sidebar nav + thread rows */
+  --text-lg: 14px;     --lh-lg: 21px;
+  --text-xl: 19px;     --lh-xl: 25px;   /* display: thread title, sheet titles */
+  --text-2xl: 24px;    --lh-2xl: 32px;  /* display: greeting / page titles */
+  --text-status: 11px; --lh-status: 16px;
+  --mono-sm: 12.5px;   --lh-mono-sm: 19px; /* inline code, code blocks, diffs */
+  --mono-term: 13px;   --lh-mono-term: 19px; /* xterm (mirrored in terminalTheme.ts) */
+  --tracking-ui: 0;
+  --tracking-title: -0.01em;
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-semibold: 600;
-  --weight-bold: 680;
+  --weight-bold: 700;
 
-  /* Accent: the logo caret blue */
-  --accent: #1b6ef3;
-  --accent-hover: #155fdb;
-  --accent-pressed: #104fbc;
-  --accent-strong: #0a4fc4;
-  --accent-subtle: rgba(27, 110, 243, 0.1);
-  --accent-tint: rgba(27, 110, 243, 0.08);
-  --accent-tint-strong: rgba(27, 110, 243, 0.14);
-  --accent-ring: rgba(27, 110, 243, 0.32);
-  --accent-gradient: linear-gradient(180deg, #4aa5ff 0%, #1b6ef3 100%);
-  --focus-ring: 0 0 0 3px rgba(27, 110, 243, 0.28);
+  /* Accent: primary blue */
+  --accent: #0053fd;
+  --accent-hover: #0047d9;
+  --accent-pressed: #003dbd;
+  --accent-strong: #0047d9;
+  --accent-soft: #e6eeff;                 /* selected rows, chips, active toggles */
+  --accent-subtle: rgba(0, 83, 253, 0.12);
+  --accent-tint: rgba(0, 83, 253, 0.05);  /* hover wash */
+  --accent-tint-strong: #e6eeff;
+  --accent-ring: rgba(0, 83, 253, 0.35);
+  --accent-border: rgba(0, 83, 253, 0.25);
+  --accent-gradient: linear-gradient(180deg, #0053fd 0%, #0047d9 100%);
+  --focus-ring: 0 0 0 2px #f8faff, 0 0 0 4px #0053fd;
+  --field-ring: 0 0 0 3px rgba(0, 83, 253, 0.12);
+
+  /* Secondary accent: terracotta, used sparingly (agent caret, "you" badge, warnings' border) */
+  --terracotta: #cf806d;
+  --terracotta-tint: rgba(207, 128, 109, 0.12);
+  --terracotta-border: rgba(207, 128, 109, 0.45);
 
   /* Labels */
-  --label: #16181d;
-  --label-secondary: rgba(22, 24, 29, 0.6);
-  --label-tertiary: rgba(22, 24, 29, 0.38);
+  --label: #17171a;
+  --label-secondary: rgba(23, 23, 26, 0.56);
+  --label-tertiary: rgba(23, 23, 26, 0.38);
   --label-on-accent: #ffffff;
-  --separator: rgba(22, 32, 56, 0.08);
-  --separator-strong: rgba(22, 32, 56, 0.14);
+  --separator: rgba(23, 23, 26, 0.08);
+  --separator-strong: rgba(23, 23, 26, 0.14);
 
   /* Surfaces */
-  --bg-canvas: #edf0f5;               /* window canvas behind the cards */
-  --bg-window: #ffffff;               /* conversation card */
+  --bg-canvas: #f3f7ff;               /* window canvas (sidebar + statusline) */
+  --bg-window: #f8faff;               /* conversation pane */
+  --bg-pane-header: #ffffff;          /* white bar on top of a pane */
   --bg-card: #ffffff;
-  --bg-card-muted: #f6f8fb;           /* pale color field inside a card (settings rows, file list) */
-  --bg-sunken: #f2f4f8;
-  /* Sidebar panel: a translucent white card over the vibrancy canvas. */
-  --bg-sidebar: rgba(255, 255, 255, 0.62);
-  --sidebar-edge: rgba(22, 32, 56, 0.06);
-  --bg-sidebar-hover: rgba(22, 32, 56, 0.045);
-  --bg-sidebar-sel-inactive: rgba(22, 32, 56, 0.06);
-  --bg-sidebar-sel: var(--accent-tint);
-  --bg-menu-hover: rgba(22, 32, 56, 0.05);
+  --bg-card-muted: #f8faff;           /* pale field inside a card (settings rows, file list) */
+  --bg-sunken: #f3f7ff;
+  --bg-input: #fcfcfc;
+  --bubble: #f0f5ff;
+  --bg-sidebar: #f3f7ff;
+  --sidebar-edge: rgba(23, 23, 26, 0.08);
+  --bg-sidebar-hover: rgba(0, 83, 253, 0.05);
+  --bg-sidebar-sel-inactive: rgba(23, 23, 26, 0.05);
+  --bg-sidebar-sel: #e6eeff;
+  --bg-menu-hover: rgba(0, 83, 253, 0.06);
   --bg-elevated: #ffffff;
-  --bg-control: rgba(22, 32, 56, 0.045);
-  --bg-control-hover: rgba(22, 32, 56, 0.075);
-  --bg-control-pressed: rgba(22, 32, 56, 0.1);
-  --bg-code: #f5f7fa;
-  --bg-statusline: transparent;
+  --bg-control: rgba(23, 23, 26, 0.04);
+  --bg-control-hover: rgba(23, 23, 26, 0.08);
+  --bg-control-pressed: rgba(23, 23, 26, 0.11);
+  --bg-code: #f8faff;
+  --bg-statusline: #f3f7ff;
   --statusline-backdrop: none;
   --bg-terminal: #ffffff;
-  --fg-terminal: #1d1d1f;
-  --cursor-terminal: #1b6ef3;
-  --selection-terminal: rgba(27, 110, 243, 0.2);
-  --bg-backdrop: rgba(20, 26, 38, 0.28);
+  --fg-terminal: #17171a;
+  --cursor-terminal: #0053fd;
+  --selection-terminal: rgba(0, 83, 253, 0.2);
+  --bg-backdrop: rgba(12, 22, 48, 0.22);
 
   /* Status (solid points) */
-  --ok: #30c46c;   --ok-text: #1b7a41;
-  --warn: #f5a524; --warn-text: #a45a00;
-  --crit: #ff4d40; --crit-text: #c62a20;
-  --run: #3b82f6;  --run-text: #1a5fd6;
-  --meter-track: rgba(22, 32, 56, 0.08);
+  --ok: #1f9d55;   --ok-text: #17804a;
+  --warn: #e0a43a; --warn-text: #9a5d00;
+  --crit: #e5484d; --crit-text: #c8372d;
+  --run: #0053fd;  --run-text: #0047d9;
+  --meter-track: rgba(23, 23, 26, 0.08);
 
   /* Status pastels (pills, notices) */
-  --run-bg: #e8f0ff;
-  --wait-bg: #fff3dd;
-  --ok-bg: #e4f7eb;
-  --crit-bg: #fdeae8;
-  --neutral-bg: rgba(22, 32, 56, 0.05);
+  --run-bg: #e6eeff;
+  --wait-bg: #fff6e8;
+  --ok-bg: rgba(31, 157, 85, 0.1);
+  --crit-bg: rgba(200, 55, 45, 0.08);
+  --neutral-bg: rgba(23, 23, 26, 0.06);
 
   /* Diff */
-  --diff-add-bg: #e8f6ec; --diff-add-fg: #1a7f37; --diff-add-gutter: #d2eedb;
-  --diff-del-bg: #fdeeed; --diff-del-fg: #cf222e; --diff-del-gutter: #f8d6d6;
+  --diff-add-bg: #eaf7ef; --diff-add-fg: #17804a; --diff-add-gutter: #d4eedd;
+  --diff-del-bg: #fcefee; --diff-del-fg: #c8372d; --diff-del-gutter: #f6d9d7;
 
   /* Spacing (4pt) */
   --space-1: 4px;
@@ -103,45 +115,46 @@
   --space-8: 32px;
   --space-10: 40px;
 
-  /* Radius */
+  /* Radius: 12 for cards, 8 for controls, pill for chips */
   --radius-control: 8px;
-  --radius-card: 14px;
-  --radius-card-lg: 18px;
-  --radius-panel: 16px;
-  --radius-popover: 14px;
-  --radius-dialog: 20px;
+  --radius-card: 12px;
+  --radius-card-lg: 12px;
+  --radius-panel: 0px;
+  --radius-popover: 12px;
+  --radius-dialog: 16px;
   --radius-capsule: 999px;
-  --radius-menu: 14px;
-  --radius-menu-item: 9px;
-  --radius-composer: 22px;
-  --radius-row: 10px;
+  --radius-menu: 12px;
+  --radius-menu-item: 8px;
+  --radius-composer: 12px;
+  --radius-row: 8px;
 
-  /* Elevation: layered, low-contrast, slightly blue-tinted */
-  --shadow-hairline: 0 0 0 1px rgba(22, 32, 56, 0.06);
-  --shadow-card: 0 0 0 1px rgba(22, 32, 56, 0.05), 0 1px 2px rgba(22, 32, 56, 0.04), 0 6px 18px -8px rgba(22, 32, 56, 0.1);
-  --shadow-card-hover: 0 0 0 1px rgba(22, 32, 56, 0.07), 0 2px 4px rgba(22, 32, 56, 0.05), 0 12px 28px -10px rgba(22, 32, 56, 0.16);
-  --shadow-panel: 0 0 0 1px rgba(22, 32, 56, 0.05), 0 2px 6px rgba(22, 32, 56, 0.04), 0 16px 40px -18px rgba(22, 32, 56, 0.14);
-  --shadow-popover: 0 0 0 1px rgba(22, 32, 56, 0.08), 0 8px 20px -6px rgba(22, 32, 56, 0.14), 0 24px 48px -16px rgba(22, 32, 56, 0.18);
-  --shadow-dialog: 0 0 0 1px rgba(22, 32, 56, 0.06), 0 24px 64px -16px rgba(22, 32, 56, 0.32);
-  --shadow-control: 0 0 0 1px rgba(22, 32, 56, 0.1), 0 1px 2px rgba(22, 32, 56, 0.06);
-  /* Composer card: soft lift, accent ring on focus. */
-  --shadow-composer: 0 0 0 1px rgba(22, 32, 56, 0.07), 0 2px 4px rgba(22, 32, 56, 0.03), 0 14px 36px -14px rgba(22, 32, 56, 0.2);
-  --shadow-composer-focus: 0 0 0 1px rgba(27, 110, 243, 0.45), 0 0 0 4px rgba(27, 110, 243, 0.1), 0 16px 40px -14px rgba(22, 32, 56, 0.24);
+  /* Elevation: flat. Cards carry a hairline; only floating layers get a real shadow. */
+  --shadow-hairline: 0 0 0 1px rgba(23, 23, 26, 0.08);
+  --shadow-card: 0 0 0 1px rgba(23, 23, 26, 0.08), 0 1px 2px rgba(23, 23, 26, 0.04);
+  --shadow-card-hover: 0 0 0 1px rgba(0, 83, 253, 0.25), 0 1px 2px rgba(23, 23, 26, 0.04);
+  --shadow-panel: none;
+  --shadow-float: 0 12px 32px -8px rgba(12, 30, 80, 0.18), 0 2px 6px rgba(12, 30, 80, 0.06);
+  --shadow-popover: 0 0 0 1px rgba(23, 23, 26, 0.08), 0 12px 32px -8px rgba(12, 30, 80, 0.18), 0 2px 6px rgba(12, 30, 80, 0.06);
+  --shadow-dialog: 0 0 0 1px rgba(23, 23, 26, 0.08), 0 12px 32px -8px rgba(12, 30, 80, 0.22), 0 2px 6px rgba(12, 30, 80, 0.06);
+  --shadow-control: 0 0 0 1px rgba(23, 23, 26, 0.14);
+  /* Composer card: hairline, primary border + soft ring on focus. */
+  --shadow-composer: 0 0 0 1px rgba(23, 23, 26, 0.14), 0 1px 2px rgba(23, 23, 26, 0.04);
+  --shadow-composer-focus: 0 0 0 1px #0053fd, 0 0 0 4px rgba(0, 83, 253, 0.12);
 
   /* Control + row heights */
-  --control-h-sm: 26px;
-  --control-h: 30px;
+  --control-h-sm: 28px;
+  --control-h: 32px;
   --control-h-lg: 36px;
   --seg-h: 28px;
   --seg-h-sm: 24px;
-  --pill-h: 20px;
-  --row-h: 34px;       /* sidebar nav + thread row */
+  --pill-h: 22px;
+  --row-h: 36px;       /* sidebar nav + thread row */
   --row-h-sm: 30px;    /* sidebar project header */
   --toolbar-h: 40px;
   --sidebar-header-h: 40px;
 
   /* Layout */
-  --canvas-gap: 8px;   /* canvas inset around the floating cards */
+  --canvas-gap: 0px;   /* flat panes: no inset around the cards */
   --titlebar-h: 52px;
   --traffic-light-w: 78px;
   --sidebar-w: 284px;
@@ -155,12 +168,14 @@
   --panel-max-w: 820px;
   --statusline-h: 30px;
 
-  /* Motion */
+  /* Motion: short and quiet (120 / 200ms), one ease-out curve; popovers rise 8px from 98.5%. */
   --motion-1: 120ms;
   --motion-2: 200ms;
-  --motion-3: 320ms;
+  --motion-3: 280ms;
   --ease-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-emph: cubic-bezier(0.3, 0, 0, 1);
+  --rise-y: 8px;
+  --rise-scale: 0.985;
   /* Legacy aliases (older component CSS). */
   --dur-fast: var(--motion-1);
   --ease-out: var(--ease-soft);
@@ -172,15 +187,15 @@
   --composer-max-w: 760px;
   --send-size: 32px;
 
-  /* Account palette */
-  --account-1: #007aff;
-  --account-2: #34c759;
-  --account-3: #ff9500;
-  --account-4: #af52de;
-  --account-5: #ff2d55;
-  --account-6: #5ac8fa;
-  --account-7: #ffcc00;
-  --account-8: #a2845e;
+  /* Account palette: muted mid-tones that keep white initials legible */
+  --account-1: #5f7fa3;
+  --account-2: #5e9a8a;
+  --account-3: #b0845a;
+  --account-4: #8e6c8a;
+  --account-5: #a46a6a;
+  --account-6: #4f8fa0;
+  --account-7: #7f8a5a;
+  --account-8: #6d6fa8;
 }
 
 /* Reduced motion: every duration token collapses, so transitions and keyframes that use them become instant. */
@@ -189,5 +204,7 @@
     --motion-1: 0ms;
     --motion-2: 0ms;
     --motion-3: 0ms;
+    --rise-y: 0px;
+    --rise-scale: 1;
   }
 }

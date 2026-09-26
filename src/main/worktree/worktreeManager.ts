@@ -5,6 +5,7 @@ import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdir, rm } from 'node:fs/promises';
 import { basename, dirname, join, resolve as resolvePath } from 'node:path';
+import { isSafeBranchName } from '../../core/ghPrs';
 import { assertInside } from '../containment';
 import { worktreesDir } from '../paths';
 import type { WorktreeCreateResult, WorktreeManager } from '../contracts';
@@ -52,6 +53,35 @@ export interface WorktreeManagerDeps {
 export function createWorktreeManager(deps: WorktreeManagerDeps = {}): WorktreeManager {
   const runGit = (args: string[], cwd: string): Promise<GitResult> => runGitIn(args, cwd, deps.env?.());
 
+  async function commitOf(ref: string, cwd: string): Promise<string | null> {
+    const res = await runGit(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], cwd);
+    return res.ok ? res.stdout.trim() || null : null;
+  }
+
+  /**
+   * Commit a PR worktree starts from: the local branch, else the remote-tracking one, else fetched from the
+   * remote (`refs/heads/<branch>`, then `refs/pull/<pr>/head` for a fork's PR). Never runs a checkout here.
+   */
+  async function resolveBase(projectPath: string, base: { branch: string; pr?: number }): Promise<string> {
+    if (!isSafeBranchName(base.branch)) throw new Error(`invalid branch name: ${base.branch}`);
+    const local = await commitOf(`refs/heads/${base.branch}`, projectPath);
+    if (local) return local;
+    const remotes = (await runGit(['remote'], projectPath)).stdout.split('\n').map((r) => r.trim()).filter(Boolean);
+    const remote = remotes.includes('origin') ? 'origin' : remotes[0];
+    if (remote) {
+      const tracking = await commitOf(`refs/remotes/${remote}/${base.branch}`, projectPath);
+      if (tracking) return tracking;
+      const refs = [`refs/heads/${base.branch}`, ...(base.pr !== undefined ? [`refs/pull/${base.pr}/head`] : [])];
+      for (const ref of refs) {
+        const fetched = await runGit(['fetch', '--no-tags', '--', remote, ref], projectPath);
+        if (!fetched.ok) continue;
+        const sha = await commitOf('FETCH_HEAD', projectPath);
+        if (sha) return sha;
+      }
+    }
+    throw new Error(`PR 브랜치 ${base.branch}을(를) 가져오지 못했습니다`);
+  }
+
   async function isDirty(worktreePath: string): Promise<boolean> {
     const status = await runGit(['status', '--porcelain'], worktreePath);
     if (!status.ok) return false;
@@ -71,10 +101,11 @@ export function createWorktreeManager(deps: WorktreeManagerDeps = {}): WorktreeM
       const dest = join(worktreesDir(), `${slug}-${hash}`, threadShortId);
       await mkdir(dirname(dest), { recursive: true });
 
+      const start = opts.base ? await resolveBase(projectPath, opts.base) : 'HEAD';
       const branch = `hopecode/${threadShortId}`;
       // The checkout must not run repo hooks (post-checkout) of a folder the user has not trusted.
       const noHooks = opts.trusted ? [] : ['-c', 'core.hooksPath=/dev/null'];
-      const add = await runGit([...noHooks, 'worktree', 'add', '-b', branch, dest, 'HEAD'], projectPath);
+      const add = await runGit([...noHooks, 'worktree', 'add', '-b', branch, dest, start], projectPath);
       if (!add.ok) {
         throw new Error(`git worktree add failed: ${add.stderr || add.stdout}`);
       }

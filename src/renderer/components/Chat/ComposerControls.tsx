@@ -1,4 +1,4 @@
-// Chips on the composer's control row: folder (draft only), permission mode, account pin, model + effort.
+// Chips on the composer's control row: agent, folder (draft only), permission mode, model + effort.
 import { memo, useRef, useState } from 'react';
 import type { Account, AgentKind, EffortLevel, ModelOption, Project, UiPermissionMode } from '../../../shared/types';
 import { AGENT_KINDS, AGENTS } from '../../../shared/agents';
@@ -199,70 +199,43 @@ export const PermissionChip = memo(function PermissionChip({
 });
 
 // ---------------------------------------------------------------------------
-// Account pin chip
+// Account pin (menu section; shown in the top-right "더보기" menu)
 // ---------------------------------------------------------------------------
 
-export const AccountChip = memo(function AccountChip({
-  accounts,
-  pinnedAccountId,
-  activeAccountId = null,
-  onChange,
-}: {
-  accounts: Account[];
-  pinnedAccountId: string | null;
-  activeAccountId?: string | null;
-  onChange: (accountId: string | null) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLButtonElement>(null);
-  const pinned = accounts.find((a) => a.id === pinnedAccountId) ?? null;
+/** "계정 고정" radio section: 자동 (priority order) or one enabled account. */
+export function accountPinSection(
+  accounts: Account[],
+  pinnedAccountId: string | null,
+  activeAccountId: string | null,
+  onChange: (accountId: string | null) => void,
+): MenuSection {
   const ordered = [...accounts].sort((a, b) => a.priority - b.priority);
-  const sections: MenuSection[] = [
-    {
-      key: 'accounts',
-      title: '계정 고정',
-      kind: 'radio',
-      items: [
-        {
-          key: 'auto',
-          label: '자동',
-          description: '우선순위가 가장 높은 사용 가능한 계정',
-          icon: <PersonIcon />,
-          checked: pinnedAccountId === null,
-          onSelect: () => onChange(null),
-        },
-        ...ordered.map((a) => ({
-          key: a.id,
-          label: a.alias,
-          description: a.email ?? undefined,
-          icon: <span className="hc-chip__dot" style={{ background: a.color }} />,
-          meta: a.id === activeAccountId ? '사용 중' : !a.enabled ? '비활성' : undefined,
-          disabled: !a.enabled,
-          checked: a.id === pinnedAccountId,
-          onSelect: () => onChange(a.id),
-        })),
-      ],
-    },
-  ];
-  return (
-    <>
-      <button
-        ref={ref}
-        type="button"
-        className={`hc-chip hc-chip--account${pinned ? ' hc-chip--pinned' : ''}`}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label={`계정 고정: ${pinned?.alias ?? '자동'}`}
-        title={pinned ? `${pinned.alias} 계정으로 고정됨` : '계정 자동 선택'}
-        onClick={() => setOpen((v) => !v)}
-      >
-        {pinned ? <span className="hc-chip__dot" style={{ background: pinned.color }} aria-hidden /> : <PersonIcon />}
-        <span className="hc-chip__label">{pinned?.alias ?? '자동'}</span>
-      </button>
-      <Menu open={open} onClose={() => setOpen(false)} anchorRef={ref} sections={sections} label="계정 고정" placement="top-start" width={COMPOSER_MENU_WIDTH} />
-    </>
-  );
-});
+  return {
+    key: 'accounts',
+    title: '계정 고정',
+    kind: 'radio',
+    items: [
+      {
+        key: 'auto',
+        label: '자동',
+        description: '우선순위가 가장 높은 사용 가능한 계정',
+        icon: <PersonIcon />,
+        checked: pinnedAccountId === null,
+        onSelect: () => onChange(null),
+      },
+      ...ordered.map((a) => ({
+        key: a.id,
+        label: a.alias,
+        description: a.email ?? undefined,
+        icon: <span className="hc-chip__dot" style={{ background: a.color }} />,
+        meta: a.id === activeAccountId ? '사용 중' : !a.enabled ? '비활성' : undefined,
+        disabled: !a.enabled,
+        checked: a.id === pinnedAccountId,
+        onSelect: () => onChange(a.id),
+      })),
+    ],
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Model + effort picker

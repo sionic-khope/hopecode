@@ -7,6 +7,7 @@ import type {
   AccountPatch,
   AccountUsage,
   ChatItem,
+  ChatImage,
   ChatSendResult,
   ChildEnvInject,
   EditorId,
@@ -105,7 +106,12 @@ export interface WorktreeCreateResult {
 export interface WorktreeManager {
   /** git repo with HEAD -> `git worktree add -b hopecode/<threadShortId>`; otherwise folder as-is. */
   /** `trusted: false` (default) runs the checkout with repo hooks disabled (`core.hooksPath=/dev/null`). */
-  create(projectPath: string, threadShortId: string, opts?: { trusted?: boolean }): Promise<WorktreeCreateResult>;
+  /** `base` starts the worktree from that branch (local, remote, fetched, or `pull/<pr>/head`) instead of HEAD. */
+  create(
+    projectPath: string,
+    threadShortId: string,
+    opts?: { trusted?: boolean; base?: { branch: string; pr?: number } },
+  ): Promise<WorktreeCreateResult>;
   isDirty(worktreePath: string): Promise<boolean>;
   remove(projectPath: string, worktree: WorktreeInfo, opts: { force: boolean }): Promise<void>;
 }
@@ -191,7 +197,7 @@ export interface AccountPool {
 // ---------------------------------------------------------------------------
 
 export interface SessionManager {
-  send(threadId: string, text: string): Promise<ChatSendResult>;
+  send(threadId: string, text: string, images?: ChatImage[]): Promise<ChatSendResult>;
   interrupt(threadId: string): Promise<void>;
   setModel(threadId: string, model: string): Promise<void>;
   setPermissionMode(threadId: string, mode: UiPermissionMode): Promise<void>;
@@ -247,6 +253,8 @@ export interface GitService {
   remoteInfo(cwd: string, projectPath: string): Promise<GitRemoteInfo>;
   /** `git push -u <remote> <branch>` then `gh pr create --title --body --base --head`. */
   pushAndOpenPr(cwd: string, projectPath: string, title: string, body: string): Promise<GitActionResult<{ url: string | null }>>;
+  /** `git switch -c <name>` in `cwd` (name checked by core/branchName and `git check-ref-format --branch`). */
+  createBranch(cwd: string, name: string): Promise<GitActionResult<{ branch: string }>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -275,5 +283,7 @@ export interface Dialogs {
   confirmBypassPermissions(): Promise<boolean>;
   /** Multi-select file picker ("파일 첨부"), opened at `defaultPath`. Absolute paths; `[]` when cancelled. */
   pickFiles(defaultPath: string): Promise<string[]>;
+  /** Save dialog for a Markdown export ("공유"); the chosen absolute path, or null when cancelled. */
+  saveMarkdown(defaultName: string): Promise<string | null>;
 }
 

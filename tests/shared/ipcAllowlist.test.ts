@@ -276,6 +276,9 @@ function makeFakeServices(overrides: Partial<RegisterIpcServices> = {}): { servi
       async pickFiles() {
         return [];
       },
+      async saveMarkdown() {
+        return null;
+      },
     },
     broadcaster: {
       emit(channel, payload) {
@@ -297,6 +300,9 @@ function makeFakeServices(overrides: Partial<RegisterIpcServices> = {}): { servi
       },
       async commit() {
         return { ok: true, sha: 'abc' };
+      },
+      async createBranch(_cwd, name) {
+        return { ok: true, branch: name };
       },
       async merge() {
         return { ok: true, into: 'main' };
@@ -545,6 +551,7 @@ describe('registerIpc review fixes', () => {
         confirmTrustProject: async () => answers[n++]!,
         confirmBypassPermissions: async () => true,
         pickFiles: async () => [],
+        saveMarkdown: async () => null,
       },
     });
     registerIpc(ipcMain, services);
@@ -561,7 +568,7 @@ describe('registerIpc review fixes', () => {
     const ipcMain = new FakeIpcMain();
     const confirm = vi.fn(async () => 'dont-trust' as const);
     const { services } = makeFakeServices({
-      dialogs: { pickProjectFolder: async () => null, confirmTrustProject: confirm, confirmBypassPermissions: async () => true, pickFiles: async () => [] },
+      dialogs: { pickProjectFolder: async () => null, confirmTrustProject: confirm, confirmBypassPermissions: async () => true, pickFiles: async () => [], saveMarkdown: async () => null },
     });
     services.store.get().projects.push(project());
     registerIpc(ipcMain, services);
@@ -593,7 +600,7 @@ describe('registerIpc review fixes', () => {
     let confirm = false;
     const applied: string[] = [];
     const { services, emitted } = makeFakeServices({
-      dialogs: { pickProjectFolder: async () => null, confirmTrustProject: async () => 'trust', confirmBypassPermissions: async () => confirm, pickFiles: async () => [] },
+      dialogs: { pickProjectFolder: async () => null, confirmTrustProject: async () => 'trust', confirmBypassPermissions: async () => confirm, pickFiles: async () => [], saveMarkdown: async () => null },
     });
     services.sessionManager.setPermissionMode = async (threadId, mode) => {
       applied.push(mode);
@@ -784,6 +791,7 @@ describe('thread:start', () => {
           return opts.bypassOk ?? false;
         },
         pickFiles: async () => [],
+        saveMarkdown: async () => null,
       },
     });
     services.store.get().threads.length = 0;
@@ -1198,6 +1206,96 @@ describe('editor / git channels only ever act on the thread folder', () => {
     const { ipcMain } = setup();
     for (const ch of ['settings:update', 'app:openDataFolder', 'editor:open', 'git:commit', 'git:pushPr', 'threads:deleteArchived']) {
       expect(() => ipcMain.invoke(ch, {}, 'https://evil.example')).toThrow(UntrustedSenderError);
+    }
+  });
+});
+
+describe('toolbar channels: git:createBranch, thread:exportMarkdown, editor:open with a file', () => {
+  it('git:createBranch runs only in the thread worktree and validates the name type', async () => {
+    const ipcMain = new FakeIpcMain();
+    const calls: [string, string][] = [];
+    const { services } = makeFakeServices();
+    services.gitService.createBranch = async (cwd, name) => {
+      calls.push([cwd, name]);
+      return { ok: true, branch: name };
+    };
+    registerIpc(ipcMain, services);
+
+    expect(await ipcMain.invoke('git:createBranch', { threadId: 't1', name: 'feat' })).toEqual({
+      ok: false,
+      error: 'worktree 스레드에서만 브랜치를 만들 수 있습니다',
+    });
+    services.store.patchThread('t1', { cwd: '/tmp/wt', worktree: { path: '/tmp/wt', branch: 'hopecode/t1' } });
+    expect(await ipcMain.invoke('git:createBranch', { threadId: 't1', name: 'feat' })).toEqual({ ok: true, branch: 'feat' });
+    expect(calls).toEqual([['/tmp/wt', 'feat']]);
+    await expect(ipcMain.invoke('git:createBranch', { threadId: 't1', name: 42 })).rejects.toBeInstanceOf(InvalidIpcRequestError);
+    await expect(ipcMain.invoke('git:createBranch', { threadId: 'ghost', name: 'x' })).rejects.toBeInstanceOf(InvalidIpcRequestError);
+  });
+
+  it('thread:exportMarkdown writes the stored transcript where the save dialog says; cancel writes nothing', async () => {
+    const { mkdtemp, readFile, rm } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const dir = await mkdtemp(join(tmpdir(), 'hopecode-export-'));
+    try {
+      const ipcMain = new FakeIpcMain();
+      let answer: string | null = null;
+      const names: string[] = [];
+      const { services } = makeFakeServices();
+      services.dialogs.saveMarkdown = async (name) => {
+        names.push(name);
+        return answer;
+      };
+      services.threadLog.read = async () => [{ id: 'u', type: 'user', createdAt: 1, text: '안녕' }];
+      registerIpc(ipcMain, services);
+
+      expect(await ipcMain.invoke('thread:exportMarkdown', { threadId: 't1' })).toEqual({ ok: false });
+      answer = join(dir, 'out.md');
+      expect(await ipcMain.invoke('thread:exportMarkdown', { threadId: 't1' })).toEqual({ ok: true, path: answer });
+      expect(names).toEqual(['Test thread.md', 'Test thread.md']);
+      const text = await readFile(answer, 'utf8');
+      expect(text.startsWith('# Test thread\n')).toBe(true);
+      expect(text).toContain('## 사용자\n\n안녕');
+      await expect(ipcMain.invoke('thread:exportMarkdown', { threadId: 'ghost' })).rejects.toBeInstanceOf(InvalidIpcRequestError);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('editor:open with a path opens that file only when it resolves inside the thread folder', async () => {
+    const { mkdtemp, mkdir, realpath, rm, symlink, writeFile } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'hopecode-open-')));
+    try {
+      const cwd = join(root, 'wt');
+      await mkdir(join(cwd, 'src'), { recursive: true });
+      await writeFile(join(cwd, 'src', 'a.ts'), 'x');
+      await writeFile(join(root, 'secret.txt'), 's');
+      await symlink(join(root, 'secret.txt'), join(cwd, 'link.txt'));
+      const opened: [string, string][] = [];
+      const ipcMain = new FakeIpcMain();
+      const { services } = makeFakeServices();
+      services.editorLauncher.open = async (editor, dir) => void opened.push([editor, dir]);
+      services.store.patchThread('t1', { cwd });
+      registerIpc(ipcMain, services);
+
+      await ipcMain.invoke('editor:open', { threadId: 't1', editor: 'vscode', path: 'src/a.ts' });
+      await ipcMain.invoke('editor:open', { threadId: 't1', editor: 'finder', path: 'src/a.ts' });
+      await ipcMain.invoke('editor:open', { threadId: 't1', editor: 'vscode' });
+      expect(opened).toEqual([
+        ['vscode', join(cwd, 'src', 'a.ts')],
+        ['finder', join(cwd, 'src')],
+        ['vscode', cwd],
+      ]);
+      for (const path of ['../secret.txt', '/etc/passwd', 'link.txt', 'missing.ts', '']) {
+        await expect(ipcMain.invoke('editor:open', { threadId: 't1', editor: 'vscode', path }), path).rejects.toBeInstanceOf(
+          InvalidIpcRequestError,
+        );
+      }
+      expect(opened).toHaveLength(3);
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 });

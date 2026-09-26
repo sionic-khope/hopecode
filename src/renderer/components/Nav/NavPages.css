@@ -1,0 +1,303 @@
+/* 풀 리퀘스트 / 예약 / 플러그인: main-area pages in the settings layout (header, then hairline cards). */
+.hc-page {
+  height: 100%;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-8) var(--space-10);
+  animation: hc-view-in var(--motion-3) var(--ease-soft);
+}
+.hc-page > * {
+  max-width: 760px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.hc-page__header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-bottom: var(--space-6);
+}
+.hc-page__header > .hc-btn:first-child {
+  margin-top: 7px;
+}
+.hc-page__heading {
+  flex: 1;
+  min-width: 0;
+}
+.hc-page__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  line-height: var(--lh-2xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-title);
+}
+.hc-page__lede {
+  margin: 4px 0 0;
+  font-size: var(--text-md);
+  color: var(--label-secondary);
+}
+.hc-page__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: 6px;
+}
+
+.hc-page__section + .hc-page__section {
+  margin-top: var(--space-7);
+}
+.hc-page__section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: 0 var(--space-1) var(--space-2);
+}
+.hc-page__section-title {
+  margin: 0;
+  font-size: var(--text-lg);
+  line-height: var(--lh-lg);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-title);
+}
+.hc-page__section-meta {
+  font-size: var(--text-sm);
+  color: var(--label-tertiary);
+}
+.hc-page__card {
+  border-radius: var(--radius-card);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+/* List rows inside a card. */
+.hc-page__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.hc-page__row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: 14px var(--space-4);
+}
+.hc-page__row + .hc-page__row {
+  border-top: 1px solid var(--separator);
+}
+.hc-page__row-main {
+  flex: 1;
+  min-width: 0;
+}
+.hc-page__row-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-md);
+  line-height: var(--lh-md);
+  font-weight: var(--weight-medium);
+  color: var(--label);
+}
+.hc-page__row-title > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hc-page__row-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 4px;
+  font-size: var(--text-sm);
+  line-height: var(--lh-sm);
+  color: var(--label-secondary);
+}
+.hc-page__row-desc {
+  margin: 4px 0 0;
+  font-size: var(--text-sm);
+  line-height: var(--lh-sm);
+  color: var(--label-secondary);
+  overflow-wrap: anywhere;
+}
+.hc-page__row-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.hc-page__num {
+  flex: none;
+  font-weight: var(--weight-regular);
+  color: var(--label-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.hc-page__mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--label-secondary);
+  overflow-wrap: anywhere;
+}
+.hc-page__link {
+  all: unset;
+  cursor: pointer;
+  color: var(--accent);
+  font-size: var(--text-sm);
+  border-radius: 4px;
+}
+.hc-page__link:hover {
+  text-decoration: underline;
+}
+.hc-page__link:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+/* Empty / notice states. */
+.hc-page__empty {
+  padding: var(--space-6) var(--space-5);
+  text-align: center;
+  font-size: var(--text-md);
+  color: var(--label-secondary);
+}
+.hc-page__empty p {
+  margin: 0;
+}
+.hc-page__empty p + p {
+  margin-top: 6px;
+  font-size: var(--text-sm);
+  color: var(--label-tertiary);
+}
+.hc-page__notice {
+  padding: 12px var(--space-4);
+  border-radius: var(--radius-card);
+  background: var(--bg-card-muted);
+  box-shadow: var(--shadow-hairline);
+  font-size: var(--text-sm);
+  line-height: var(--lh-sm);
+  color: var(--label-secondary);
+}
+.hc-page__notice + .hc-page__section,
+.hc-page__notice + .hc-page__notice {
+  margin-top: var(--space-4);
+}
+.hc-page__notice strong {
+  color: var(--label);
+  font-weight: var(--weight-semibold);
+}
+.hc-page__notice--error {
+  background: var(--crit-bg);
+  color: var(--crit);
+}
+.hc-page__notice code,
+.hc-page__row-desc code {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--bg-control);
+  color: var(--label);
+}
+.hc-page__cmd {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* Form (예약 만들기). */
+.hc-form {
+  display: grid;
+  grid-template-columns: 112px 1fr;
+  align-items: center;
+  gap: 12px var(--space-4);
+  padding: var(--space-4) var(--space-5);
+}
+.hc-form__label {
+  font-size: var(--text-sm);
+  color: var(--label-secondary);
+}
+.hc-form__label--top {
+  align-self: start;
+  padding-top: 7px;
+}
+.hc-form__field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.hc-form__input,
+.hc-form__textarea,
+.hc-form__select {
+  box-sizing: border-box;
+  height: var(--control-h);
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--radius-control);
+  background: var(--bg-input);
+  box-shadow: inset 0 0 0 1px var(--separator-strong);
+  color: var(--label);
+  font: inherit;
+  font-size: var(--text-sm);
+  outline: none;
+}
+.hc-form__select {
+  padding-right: 6px;
+  max-width: 100%;
+}
+.hc-form__textarea {
+  width: 100%;
+  height: auto;
+  min-height: 88px;
+  padding: 8px 10px;
+  line-height: var(--lh-sm);
+  resize: vertical;
+}
+.hc-form__input:focus,
+.hc-form__textarea:focus,
+.hc-form__select:focus {
+  box-shadow: inset 0 0 0 1px var(--accent), var(--field-ring);
+}
+.hc-form__hint {
+  font-size: var(--text-xs);
+  color: var(--label-tertiary);
+}
+.hc-form__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: 12px var(--space-5);
+  border-top: 1px solid var(--separator);
+}
+.hc-form__error {
+  flex: 1;
+  font-size: var(--text-sm);
+  color: var(--crit);
+}
+
+/* Schedule run history. */
+.hc-runs {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.hc-runs li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--label-secondary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hc-page {
+    animation: none;
+  }
+}

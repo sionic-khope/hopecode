@@ -6,6 +6,10 @@ directories:
 files:
   - out/**/*
   - package.json
+# SIL OFL 1.1 requires the license text to travel with the bundled fonts (IBM Plex Sans KR, Hahmlet, JetBrains Mono).
+extraResources:
+  - from: src/renderer/assets/fonts/licenses
+    to: font-licenses
 asarUnpack:
   - "**/node_modules/node-pty/**"
   - "**/node_modules/@anthropic-ai/claude-agent-sdk-darwin-*/**"

@@ -1,17 +1,47 @@
-/* Geist + Geist Mono (SIL OFL 1.1, see ../assets/fonts/OFL.txt). Bundled by Vite and loaded from the app
-   package, so the CSP's font-src 'self' covers them -- no CDN. Variable fonts: one file covers 100-900. */
+/* Bundled OFL 1.1 fonts (license texts in ../assets/fonts/licenses, shipped as Resources/font-licenses).
+   Loaded from the app package, so the CSP's font-src 'self' covers them -- no CDN.
+   - IBM Plex Sans KR: IBM's official web woff2 files (@ibm/plex-sans-kr 1.1.0), unmodified.
+   - Hahmlet: variable wght, woff2 converted from google/fonts and subset to Latin + Hangul + common symbols.
+   - JetBrains Mono: variable wght, woff2 converted from google/fonts (full glyph set). */
 @font-face {
-  font-family: 'Geist';
-  src: url('../assets/fonts/Geist-Variable.woff2') format('woff2');
+  font-family: 'IBM Plex Sans KR';
+  src: url('../assets/fonts/IBMPlexSansKR-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'IBM Plex Sans KR';
+  src: url('../assets/fonts/IBMPlexSansKR-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'IBM Plex Sans KR';
+  src: url('../assets/fonts/IBMPlexSansKR-SemiBold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'IBM Plex Sans KR';
+  src: url('../assets/fonts/IBMPlexSansKR-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Hahmlet';
+  src: url('../assets/fonts/Hahmlet-Variable.woff2') format('woff2');
   font-weight: 100 900;
   font-style: normal;
   font-display: block;
 }
-
 @font-face {
-  font-family: 'Geist Mono';
-  src: url('../assets/fonts/GeistMono-Variable.woff2') format('woff2');
-  font-weight: 100 900;
+  font-family: 'JetBrains Mono';
+  src: url('../assets/fonts/JetBrainsMono-Variable.woff2') format('woff2');
+  font-weight: 100 800;
   font-style: normal;
   font-display: block;
 }

@@ -406,6 +406,20 @@ export function ChangesPanel({ thread }: { thread: Thread }) {
   const files = data?.isRepo ? data.files : [];
   const totals = summarizeCounts(files);
 
+  // "소스" in the environment popover: expand the file and bring it into view, once per request.
+  const focus = useAppStore((s) => (s.changesFocus?.threadId === thread.id ? s.changesFocus : null));
+  const appliedFocus = useRef(0);
+  useEffect(() => {
+    if (!focus || appliedFocus.current === focus.nonce || !files.some((f) => f.path === focus.path)) return;
+    appliedFocus.current = focus.nonce;
+    setExpanded((prev) => new Set(prev).add(focus.path));
+    requestAnimationFrame(() =>
+      document
+        .querySelector(`.hc-changes__file[data-path="${CSS.escape(focus.path)}"]`)
+        ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }),
+    );
+  }, [focus, files]);
+
   let body: ReactNode;
   if (!data) {
     body = error ? (

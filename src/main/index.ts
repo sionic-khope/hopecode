@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, powerMonitor, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, powerMonitor, shell, clipboard, ClipboardItem, nativeImage } from 'electron';
 import {
   CLIENT_APP_NAME,
   ENV_FIXTURE_PROJECT,
@@ -15,9 +15,9 @@ import {
   QUIT_DISPOSE_TIMEOUT_MS,
 } from '../shared/constants';
 import type { EventChannel, EventPayload } from '../shared/ipc';
-import type { AppInfo } from '../shared/types';
+import type { AppInfo, ThreadStartRequest, ThreadStartResult } from '../shared/types';
 import { isAppUrl } from './appUrl';
-import { openExternalSafe } from './externalUrl';
+import { isSafeExternalUrl, openExternalSafe } from './externalUrl';
 import { createAccountPool } from './accounts/accountPool';
 import { createConfigDirLinks, defaultClaudeDir, sharedConfigStatus } from './accounts/configDirLinks';
 import { createCredentials } from './accounts/credentials';
@@ -52,6 +52,13 @@ import { createUsageClient } from './usage/usageClient';
 import { createUsagePoller } from './usage/usagePoller';
 import { appUrlConfig, createMainWindow, isHeadlessE2E } from './window';
 import { createWorktreeManager } from './worktree/worktreeManager';
+import { createFixtureClock } from './fixtures/fixtureClock';
+import { createFixturePrSource } from './fixtures/fixturePrs';
+import { PR_URL_HOSTS } from './ipc/navHandlers';
+import { createThreadSearchIndex } from './nav/threadSearchIndex';
+import { readPluginInventory } from './plugins/pluginInventory';
+import { createGhPrSource } from './prs/prService';
+import { createScheduler } from './schedule/scheduler';
 
 const require = createRequire(import.meta.url);
 
@@ -177,6 +184,18 @@ const nativeDialogs: Dialogs = {
     };
     const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
     return res.canceled ? [] : res.filePaths;
+  },
+  async saveMarkdown(defaultName) {
+    const win = focusedWindow();
+    const opts: Electron.SaveDialogOptions = {
+      title: 'Markdown으로 내보내기',
+      buttonLabel: '저장',
+      defaultPath: join(app.getPath('documents'), defaultName),
+      filters: [{ name: 'Markdown', extensions: ['md'] }],
+      properties: ['createDirectory', 'showOverwriteConfirmation'],
+    };
+    const res = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts);
+    return res.canceled ? null : (res.filePath ?? null);
   },
 };
 
@@ -330,7 +349,7 @@ async function startServices(): Promise<Services> {
   poller.onUpdate(() => void session.reevaluate());
 
   // Fixture / e2e runs never open a native dialog: every question is answered by the seam.
-  const dialogs: Dialogs = fixtures || headless ? createFixtureDialogs(devEnv(ENV_FIXTURE_PROJECT)) : nativeDialogs;
+  const dialogs: Dialogs = fixtures || headless ? createFixtureDialogs(devEnv(ENV_FIXTURE_PROJECT), join(hopecodeHome(), 'exports')) : nativeDialogs;
   const urlConfig = appUrlConfig();
 
   const gitEnv = () => shellEnv.childEnv({});
@@ -352,6 +371,21 @@ async function startServices(): Promise<Services> {
       return sharedConfigStatus(accountPool.list(), sharedSourceDir);
     },
   };
+
+  // 예약: runs through the `thread:start` handler (bound once registerIpc hands it over). Fixture runs use a clock
+  // e2e can move from the main process.
+  let startThread: ((req: ThreadStartRequest) => Promise<ThreadStartResult>) | null = null;
+  let tickSchedules: () => Promise<void> = async () => {};
+  const fixtureClock = fixtures ? createFixtureClock(() => tickSchedules()) : null;
+  if (fixtureClock) globalThis.__hopecodeFixtureClock = fixtureClock;
+  const scheduler = createScheduler({
+    filePath: join(dataDir, 'schedules.json'),
+    now: fixtureClock ? fixtureClock.now : Date.now,
+    projectIds: () => new Set(store.get().projects.map((p) => p.id)),
+    startThread: (req) => (startThread ? startThread(req) : Promise.reject(new Error('thread:start is not ready'))),
+    onChange: (schedules) => broadcaster.emit('schedule:updated', schedules),
+  });
+  tickSchedules = () => scheduler.tick();
 
   const unregisterIpc = registerIpc(ipcMain, {
     store,
@@ -382,8 +416,40 @@ async function startServices(): Promise<Services> {
       if (error) throw new Error(error);
     },
     quit: () => app.quit(),
+    images: {
+      reveal(absPath) {
+        if (fixtures || headless) return; // never opens a Finder window in test runs
+        shell.showItemInFolder(absPath);
+      },
+      async copy(buffer) {
+        // Normalized to PNG: the one bitmap type every macOS app pastes.
+        const image = nativeImage.createFromBuffer(buffer);
+        if (image.isEmpty()) throw new Error('unsupported image format');
+        const png = image.toPNG();
+        await clipboard.write([new ClipboardItem({ 'image/png': new Blob([new Uint8Array(png)], { type: 'image/png' }) })]);
+      },
+    },
     sharedConfig,
     testMode: fixtures || headless,
+    nav: {
+      threadSearch: createThreadSearchIndex(threadLog),
+      // Fixture / e2e runs never run gh or open a browser.
+      prSource: fixtures || headless ? createFixturePrSource(() => store.get().threads) : createGhPrSource(gitEnv),
+      openExternal: (url) =>
+        fixtures || headless ? isSafeExternalUrl(url, PR_URL_HOSTS) : openExternalSafe(url, { allowHosts: PR_URL_HOSTS }),
+      scheduler,
+      plugins: {
+        list: () => readPluginInventory(sharedSourceDir),
+        async openFolder() {
+          if (fixtures || headless) return; // never opens a Finder window in test runs
+          const error = await shell.openPath(sharedSourceDir);
+          if (error) throw new Error(error);
+        },
+      },
+    },
+    provideThreadStart: (start) => {
+      startThread = start;
+    },
     onSettingsChanged: (next, prev) => {
       // A new interval applies now: poll every account once, which reschedules on the new interval.
       if (next.usagePollIntervalSec !== prev.usagePollIntervalSec) void poller.refresh().catch(() => {});
@@ -393,11 +459,16 @@ async function startServices(): Promise<Services> {
   });
 
   poller.start();
+  await scheduler.load().catch((err: unknown) => console.error('[hopecode] schedules could not be loaded', err));
+  scheduler.start();
+  powerMonitor.on('resume', () => void scheduler.tick());
 
   return {
     broadcaster,
     async dispose() {
       poller.stop();
+      scheduler.stop();
+      await scheduler.flush().catch((err: unknown) => console.error('[hopecode] schedule flush failed', err));
       await accountPool.cancelAllLogins().catch((err: unknown) => console.error('[hopecode] login cancel failed', err));
       await session.dispose().catch((err: unknown) => console.error('[hopecode] session dispose failed', err));
       ptyManager.killAll();

@@ -8,13 +8,19 @@ import { ChatView, DraftView } from './components/Chat';
 import { BoltIcon } from './components/Chat/icons';
 import { CommandPalette, type PaletteCommand } from './components/Palette/CommandPalette';
 import { SettingsPage } from './components/Settings/SettingsPage';
+import { PluginsPage } from './components/Nav/PluginsPage';
+import { PullRequestsPage } from './components/Nav/PullRequestsPage';
+import { SchedulePage } from './components/Nav/SchedulePage';
+import type { NavPage } from './components/Sidebar/SidebarNav';
+import type { PullRequestInfo } from '../shared/nav';
 import { AboutModal, ShortcutsModal } from './components/Shell/AppModals';
 import { ChatHeader } from './components/Shell/ChatHeader';
+import { WindowToolbar } from './components/Shell/WindowToolbar';
 import { RightPanel, forgetTerminalSize } from './components/Shell/RightPanel';
 import { NEEDS_FORCE } from './components/Sidebar/ItemMenu';
 import { ProfileRow } from './components/Sidebar/ProfileRow';
 import { Sidebar } from './components/Sidebar/Sidebar';
-import { IconCompose, IconSidebar } from './components/Sidebar/icons';
+import { IconClock, IconCompose, IconPlug, IconPullRequest, IconSidebar } from './components/Sidebar/icons';
 import { StatusLine } from './components/StatusLine/StatusLine';
 import {
   GlyphChanges,
@@ -51,6 +57,7 @@ import {
 } from './store';
 import { ACCOUNT_COLORS, DAY_MS, DRAFT_PTY_SESSION_ID, MINUTE_MS } from '../shared/constants';
 import type {
+  ChatImage,
   ChatSendResult,
   EditorId,
   EditorInfo,
@@ -132,6 +139,7 @@ export function App() {
   const [editors, setEditors] = useState<EditorInfo[]>([]);
   const [resizing, setResizing] = useState(false);
   const [addAccountRequest, setAddAccountRequest] = useState(0);
+  const [firstMessages, setFirstMessages] = useState<Record<string, string>>({});
 
   useNotifications();
 
@@ -183,11 +191,11 @@ export function App() {
     s.setRoute('chat');
   }, []);
 
-  const onSend = useCallback((threadId: string, text: string) => {
+  const onSend = useCallback((threadId: string, text: string, images?: ChatImage[]) => {
     setSendError(null);
     void useAppStore
       .getState()
-      .sendMessage(threadId, text)
+      .sendMessage(threadId, text, images)
       // `{accepted:true, reason:'waiting'}`: queued behind the pool reset; the thread shows its countdown.
       .then((result) => setSendError(sendErrorMessage(result)))
       .catch((err: unknown) => setSendError(`메시지를 보내지 못했습니다: ${ipcErrorMessage(err)}`));
@@ -229,6 +237,17 @@ export function App() {
   const onOpenAccounts = useCallback(() => useAppStore.getState().openAccounts(), []);
   const onOpenUsage = useCallback(() => useAppStore.getState().openAccounts('usage'), []);
   const onOpenSettings = useCallback(() => useAppStore.getState().setRoute('settings'), []);
+  const onOpenSearch = useCallback(() => useAppStore.getState().setPaletteOpen(true), []);
+  const onOpenPrs = useCallback(() => useAppStore.getState().setRoute('prs'), []);
+  const onOpenSchedule = useCallback(() => useAppStore.getState().setRoute('schedule'), []);
+  const onOpenPlugins = useCallback(() => useAppStore.getState().setRoute('plugins'), []);
+  const onBackToChat = useCallback(() => useAppStore.getState().setRoute('chat'), []);
+  // "이 PR로 새 채팅": a draft in the PR's project whose worktree starts from the PR branch.
+  const onNewChatFromPr = useCallback((projectId: string, pr: PullRequestInfo) => {
+    const s = useAppStore.getState();
+    s.newDraft();
+    s.setDraft({ projectId, base: { branch: pr.branch, pr: pr.number, title: pr.title } });
+  }, []);
   const onToggleSidebar = useCallback(() => useAppStore.getState().toggleSidebar(), []);
   const onShowShortcuts = useCallback(() => useAppStore.getState().setModal('shortcuts'), []);
   const onShowAbout = useCallback(() => useAppStore.getState().setModal('about'), []);
@@ -307,13 +326,19 @@ export function App() {
       .setThreadPermissionMode(threadId, mode)
       .catch((err: unknown) => setSendError(`권한 모드를 바꾸지 못했습니다: ${ipcErrorMessage(err)}`));
   }, []);
-  const onPinAccountChange = useCallback((threadId: string, accountId: string | null) => {
-    void useAppStore.getState().pinAccount(threadId, accountId).catch(reportError('account pin failed'));
+  // 더보기 > 계정 고정: the open thread's pin, or the draft's before the thread exists.
+  const onPinAccount = useCallback((accountId: string | null) => {
+    const s = useAppStore.getState();
+    if (s.route === 'chat' && s.selectedThreadId) {
+      void s.pinAccount(s.selectedThreadId, accountId).catch(reportError('account pin failed'));
+    } else {
+      s.setDraft({ pinnedAccountId: accountId });
+    }
   }, []);
   const onAttachToThread = useCallback((threadId: string) => useAppStore.getState().pickFiles({ threadId }), []);
   const onAttachToDraft = useCallback((projectId: string) => useAppStore.getState().pickFiles({ projectId }), []);
 
-  const draftActive = route === 'chat' && !activeThread;
+  const activePage: NavPage = route === 'chat' ? (activeThread ? null : 'draft') : route;
   // Statusline model: the thread's (resolved) model, or what the draft will start with.
   const statusModel = activeThread
     ? concreteModelLabel(activeThread.model, models, { resolvedModel: activeThread.resolvedModel, defaultLabel: defaultModelLabel })
@@ -339,7 +364,8 @@ export function App() {
         title: t.title,
         subtitle: byProject.get(t.projectId),
         group: '스레드',
-        keywords: [byProject.get(t.projectId) ?? ''],
+        // Title and first message are both searchable (⌘K / 검색).
+        keywords: [byProject.get(t.projectId) ?? '', firstMessages[t.id] ?? ''],
         run: () => onSelectThread(t.id),
       }));
     const primaryEditor = editors.find((e) => e.id === settings.defaultEditor) ?? editors[0];
@@ -357,6 +383,9 @@ export function App() {
       { id: 'settings', title: '설정', group: '작업', shortcut: '⌘,', icon: <GlyphSettings />, keywords: ['settings', 'preferences'], run: onOpenSettings },
       { id: 'accounts', title: '계정 관리', group: '작업', icon: <GlyphPeople />, keywords: ['accounts'], run: onOpenAccounts },
       { id: 'usage', title: '사용량', group: '작업', icon: <GlyphChart />, keywords: ['usage', 'limit'], run: onOpenUsage },
+      { id: 'prs', title: '풀 리퀘스트', group: '작업', icon: <IconPullRequest />, keywords: ['pull request', 'pr', 'github', 'gh'], run: onOpenPrs },
+      { id: 'schedule', title: '예약', group: '작업', icon: <IconClock />, keywords: ['schedule', 'cron', 'automation'], run: onOpenSchedule },
+      { id: 'plugins', title: '플러그인', group: '작업', icon: <IconPlug />, keywords: ['plugins', 'skills', 'mcp', 'hooks'], run: onOpenPlugins },
       {
         id: 'panel-changes',
         title: panel === 'changes' ? '변경사항 패널 닫기' : '변경사항 패널 열기',
@@ -398,10 +427,15 @@ export function App() {
       { id: 'shortcuts', title: '키보드 단축키', group: '보기', icon: <GlyphKeyboard />, keywords: ['shortcuts', 'keys'], run: onShowShortcuts },
       { id: 'about', title: '앱 정보', group: '보기', icon: <GlyphInfo />, keywords: ['about', 'version'], run: onShowAbout },
     ];
-    return [...actions, ...threadItems];
+    // Threads first: the palette opens as thread search; commands follow in the same list.
+    return [...threadItems, ...actions];
   }, [
     projects,
     threads,
+    firstMessages,
+    onOpenPrs,
+    onOpenSchedule,
+    onOpenPlugins,
     editors,
     settings.defaultEditor,
     panel,
@@ -421,6 +455,12 @@ export function App() {
   useEffect(() => {
     if (paletteOpen && editors.length === 0) onLoadEditors();
   }, [paletteOpen, editors.length, onLoadEditors]);
+
+  // Thread search also matches each thread's first message (read from the logs in main on every open).
+  useEffect(() => {
+    if (!paletteOpen) return;
+    void invoke('nav:threadFirstMessages').then(setFirstMessages).catch(reportError('thread search index failed'));
+  }, [paletteOpen]);
 
   const shellClass = [
     'app',
@@ -449,14 +489,19 @@ export function App() {
               threads={threads}
               accounts={accounts}
               selectedThreadId={route === 'chat' ? selectedThreadId : null}
-              draftActive={draftActive}
-              accountsActive={route === 'accounts'}
-              settingsActive={route === 'settings'}
+              activePage={activePage}
               unseenDone={unseenDone}
               onNewChat={onNewChat}
               onNewChatIn={onNewChatIn}
+              onSearch={onOpenSearch}
+              onOpenPrs={onOpenPrs}
+              onOpenSchedule={onOpenSchedule}
+              onOpenPlugins={onOpenPlugins}
               onOpenAccounts={onOpenAccounts}
+              onOpenUsage={onOpenUsage}
               onOpenSettings={onOpenSettings}
+              onShowShortcuts={onShowShortcuts}
+              onShowAbout={onShowAbout}
               onAddProject={onAddProject}
               onSelectThread={onSelectThread}
               onRenameThread={onRenameThread}
@@ -470,12 +515,7 @@ export function App() {
                   account={profileAccount}
                   accounts={accounts}
                   pool={pool.summary}
-                  onOpenAccounts={onOpenAccounts}
-                  onOpenUsage={onOpenUsage}
-                  onOpenSettings={onOpenSettings}
-                  onShowShortcuts={onShowShortcuts}
                   onOpenDataFolder={onOpenDataFolder}
-                  onShowAbout={onShowAbout}
                   onQuit={onQuit}
                   onAddAccount={onAddAccount}
                 />
@@ -503,20 +543,67 @@ export function App() {
             <ChatHeader
               thread={activeThread}
               project={activeProject}
+              accounts={accounts}
+              draftPinnedAccountId={draft.pinnedAccountId}
               panel={shownPanel}
               editors={editors}
               defaultEditor={settings.defaultEditor}
+              homeDir={homeDir}
               onRename={onRenameActive}
               onTogglePanel={onTogglePanel}
               onOpenEditor={onOpenEditor}
               onLoadEditors={onLoadEditors}
+              onPinAccount={onPinAccount}
+              onSetPinned={onSetPinned}
+              onSetArchived={onSetArchived}
+              onDeleteThread={onDeleteThread}
             />
+          ) : route === 'chat' ? (
+            <div className="hc-chat-header hc-chat-header--draft">
+              <div className="app__thread-title" />
+              <WindowToolbar
+                thread={null}
+                project={null}
+                accounts={accounts}
+                draftPinnedAccountId={draft.pinnedAccountId}
+                panel={shownPanel}
+                editors={editors}
+                defaultEditor={settings.defaultEditor}
+                homeDir={homeDir}
+                onTogglePanel={onTogglePanel}
+                onOpenEditor={onOpenEditor}
+                onLoadEditors={onLoadEditors}
+                onPinAccount={onPinAccount}
+                onSetPinned={onSetPinned}
+                onSetArchived={onSetArchived}
+                onDeleteThread={onDeleteThread}
+              />
+            </div>
           ) : null}
         </div>
         <div className="app__body app__body--fill">
           <div className="app__view" key={route === 'chat' ? (activeThread ? `thread:${activeThread.id}` : 'draft') : route}>
             {route === 'accounts' ? (
               <AccountsRoute addRequest={addAccountRequest} />
+            ) : route === 'prs' ? (
+              <PullRequestsPage
+                threads={threads}
+                projects={projects}
+                onBack={onBackToChat}
+                onOpenThread={onSelectThread}
+                onNewChatFromPr={onNewChatFromPr}
+              />
+            ) : route === 'schedule' ? (
+              <SchedulePage
+                projects={projects}
+                threads={threads}
+                models={models}
+                defaultModel={settings.defaultModel}
+                onBack={onBackToChat}
+                onOpenThread={onSelectThread}
+              />
+            ) : route === 'plugins' ? (
+              <PluginsPage homeDir={homeDir} onBack={onBackToChat} />
             ) : route === 'settings' ? (
               <SettingsPage
                 settings={settings}
@@ -539,14 +626,12 @@ export function App() {
                 thread={activeThread}
                 project={activeProject}
                 models={models}
-                accounts={accounts}
                 onSend={onSend}
                 onInterrupt={onInterrupt}
                 onPermissionDecision={onPermissionDecision}
                 onModelChange={onModelChange}
                 onEffortChange={onEffortChange}
                 onPermissionModeChange={onPermissionModeChange}
-                onPinAccountChange={onPinAccountChange}
                 onAttachFiles={onAttachToThread}
                 defaultModelLabel={defaultModelLabel}
                 homeDir={homeDir}
@@ -556,15 +641,12 @@ export function App() {
                 draft={draft}
                 projects={projects}
                 models={models}
-                accounts={accounts}
                 onDraftChange={onDraftChange}
                 onPickFolder={onPickFolder}
                 onStart={onStartThread}
                 onAttachFiles={onAttachToDraft}
                 defaultModelLabel={defaultModelLabel}
                 homeDir={homeDir}
-                terminalOpen={shownPanel === 'terminal'}
-                onToggleTerminal={() => onTogglePanel('terminal')}
               />
             )}
           </div>
@@ -589,7 +671,12 @@ export function App() {
         />
       </section>
       <StatusLine pool={pool} accounts={accounts} activeThread={activeThread} models={models} modelText={statusModel} />
-      <CommandPalette open={paletteOpen} onClose={() => useAppStore.getState().setPaletteOpen(false)} commands={paletteCommands} />
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => useAppStore.getState().setPaletteOpen(false)}
+        commands={paletteCommands}
+        placeholder="스레드 제목·내용 검색 또는 명령 실행…"
+      />
       <ShortcutsModal open={modal === 'shortcuts'} onClose={onCloseModal} />
       <AboutModal open={modal === 'about'} onClose={onCloseModal} loadInfo={loadAppInfo} homeDir={homeDir} />
     </div>

@@ -14,6 +14,7 @@ import type {
   SettingsPatch,
   SharedConfigStatus,
   ChatEvent,
+  ChatImage,
   ChatItem,
   ChatSendResult,
   EffortLevel,
@@ -28,10 +29,26 @@ import type {
   UiPermissionMode,
   UsageSample,
 } from './types';
+import type { PluginInventory, PullRequestList, Schedule, ScheduleInput } from './nav';
 
 /** renderer -> main (`ipcRenderer.invoke`). `req: void` means no argument. */
 export interface InvokeMap {
   'app:bootstrap': { req: void; res: BootstrapPayload };
+  /** First user message per thread id (⌘K thread search); threads without one are left out. */
+  'nav:threadFirstMessages': { req: void; res: Record<string, string> };
+  /** Open PRs (`gh pr list`) of every registered project that has a remote. */
+  'prs:list': { req: void; res: PullRequestList };
+  /** Opens a PR page in the browser: https github.com URLs only; false when refused. */
+  'prs:openExternal': { req: { url: string }; res: boolean };
+  'schedule:list': { req: void; res: Schedule[] };
+  /** Creates (no `id`) or replaces a schedule. Validated in main (bypassPermissions is refused). */
+  'schedule:save': { req: { id?: string; schedule: ScheduleInput }; res: Schedule };
+  'schedule:setEnabled': { req: { id: string; enabled: boolean }; res: Schedule };
+  'schedule:delete': { req: { id: string }; res: void };
+  /** Read-only inventory of the shared ~/.claude (plugins, skills, agents, output styles, MCP, hooks). */
+  'plugins:list': { req: void; res: PluginInventory };
+  /** Reveals the shared ~/.claude folder in Finder (fixed path; a no-op in test runs). */
+  'plugins:openFolder': { req: void; res: void };
   'project:add': { req: void; res: Project | null };
   'project:remove': { req: { projectId: string }; res: void };
   /** Turning trust on shows a native confirm dialog in main; the returned project carries the applied value. */
@@ -65,7 +82,14 @@ export interface InvokeMap {
   'thread:setPermissionMode': { req: { threadId: string; mode: UiPermissionMode }; res: void };
   'thread:pinAccount': { req: { threadId: string; accountId: string | null }; res: void };
   'chat:history': { req: { threadId: string }; res: ChatItem[] };
-  'chat:send': { req: { threadId: string; text: string }; res: ChatSendResult };
+  /** `images`: composer attachments (image content blocks, at most 8, 5 MB each). */
+  'chat:send': { req: { threadId: string; text: string; images?: ChatImage[] }; res: ChatSendResult };
+  /** Image file inside the thread folder (relative or absolute path, 10 MB max) as a `data:` URL. */
+  'image:read': { req: { threadId: string; path: string }; res: { dataUrl: string } };
+  /** Reveals an image file inside the thread folder in Finder. */
+  'image:reveal': { req: { threadId: string; path: string }; res: void };
+  /** Copies an image to the clipboard: a file inside the thread folder (`path`), or an inline chat image. */
+  'image:copy': { req: { threadId: string; path?: string; image?: ChatImage }; res: void };
   'chat:interrupt': { req: { threadId: string }; res: void };
   'permission:respond': {
     req: { requestId: string; decision: PermissionDecision; message?: string };
@@ -114,8 +138,11 @@ export interface InvokeMap {
 
   /** Editors / terminals installed in /Applications (Finder always). */
   'editor:list': { req: void; res: EditorInfo[] };
-  /** Opens the thread's folder (its cwd, nothing else) in `editor`. */
-  'editor:open': { req: { threadId: string; editor: EditorId }; res: void };
+  /**
+   * Opens the thread's folder (its cwd) in `editor`, or with `path` one file inside it (relative to the cwd;
+   * main refuses anything that resolves outside). Finder reveals the file instead of opening it.
+   */
+  'editor:open': { req: { threadId: string; editor: EditorId; path?: string }; res: void };
 
   /** Changed files of the thread folder (worktree: against the base branch's merge-base, plus uncommitted work). */
   'git:changes': { req: { threadId: string }; res: GitChanges };
@@ -129,11 +156,20 @@ export interface InvokeMap {
   'git:remoteInfo': { req: { threadId: string }; res: GitRemoteInfo };
   /** Pushes the branch to its remote and opens a PR with `gh`. The renderer shows a confirm with the target first. */
   'git:pushPr': { req: { threadId: string; title: string; body: string }; res: GitActionResult<{ url: string | null }> };
+  /** `git switch -c name` in the thread's worktree (worktree threads only; the name is validated in main). */
+  'git:createBranch': { req: { threadId: string; name: string }; res: GitActionResult<{ branch: string }> };
+  /**
+   * "공유 > Markdown으로 내보내기": main renders the stored transcript and writes it where the save dialog says.
+   * The renderer never sends a path. `ok: false` without `error` = the dialog was cancelled.
+   */
+  'thread:exportMarkdown': { req: { threadId: string }; res: { ok: true; path: string } | { ok: false; error?: string } };
 }
 
 /** main -> renderer (`webContents.send`). */
 export interface EventMap {
   'chat:event': { threadId: string; event: ChatEvent };
+  /** Schedules changed (saved, toggled, run, judged missed). */
+  'schedule:updated': Schedule[];
   'thread:updated': Thread;
   'permission:request': PermissionRequest;
   'permission:cancel': { requestId: string };
@@ -171,6 +207,15 @@ export type EventPayload<K extends EventChannel> = EventMap[K];
 // `satisfies` keeps the arrays exhaustive: adding a channel to the map without listing it fails typecheck.
 export const INVOKE_CHANNELS = [
   'app:bootstrap',
+  'nav:threadFirstMessages',
+  'prs:list',
+  'prs:openExternal',
+  'schedule:list',
+  'schedule:save',
+  'schedule:setEnabled',
+  'schedule:delete',
+  'plugins:list',
+  'plugins:openFolder',
   'project:add',
   'project:remove',
   'project:setTrusted',
@@ -186,6 +231,9 @@ export const INVOKE_CHANNELS = [
   'thread:pinAccount',
   'chat:history',
   'chat:send',
+  'image:read',
+  'image:reveal',
+  'image:copy',
   'chat:interrupt',
   'permission:respond',
   'models:list',
@@ -217,10 +265,13 @@ export const INVOKE_CHANNELS = [
   'git:merge',
   'git:remoteInfo',
   'git:pushPr',
+  'git:createBranch',
+  'thread:exportMarkdown',
 ] as const satisfies readonly InvokeChannel[];
 
 export const EVENT_CHANNELS = [
   'chat:event',
+  'schedule:updated',
   'thread:updated',
   'permission:request',
   'permission:cancel',

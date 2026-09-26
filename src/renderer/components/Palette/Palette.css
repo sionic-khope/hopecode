@@ -41,7 +41,7 @@
 @keyframes hc-palette-in {
   from {
     opacity: 0;
-    transform: translateY(-10px) scale(0.98);
+    transform: translateY(var(--rise-y)) scale(var(--rise-scale));
   }
   to {
     opacity: 1;
@@ -106,8 +106,8 @@
   padding: 8px 10px 4px;
   font-size: var(--text-xs);
   line-height: var(--lh-xs);
-  font-weight: var(--weight-medium);
-  color: var(--label-tertiary);
+  font-weight: var(--weight-semibold);
+  color: var(--label-secondary);
   -webkit-user-select: none;
   user-select: none;
 }
@@ -154,7 +154,7 @@
 .hc-palette__item--active .hc-palette__icon {
   background: var(--bg-card);
   color: var(--accent);
-  box-shadow: 0 0 0 1px rgba(27, 110, 243, 0.14), 0 1px 2px rgba(22, 32, 56, 0.06);
+  box-shadow: 0 0 0 1px rgba(0, 83, 253, 0.25), 0 1px 2px rgba(23, 23, 26, 0.06);
 }
 .hc-palette__item--active .hc-palette__icon:empty {
   background: transparent;

@@ -13,6 +13,7 @@ import {
   launch,
   menuShortcut,
   openDraft,
+  openFromMore,
   screenshot,
   screenshotOf,
   sendMessage,
@@ -97,9 +98,8 @@ test('profile row: account, plan and an upward menu with the pool summary', asyn
   await expect(menu).toBeVisible();
   await expect(menu).toContainText('work@example.com');
   await expect(menu).toContainText('계정 3개 · 2개 사용 가능');
-  for (const label of ['계정 관리', '사용량', '설정', '키보드 단축키', '로그 폴더 열기', '앱 정보', 'Hopecode 종료']) {
-    await expect(menu.getByRole('menuitem', { name: new RegExp(`^${label}`) })).toBeVisible();
-  }
+  // Pages (계정, 사용량, 설정, 단축키, 앱 정보) live in the nav's 더보기 menu; the profile menu does not repeat them.
+  await expect(menu.getByRole('menuitem')).toHaveText([/^계정 추가/, /^로그 폴더 열기/, /^Hopecode 종료/]);
   // The menu opens above the row.
   const menuBox = await page.locator('.hc-popover:has(.hc-mnu)').boundingBox();
   const rowBox = await row.boundingBox();
@@ -113,8 +113,7 @@ test('profile row: account, plan and an upward menu with the pool summary', asyn
 
 test('키보드 단축키 and 앱 정보 modals', async () => {
   const { page } = run;
-  await page.getByTestId('profile-row').click();
-  await page.getByRole('menu', { name: '프로필' }).getByRole('menuitem', { name: /^키보드 단축키/ }).click();
+  await openFromMore(page, '키보드 단축키');
   const shortcuts = page.getByRole('dialog', { name: '키보드 단축키' });
   await expect(shortcuts).toBeVisible();
   await expect(shortcuts).toContainText('명령 팔레트');
@@ -123,8 +122,7 @@ test('키보드 단축키 and 앱 정보 modals', async () => {
   await page.keyboard.press('Escape');
   await expect(shortcuts).toHaveCount(0);
 
-  await page.getByTestId('profile-row').click();
-  await page.getByRole('menu', { name: '프로필' }).getByRole('menuitem', { name: /^앱 정보/ }).click();
+  await openFromMore(page, '앱 정보');
   const about = page.getByRole('dialog', { name: 'Hopecode' });
   await expect(about).toBeVisible();
   await expect(about.getByRole('definition').nth(1)).toHaveText(/^\d+\.\d+\.\d+/); // CLI version
@@ -137,7 +135,7 @@ test('키보드 단축키 and 앱 정보 modals', async () => {
 
 test('settings: changes persist in main and apply to the next new chat (worktree off -> project folder)', async () => {
   const { page } = run;
-  await page.getByTestId('sidebar').getByRole('button', { name: /^설정/ }).click();
+  await openFromMore(page, '설정');
   const settings = page.getByTestId('settings');
   await expect(settings).toBeVisible();
   await expect(settings.getByRole('region', { name: '공유 설정' })).toContainText('CLAUDE.md');
@@ -193,7 +191,7 @@ test('settings: changes persist in main and apply to the next new chat (worktree
     .toBe('claude-code');
 
   // Back to worktrees (and automatic switching) for the rest of the run.
-  await page.getByTestId('sidebar').getByRole('button', { name: /^설정/ }).click();
+  await openFromMore(page, '설정');
   await page.getByTestId('settings').getByRole('switch', { name: '새 스레드마다 worktree 만들기' }).click();
   await page.getByTestId('settings').getByRole('switch', { name: '한도 도달 시 자동 전환' }).click();
   await page
@@ -238,7 +236,8 @@ test('commit (auto message), then merge into the project branch', async () => {
   const { page } = run;
   const { threads } = await bootstrapState(page);
   const thread = threads.find((t) => t.title === 'README 인사말을 바꿔 주세요')!;
-  await page.getByRole('button', { name: '커밋', exact: true }).click();
+  await page.getByRole('toolbar', { name: '스레드 도구' }).getByRole('button', { name: '환경' }).click();
+  await page.getByRole('dialog', { name: '환경' }).getByRole('button', { name: '커밋 또는 푸시' }).click();
   const pop = page.getByRole('dialog', { name: '커밋' });
   await expect(pop).toBeVisible();
   await pop.getByRole('button', { name: '자동 생성' }).click();
@@ -262,11 +261,18 @@ test('commit (auto message), then merge into the project branch', async () => {
 
 test('Push + PR goes through a confirm naming the remote and branches (fixture publisher)', async () => {
   const { page } = run;
-  await page.getByRole('button', { name: '커밋', exact: true }).click();
+  const toolbar = page.getByRole('toolbar', { name: '스레드 도구' });
+  // From the commit popover...
+  await toolbar.getByRole('button', { name: '환경' }).click();
+  await page.getByRole('dialog', { name: '환경' }).getByRole('button', { name: '커밋 또는 푸시' }).click();
   const pop = page.getByRole('dialog', { name: '커밋' });
   const pushItem = pop.getByRole('button', { name: /Push \+ PR 만들기/ });
   await expect(pushItem).toBeEnabled();
-  await pushItem.click();
+  await page.keyboard.press('Escape');
+  await expect(pop).toHaveCount(0);
+  // ...and straight from the environment popover's 풀 리퀘스트 만들기.
+  await toolbar.getByRole('button', { name: '환경' }).click();
+  await page.getByRole('dialog', { name: '환경' }).getByRole('button', { name: '풀 리퀘스트 만들기' }).click();
   const confirm = page.getByRole('dialog', { name: 'Push하고 PR을 만들까요?' });
   await expect(confirm).toContainText('origin');
   await expect(confirm).toContainText('main');
@@ -365,7 +371,7 @@ test('model menu names the current lineup (Fable 5.1)', async () => {
   ]);
   await screenshot(page, 'v3-model-menu', SHOTS);
   await page.keyboard.press('Escape');
-  await page.getByTestId('sidebar').getByRole('button', { name: /^계정/ }).click();
+  await openFromMore(page, '계정');
   await expect(page.locator('.hc-accounts-page')).toBeVisible();
   await page.mouse.move(10, 700);
   await screenshot(page, 'v3-accounts', SHOTS);

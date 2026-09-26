@@ -1,7 +1,7 @@
 import { memo, useRef, useState } from 'react';
 import type { Account, PoolSummary } from '../../../shared/types';
 import { Menu, type MenuSection } from '../common';
-import { GlyphChart, GlyphFolderOpen, GlyphInfo, GlyphKeyboard, GlyphPeople, GlyphPower, GlyphSettings } from '../common/glyphs';
+import { GlyphFolderOpen, GlyphPower } from '../common/glyphs';
 import { IconPlusSmall } from './icons';
 
 export interface ProfileRowProps {
@@ -9,12 +9,7 @@ export interface ProfileRowProps {
   account: Account | null;
   accounts: Account[];
   pool: PoolSummary;
-  onOpenAccounts: () => void;
-  onOpenUsage: () => void;
-  onOpenSettings: () => void;
-  onShowShortcuts: () => void;
   onOpenDataFolder: () => void;
-  onShowAbout: () => void;
   onQuit: () => void;
   onAddAccount: () => void;
 }
@@ -49,18 +44,14 @@ export function Avatar({ account, size = 28 }: { account: Pick<Account, 'alias' 
 
 /**
  * Sidebar footer (Codex / ChatGPT style): avatar, account name, plan. Opens an upward menu with the account
- * summary and app actions. With no account at all the row becomes "계정 추가".
+ * summary, 계정 추가, the log folder and quit (pages such as 계정 / 설정 live in the nav's 더보기 menu). With no
+ * account at all the row becomes "계정 추가".
  */
 export const ProfileRow = memo(function ProfileRow({
   account,
   accounts,
   pool,
-  onOpenAccounts,
-  onOpenUsage,
-  onOpenSettings,
-  onShowShortcuts,
   onOpenDataFolder,
-  onShowAbout,
   onQuit,
   onAddAccount,
 }: ProfileRowProps) {
@@ -91,20 +82,12 @@ export const ProfileRow = memo(function ProfileRow({
     {
       key: 'account',
       kind: 'action',
-      items: [
-        { key: 'accounts', label: '계정 관리', icon: <GlyphPeople />, onSelect: onOpenAccounts },
-        { key: 'usage', label: '사용량', icon: <GlyphChart />, onSelect: onOpenUsage },
-      ],
+      items: [{ key: 'add', label: '계정 추가', icon: <IconPlusSmall width={16} height={16} />, onSelect: onAddAccount }],
     },
     {
       key: 'app',
       kind: 'action',
-      items: [
-        { key: 'settings', label: '설정', icon: <GlyphSettings />, meta: '⌘,', onSelect: onOpenSettings },
-        { key: 'shortcuts', label: '키보드 단축키', icon: <GlyphKeyboard />, onSelect: onShowShortcuts },
-        { key: 'logs', label: '로그 폴더 열기', icon: <GlyphFolderOpen />, onSelect: onOpenDataFolder },
-        { key: 'about', label: '앱 정보', icon: <GlyphInfo />, onSelect: onShowAbout },
-      ],
+      items: [{ key: 'logs', label: '로그 폴더 열기', icon: <GlyphFolderOpen />, onSelect: onOpenDataFolder }],
     },
     {
       key: 'quit',

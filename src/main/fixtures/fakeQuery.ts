@@ -46,7 +46,14 @@ export type FakeStep =
   | { type: 'apiRetry'; error: 'rate_limit' }
   | { type: 'result'; isError?: boolean; apiErrorStatus?: number; message?: string }
   /** Block until controller.release(), interrupt() or close(). */
-  | { type: 'pause' };
+  | { type: 'pause' }
+  /**
+   * One raw SDK message (session_id added), after an optional real delay: subagent frames carrying
+   * `parent_tool_use_id`, tool_results with image blocks, task notifications.
+   */
+  | { type: 'emit'; message: Record<string, unknown>; delayMs?: number }
+  /** Fixture mode only: writes base64 `data` to `path` under the Query cwd (relative paths inside cwd only). */
+  | { type: 'writeFile'; path: string; data: string };
 
 export interface FakeTurnContext {
   /** Index of the query() call (0-based, across the controller). */
@@ -166,6 +173,13 @@ function applyFixtureEdit(cwd: string, input: Record<string, unknown>): void {
   if (!rel || rel.startsWith('..') || isAbsolute(rel) || !existsSync(target)) return;
   const text = readFileSync(target, 'utf8');
   if (text.includes(from)) writeFileSync(target, text.replace(from, to));
+}
+
+function writeFixtureFile(cwd: string, file: string, data: string): void {
+  const target = resolve(cwd, file);
+  const rel = relative(cwd, target);
+  if (!rel || rel.startsWith('..') || isAbsolute(rel)) return;
+  writeFileSync(target, Buffer.from(data, 'base64'));
 }
 
 function encodeCwd(cwd: string): string {
@@ -437,6 +451,16 @@ export function createFakeQuery(opts: FakeQueryOptions = {}): FakeQueryControlle
             sawResult = true;
             result(step.isError === true, step.apiErrorStatus, step.message);
             break;
+          case 'emit':
+            if (step.delayMs) {
+              await Promise.race([new Promise<void>((r) => setTimeout(r, step.delayMs)), interruptPromise]);
+              if (interrupted || call.closed) break;
+            }
+            emit({ ...step.message, session_id: sessionId });
+            break;
+          case 'writeFile':
+            writeFixtureFile(cwd, step.path, step.data);
+            break;
           case 'pause':
             await Promise.race([
               new Promise<void>((resolve) => pauseWaiters.add(resolve)),
@@ -575,11 +599,117 @@ export const FIXTURE_EDIT_PATCH: StructuredPatchHunk[] = [
  * - `[code]`: text with a fenced TypeScript block (code block label / copy).
  * - `[exhaust]`: the first two attempts are rejected (five_hour, resets in 10s, no output) so a pool with one
  *   exhausted account ends up waiting; the attempt after the reset succeeds.
+ * - `[sources]`: a Task (subagent) call and a Read of README.md (absolute path), then text (환경 팝오버 e2e).
+ * - `[subagents]`: two Agent (subagent) calls run in parallel; their Read / Grep calls and text arrive interleaved
+ *   with `parent_tool_use_id`, the second one finishes first, then closing text.
+ * - `[image]`: writes FIXTURE_PNG_PATH into the cwd, Reads it (tool_result image block), then text; the new file
+ *   also makes the turn-end image gallery.
  * - `[whoami]`: replies `model=<model> resume=<sid|none> account=<config dir name> permissionMode=<mode>
  *   effort=<level|default>` (e2e assertions).
  * - otherwise: streaming text, an Edit tool_use that asks for permission (structuredPatch), closing text.
  */
+export const FIXTURE_PNG_PATH = 'hopecode-preview.png';
+/** 48x32 PNG (sky, sun, hill). */
+export const FIXTURE_PNG_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAADAAAAAgCAIAAADbtmxLAAAA3ElEQVR42u3OTQqCUBTF8bPh9tAqmrWMtlAUhUWRqWlaZp+0hZMgRKDvPQdefQPhN7yH+0f2oVWQvmkVXF60CpInrYL4wRY4w0HNS0R3ysk7yvQThDcKqawpaFYIMkrQ1BRUQ/hXSjAGqYbwUkowBqmGcC9snLGmULnF/kwJxhrVELuEEoxBqiG2MSUYg1RDbE4UoqnRrLCOKKeyRj+BE7INeUq9S6yOtAqWAa2ChU+j8WTUiDq/MPdY1lSBXuVrzA78aaej7L8BU7ezjrI8BvbUFPqgPqgP6oO69gUorxX43Tn02gAAAABJRU5ErkJggg==';
+
+/** `[subagents]`: two parallel subagents, interleaved child frames (`parent_tool_use_id`), out-of-order finish. */
+function subagentSteps(cwd: string, prefix: string): FakeStep[] {
+  const a = `${prefix}_a`;
+  const b = `${prefix}_b`;
+  const assistant = (parent: string | null, block: Record<string, unknown>, delayMs = 0): FakeStep => ({
+    type: 'emit',
+    delayMs,
+    message: { type: 'assistant', message: { role: 'assistant', content: [block] }, parent_tool_use_id: parent },
+  });
+  const toolResult = (parent: string | null, id: string, content: string, toolUseResult?: unknown, delayMs = 0): FakeStep => ({
+    type: 'emit',
+    delayMs,
+    message: {
+      type: 'user',
+      message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content, is_error: false }] },
+      parent_tool_use_id: parent,
+      ...(toolUseResult ? { tool_use_result: toolUseResult } : {}),
+    },
+  });
+  const done = (agentType: string, text: string, tools: number, ms: number) => ({
+    status: 'completed',
+    agentId: `agent_${agentType}`,
+    agentType,
+    content: [{ type: 'text', text }],
+    totalToolUseCount: tools,
+    totalDurationMs: ms,
+    totalTokens: 1200,
+    prompt: '',
+  });
+  const readme = join(cwd, 'README.md');
+  return [
+    { type: 'text', text: '두 서브에이전트에게 나눠서 조사를 맡깁니다.', chunks: 2 },
+    assistant(null, {
+      type: 'tool_use',
+      id: a,
+      name: 'Agent',
+      input: { subagent_type: 'Explore', description: 'README 구조 조사', prompt: 'Summarize README.md.' },
+    }),
+    assistant(null, {
+      type: 'tool_use',
+      id: b,
+      name: 'Agent',
+      input: { subagent_type: 'code-reviewer', description: '인사말 사용처 검토', prompt: 'Find where the greeting is used.' },
+    }),
+    assistant(a, { type: 'tool_use', id: `${a}_read`, name: 'Read', input: { file_path: readme } }, 250),
+    assistant(b, { type: 'tool_use', id: `${b}_grep`, name: 'Grep', input: { pattern: 'Hello', path: cwd } }, 150),
+    toolResult(a, `${a}_read`, '# Hopecode fixture\nHello world\n', undefined, 250),
+    toolResult(b, `${b}_grep`, 'README.md:2:Hello world', undefined, 150),
+    assistant(a, { type: 'text', text: 'README는 제목과 인사말 한 줄로 되어 있습니다.' }, 200),
+    assistant(a, { type: 'tool_use', id: `${a}_glob`, name: 'Glob', input: { pattern: '**/*.md', path: cwd } }, 150),
+    toolResult(a, `${a}_glob`, 'README.md', undefined, 200),
+    assistant(b, { type: 'text', text: '인사말은 README.md 한 곳에서만 쓰입니다.' }, 150),
+    toolResult(null, b, '인사말은 README.md 2행에서만 쓰입니다.', done('code-reviewer', '인사말은 README.md 2행에서만 쓰입니다.', 1, 1100), 250),
+    toolResult(null, a, 'README.md: 제목 + 인사말 한 줄.', done('Explore', 'README.md: 제목 + 인사말 한 줄.', 2, 1600), 300),
+    { type: 'text', text: '두 서브에이전트가 모두 끝났습니다. README는 인사말 한 줄뿐입니다.', chunks: 2 },
+  ];
+}
+
+/** `[image]`: a PNG written into the worktree, then Read back as a tool_result image block. */
+function imageSteps(cwd: string, id: string): FakeStep[] {
+  const file = join(cwd, FIXTURE_PNG_PATH);
+  return [
+    { type: 'text', text: '미리보기 이미지를 만들고 확인합니다.', chunks: 2 },
+    { type: 'writeFile', path: FIXTURE_PNG_PATH, data: FIXTURE_PNG_BASE64 },
+    {
+      type: 'emit',
+      message: {
+        type: 'assistant',
+        message: { role: 'assistant', content: [{ type: 'tool_use', id, name: 'Read', input: { file_path: file } }] },
+        parent_tool_use_id: null,
+      },
+    },
+    {
+      type: 'emit',
+      delayMs: 100,
+      message: {
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: id,
+              content: [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: FIXTURE_PNG_BASE64 } }],
+            },
+          ],
+        },
+        parent_tool_use_id: null,
+        tool_use_result: { type: 'image', file: { base64: FIXTURE_PNG_BASE64, type: 'image/png', originalSize: 277 } },
+      },
+    },
+    { type: 'text', text: `${FIXTURE_PNG_PATH} 이미지를 만들었습니다.`, chunks: 2 },
+  ];
+}
+
 export function createFixtureScenario(): FakeScenario {
+  let fixtureIds = 0;
   const rejectedOnce = new Set<string>();
   const exhaustRejections = new Map<string, number>();
   return ({ prompt, options, configDir, model, permissionMode, effort }) => {
@@ -628,6 +758,26 @@ export function createFixtureScenario(): FakeScenario {
           chunks: 3,
         },
       ];
+    }
+    if (prompt.includes('[sources]')) {
+      return [
+        { type: 'text', text: 'I will look around the repository.', chunks: 2 },
+        {
+          type: 'tool',
+          name: 'Task',
+          input: { subagent_type: 'general-purpose', description: '저장소 구조 조사', prompt: 'List the top-level files.' },
+          result: 'README.md is the only file.',
+        },
+        // Absolute, as the real CLI reports it.
+        { type: 'tool', name: 'Read', input: { file_path: join(options.cwd ?? '', 'README.md') }, result: '# Hopecode fixture\nHello world\n' },
+        { type: 'text', text: 'The repository has one README.', chunks: 2 },
+      ];
+    }
+    if (prompt.includes('[subagents]')) {
+      return subagentSteps(options.cwd ?? '', `toolu_fixture_sub_${++fixtureIds}`);
+    }
+    if (prompt.includes('[image]')) {
+      return imageSteps(options.cwd ?? '', `toolu_fixture_img_${++fixtureIds}`);
     }
     if (prompt.includes('[text]')) {
       return [{ type: 'text', text: 'Streaming reply from the fixture session.', chunks: 4 }];

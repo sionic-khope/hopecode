@@ -1,10 +1,10 @@
 import { useCallback, useRef, useState } from 'react';
-import type { Account, EffortLevel, ModelOption, Project, UiPermissionMode } from '../../../shared/types';
+import type { EffortLevel, ModelOption, Project, UiPermissionMode } from '../../../shared/types';
 import { useAppStore, type DraftState } from '../../store';
-import { BrandMark, Button } from '../common';
+import { BrandMark } from '../common';
 import { GlyphBranch, GlyphChanges, GlyphCode, GlyphTerminal } from '../common/glyphs';
 import { Composer, type ComposerHandle } from './Composer';
-import { AccountChip, AgentChip, FolderChip, ModelPicker, PermissionChip } from './ComposerControls';
+import { AgentChip, FolderChip, ModelPicker, PermissionChip } from './ComposerControls';
 import { BoltIcon } from './icons';
 import './Chat.css';
 
@@ -12,7 +12,6 @@ export interface DraftViewProps {
   draft: DraftState;
   projects: Project[];
   models: ModelOption[];
-  accounts: Account[];
   onDraftChange: (patch: Partial<DraftState>) => void;
   /** "다른 폴더 선택…" (project:add). Resolves the chosen project, or null when cancelled. */
   onPickFolder: () => Promise<Project | null>;
@@ -22,9 +21,6 @@ export interface DraftViewProps {
   /** What the `default` model runs as (e.g. "Fable 5"). */
   defaultModelLabel: string;
   homeDir: string | null;
-  /** Right panel's 터미널 tab (⌘J opens the draft session, in the folder chip's project or the home folder). */
-  terminalOpen: boolean;
-  onToggleTerminal: () => void;
 }
 
 /** Starter prompts on the empty screen; a click puts the text in the composer (nothing is sent). */
@@ -59,15 +55,12 @@ export function DraftView({
   draft,
   projects,
   models,
-  accounts,
   onDraftChange,
   onPickFolder,
   onStart,
   onAttachFiles,
   defaultModelLabel,
   homeDir,
-  terminalOpen,
-  onToggleTerminal,
 }: DraftViewProps) {
   const [folderOpen, setFolderOpen] = useState(false);
   /** Bumped by every send without a folder: re-keys the chip so its pulse replays. */
@@ -110,7 +103,6 @@ export function DraftView({
   const setMode = useCallback((permissionMode: UiPermissionMode) => onDraftChange({ permissionMode }), [onDraftChange]);
   const setModel = useCallback((model: string) => onDraftChange({ model }), [onDraftChange]);
   const setEffort = useCallback((effort: EffortLevel | null) => onDraftChange({ effort }), [onDraftChange]);
-  const setPin = useCallback((pinnedAccountId: string | null) => onDraftChange({ pinnedAccountId }), [onDraftChange]);
   const setAgent = useCallback((agent: DraftState['agent']) => onDraftChange({ agent }), [onDraftChange]);
 
   return (
@@ -122,7 +114,15 @@ export function DraftView({
         <p className="hc-draft__greeting">{greeting()}</p>
         <h1 className="hc-draft__title">무엇을 만들어 볼까요?</h1>
         <p className="hc-draft__sub">
-          {project ? (
+          {project && draft.base ? (
+            <span data-testid="draft-pr-base">
+              <span className="hc-draft__folder">{project.name}</span>의 PR #{draft.base.pr}{' '}
+              <span className="hc-draft__folder">{draft.base.branch}</span>에서 새 worktree로 시작합니다{' '}
+              <button type="button" className="hc-draft__base-clear" onClick={() => onDraftChange({ base: null })}>
+                PR 해제
+              </button>
+            </span>
+          ) : project ? (
             <>
               <span className="hc-draft__folder">{project.name}</span>에서 새 worktree로 시작합니다
             </>
@@ -159,18 +159,6 @@ export function DraftView({
               homeDir={homeDir}
             />
             <PermissionChip value={draft.permissionMode} onChange={setMode} />
-            <AccountChip accounts={accounts} pinnedAccountId={draft.pinnedAccountId} onChange={setPin} />
-            <Button
-              variant="plain"
-              size="sm"
-              icon
-              aria-label="터미널 패널"
-              aria-pressed={terminalOpen}
-              title="터미널 (⌘J)"
-              onClick={onToggleTerminal}
-            >
-              <GlyphTerminal width={15} height={15} />
-            </Button>
           </>
         }
         trailing={

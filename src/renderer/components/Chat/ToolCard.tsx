@@ -1,8 +1,10 @@
-import { memo, useState } from 'react';
+import { createContext, memo, useContext, useState } from 'react';
+import { displayPath } from '../../../core/displayPath';
 import type { ToolItem } from '../../../shared/types';
 import { Collapse } from '../common';
 import { CheckCircleIcon, ChevronIcon, ErrorCircleIcon, SpinnerIcon, iconForTool } from './icons';
 import { DiffView } from './DiffView';
+import { ToolImages } from '../Images/ChatImages';
 import './Chat.css';
 
 export interface ToolCardProps {
@@ -10,29 +12,33 @@ export interface ToolCardProps {
   defaultExpanded?: boolean;
 }
 
+/** Thread folder + home, so tool summaries show `src/a.ts` / `~/x` instead of long absolute paths. */
+export const ToolPathContext = createContext<{ cwd?: string | null; home?: string | null }>({});
+
 /** Best-effort one-line summary of a tool_use input, per tool name. */
-function summarize(item: ToolItem): string {
+function summarize(item: ToolItem, cwd?: string | null, home?: string | null): string {
   const { name, input } = item;
   const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
+  const pth = (v: unknown): string | undefined => (typeof v === 'string' ? displayPath(v, cwd, home) : undefined);
 
   switch (name) {
     case 'Read':
     case 'NotebookEdit':
-      return str(input.file_path) ?? str(input.notebook_path) ?? '';
+      return pth(input.file_path) ?? pth(input.notebook_path) ?? '';
     case 'Edit':
     case 'MultiEdit':
     case 'Write':
-      return str(input.file_path) ?? '';
+      return pth(input.file_path) ?? '';
     case 'Bash':
       return str(input.command) ?? '';
     case 'Grep': {
       const pattern = str(input.pattern) ?? '';
-      const path = str(input.path);
+      const path = pth(input.path);
       return path ? `${pattern}  ·  ${path}` : pattern;
     }
     case 'Glob': {
       const pattern = str(input.pattern) ?? '';
-      const path = str(input.path);
+      const path = pth(input.path);
       return path ? `${pattern}  ·  ${path}` : pattern;
     }
     case 'WebFetch':
@@ -57,13 +63,14 @@ export const ToolCard = memo(function ToolCard({ item, defaultExpanded = false }
   const Icon = iconForTool(item.name);
   const running = item.result === undefined;
   const hasError = item.isError === true;
-  const summary = summarize(item);
+  const paths = useContext(ToolPathContext);
+  const summary = summarize(item, paths.cwd, paths.home);
   const hasPatch = Array.isArray(item.patch) && item.patch.length > 0;
   const editFallback =
     !hasPatch && item.name === 'Edit' && typeof item.input.old_string === 'string' && typeof item.input.new_string === 'string';
 
   return (
-    <div className={`hc-tool${open ? ' hc-tool--open' : ''}`}>
+    <div className={`hc-tool${open ? ' hc-tool--open' : ''}`} data-tool-id={item.toolUseId}>
       <button
         type="button"
         className="hc-tool__header"
@@ -101,6 +108,11 @@ export const ToolCard = memo(function ToolCard({ item, defaultExpanded = false }
           ) : null}
         </div>
       </Collapse>
+      {item.images && item.images.length > 0 ? (
+        <div className="hc-tool__images">
+          <ToolImages images={item.images} path={typeof item.input.file_path === 'string' ? item.input.file_path : undefined} />
+        </div>
+      ) : null}
     </div>
   );
 });

@@ -6,8 +6,9 @@
 // performing the small bits of orchestration (project/thread CRUD, pin) that no single Wave 1/2
 // service owns.
 import { randomUUID } from 'node:crypto';
+import { realpath, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { basename, isAbsolute, relative } from 'node:path';
+import { basename, dirname, isAbsolute, relative, resolve } from 'node:path';
 import { INVOKE_CHANNELS, type InvokeChannel, type InvokeResponse } from '../../shared/ipc';
 import type {
   AccountPool,
@@ -25,9 +26,14 @@ import type {
   WorktreeManager,
 } from '../contracts';
 import type { SyncTranscriptFn } from '../session/transcriptSync';
+import { NAV_CHANNELS, buildNavHandlers, type NavChannel, type NavHandlers, type NavServices } from './navHandlers';
+import { imageHandlers, isChatImageList, type ImageActions } from './imageHandlers';
 import { DEFAULT_THREAD_TITLE, DRAFT_PTY_SESSION_ID, USAGE_HISTORY_RETENTION_MS } from '../../shared/constants';
-import { DEFAULT_AGENT, isAgentKind } from '../../shared/agents';
+import { AGENTS, DEFAULT_AGENT, isAgentKind } from '../../shared/agents';
+import { isStrictlyInside } from '../containment';
+import { markdownFileName, threadToMarkdown } from '../../core/threadMarkdown';
 import { deriveThreadTitle } from '../../core/threadTitle';
+import { isSafeBranchName } from '../../core/ghPrs';
 import { applySettingsPatch, isEditorId, validateSettingsPatch } from '../../core/settings';
 import type {
   AccountPatch,
@@ -40,6 +46,8 @@ import type {
   Project,
   SharedConfigStatus,
   Thread,
+  ThreadStartRequest,
+  ThreadStartResult,
 } from '../../shared/types';
 import {
   assertReq,
@@ -104,7 +112,22 @@ export interface RegisterIpcServices {
   onSettingsChanged?: (next: AppSettings, prev: AppSettings) => void;
   /** Fixture / headless e2e run (bootstrap `testMode`: no system notifications). */
   testMode?: boolean;
+  /** ⌘K thread search, 풀 리퀘스트, 예약, 플러그인 (navHandlers.ts). */
+  nav?: NavServices;
+  /** Receives the `thread:start` handler so main-side callers (예약) start threads the way a draft does. */
+  provideThreadStart?: (start: (req: ThreadStartRequest) => Promise<ThreadStartResult>) => void;
+  /** Lightbox "Finder에서 보기" / "복사" (Electron shell + clipboard). */
+  images?: ImageActions;
 }
+
+const NO_IMAGE_ACTIONS: ImageActions = {
+  reveal() {
+    throw new Error('image actions unavailable');
+  },
+  copy() {
+    throw new Error('image actions unavailable');
+  },
+};
 
 type Handlers = { [K in InvokeChannel]: (req: unknown) => Promise<InvokeResponse<K>> };
 
@@ -121,7 +144,7 @@ export function mentionPath(file: string, base: string): string {
   return /\s/.test(path) ? `@"${path}"` : `@${path}`;
 }
 
-function buildHandlers(s: RegisterIpcServices): Handlers {
+function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
   const {
     store,
     threadLog,
@@ -185,14 +208,17 @@ function buildHandlers(s: RegisterIpcServices): Handlers {
       permissionMode: Thread['permissionMode'];
       effort?: EffortLevel | null;
       pinnedAccountId?: string | null;
+      /** PR head to start from; always gets its own worktree (the project's checkout is never switched). */
+      base?: { branch: string; pr?: number };
     },
   ): Promise<Thread> {
     const id = randomUUID();
     const shortId = id.slice(0, 8);
     const settings = store.get().settings;
-    const { cwd, worktree } = settings.useWorktree
-      ? await worktreeManager.create(project.path, shortId, { trusted: project.trusted })
-      : { cwd: project.path, worktree: undefined };
+    const { cwd, worktree } =
+      settings.useWorktree || opts.base
+        ? await worktreeManager.create(project.path, shortId, { trusted: project.trusted, ...(opts.base ? { base: opts.base } : {}) })
+        : { cwd: project.path, worktree: undefined };
     const now = Date.now();
     return {
       id,
@@ -384,6 +410,12 @@ function buildHandlers(s: RegisterIpcServices): Handlers {
         r.pinnedAccountId === undefined || isNullableString(r.pinnedAccountId),
         'pinnedAccountId must be a string or null',
       );
+      assertReq(channel, r.baseBranch === undefined || (isNonEmptyString(r.baseBranch) && isSafeBranchName(r.baseBranch)), 'invalid baseBranch');
+      assertReq(
+        channel,
+        r.basePr === undefined || (r.baseBranch !== undefined && isFiniteNumber(r.basePr) && Number.isInteger(r.basePr) && r.basePr > 0),
+        'invalid basePr',
+      );
       const project = requireProject(channel, r.projectId);
       const text = r.text as string;
       const pinnedAccountId = (r.pinnedAccountId as string | null | undefined) ?? null;
@@ -400,6 +432,9 @@ function buildHandlers(s: RegisterIpcServices): Handlers {
         permissionMode: mode,
         effort: (r.effort as EffortLevel | null | undefined) ?? null,
         pinnedAccountId,
+        ...(r.baseBranch !== undefined
+          ? { base: { branch: r.baseBranch as string, ...(r.basePr !== undefined ? { pr: r.basePr as number } : {}) } }
+          : {}),
       });
       store.update((draft) => {
         draft.threads.push(thread);
@@ -566,9 +601,13 @@ function buildHandlers(s: RegisterIpcServices): Handlers {
         isPlainObject(req) && isNonEmptyString(req.threadId) && isNonEmptyString(req.text),
         'threadId/text required',
       );
+      const images = (req as { images?: unknown }).images;
+      assertReq('chat:send', images === undefined || isChatImageList(images), 'invalid images');
       const { threadId, text } = req as { threadId: string; text: string };
-      return sessionManager.send(threadId, text);
+      return images && images.length > 0 ? sessionManager.send(threadId, text, images) : sessionManager.send(threadId, text);
     },
+
+    ...imageHandlers(requireThread, s.images ?? NO_IMAGE_ACTIONS),
 
     'chat:interrupt': async (req) => {
       assertReq('chat:interrupt', isPlainObject(req) && isNonEmptyString(req.threadId), 'threadId required');
@@ -789,8 +828,17 @@ function buildHandlers(s: RegisterIpcServices): Handlers {
     'editor:open': async (req) => {
       assertReq('editor:open', isPlainObject(req) && isEditorId(req.editor), 'threadId/editor required');
       const { thread } = requireThreadFolder('editor:open', req);
-      // Only the thread's own folder is ever handed to another app.
-      await s.editorLauncher.open((req as { editor: Parameters<EditorLauncher['open']>[0] }).editor, thread.cwd);
+      const editor = (req as { editor: Parameters<EditorLauncher['open']>[0] }).editor;
+      const rawPath = (req as { path?: unknown }).path;
+      // Only the thread's own folder (or a file inside it) is ever handed to another app.
+      if (rawPath === undefined) return s.editorLauncher.open(editor, thread.cwd);
+      const path = requireRelPath('editor:open', rawPath);
+      const target = resolve(thread.cwd, path);
+      assertReq('editor:open', isStrictlyInside(thread.cwd, target), 'path outside the thread folder');
+      // Symlinks must not lead out of the folder either.
+      const [realRoot, realTarget] = await Promise.all([realpath(thread.cwd), realpath(target).catch(() => null)]);
+      assertReq('editor:open', realTarget !== null && isStrictlyInside(realRoot, realTarget), 'file not found in the thread folder');
+      await s.editorLauncher.open(editor, editor === 'finder' ? dirname(realTarget as string) : (realTarget as string));
     },
 
     'git:changes': async (req) => {
@@ -836,6 +884,37 @@ function buildHandlers(s: RegisterIpcServices): Handlers {
       return s.gitService.pushAndOpenPr(thread.cwd, projectPath, title as string, body as string);
     },
 
+    'git:createBranch': async (req) => {
+      const { thread } = requireThreadFolder('git:createBranch', req);
+      const name = (req as { name?: unknown }).name;
+      assertReq('git:createBranch', isString(name) && name.length <= 256, 'name must be a string');
+      // Only a thread's own worktree (created and recorded by main) is ever switched.
+      if (!thread.worktree || resolve(thread.cwd) !== resolve(thread.worktree.path)) {
+        return { ok: false, error: 'worktree 스레드에서만 브랜치를 만들 수 있습니다' };
+      }
+      return s.gitService.createBranch(thread.worktree.path, name as string);
+    },
+
+    'thread:exportMarkdown': async (req) => {
+      assertReq('thread:exportMarkdown', isPlainObject(req), 'threadId required');
+      const thread = requireThread('thread:exportMarkdown', (req as { threadId?: unknown }).threadId);
+      const project = store.get().projects.find((p) => p.id === thread.projectId);
+      const items = await threadLog.read(thread.id);
+      const markdown = threadToMarkdown(
+        { title: thread.title, project: project?.name ?? null, agentName: AGENTS[thread.agent].name, exportedAt: Date.now() },
+        items,
+      );
+      const path = await dialogs.saveMarkdown(markdownFileName(thread.title));
+      if (!path) return { ok: false };
+      if (!isAbsolute(path)) return { ok: false, error: '저장 경로가 올바르지 않습니다' };
+      try {
+        await writeFile(path, markdown, 'utf8');
+      } catch (err) {
+        return { ok: false, error: `저장하지 못했습니다: ${err instanceof Error ? err.message : String(err)}` };
+      }
+      return { ok: true, path };
+    },
+
     'pty:resize': async (req) => {
       assertReq(
         'pty:resize',
@@ -857,7 +936,19 @@ function buildHandlers(s: RegisterIpcServices): Handlers {
  * Returns an `Unsubscribe` that tears both down (used by tests and app shutdown).
  */
 export function registerIpc(ipcMain: IpcMainLike, services: RegisterIpcServices): Unsubscribe {
-  const handlers = buildHandlers(services) as unknown as Record<string, (req: unknown) => Promise<unknown>>;
+  const core = buildHandlers(services);
+  services.provideThreadStart?.(core['thread:start'] as (req: ThreadStartRequest) => Promise<ThreadStartResult>);
+  const nav: NavHandlers = services.nav
+    ? buildNavHandlers(services.store, services.nav)
+    : (Object.fromEntries(
+        NAV_CHANNELS.map((ch) => [
+          ch,
+          async () => {
+            throw new Error(`${ch} unavailable`);
+          },
+        ]),
+      ) as unknown as NavHandlers);
+  const handlers = { ...core, ...nav } as unknown as Record<string, (req: unknown) => Promise<unknown>>;
 
   for (const channel of INVOKE_CHANNELS) {
     ipcMain.handle(channel, (event, req) => {

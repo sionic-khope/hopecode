@@ -62,12 +62,46 @@ export async function launch(sandbox: Sandbox): Promise<Launched> {
     HOPECODE_E2E: '1',
   });
   const app = await electron.launch({ args: [ROOT], cwd: ROOT, env });
+  hardenClose(app);
   const page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
   await expect(page.getByTestId('statusline')).toBeVisible();
   // Bootstrap + first usage poll done: the fixture pool reports 3 accounts.
   await expect(page.getByTestId('statusline')).toContainText('/3 avail');
   return { app, page };
+}
+
+/** How long `app.close()` may wait for the Electron process to exit before it is killed. */
+const CLOSE_GRACE_MS = 10_000;
+
+/**
+ * Electron 44 under Playwright's `--inspect` loader sometimes never finishes its native teardown on macOS: the app
+ * quits normally (before-quit dispose flushes state, `will-quit` / `quit` / Node `exit` all fire), then the process
+ * sits waiting for the inspector to disconnect while Playwright waits for the process to exit. It reproduces on the
+ * pre-v5 build too, so it is not app behavior. `app.close()` keeps its normal path and only kills the process if it
+ * is still alive after a grace period long enough for the dispose (<5s by QUIT_DISPOSE_TIMEOUT_MS) to have finished.
+ */
+function hardenClose(app: ElectronApplication): void {
+  const close = app.close.bind(app);
+  app.close = async () => {
+    const proc = app.process();
+    const closing = close().catch(() => {});
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const graceOver = new Promise<'timeout'>((resolve) => {
+      timer = setTimeout(() => resolve('timeout'), CLOSE_GRACE_MS);
+    });
+    const result = await Promise.race([closing.then(() => 'closed' as const), graceOver]);
+    clearTimeout(timer);
+    if (result === 'timeout') {
+      const exited =
+        proc.exitCode !== null || proc.signalCode !== null
+          ? Promise.resolve()
+          : new Promise<void>((resolve) => proc.once('exit', () => resolve()));
+      proc.kill('SIGKILL');
+      // Playwright's own close() may stay pending once the process is gone; the exit of the process is what counts.
+      await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 5_000))]);
+    }
+  };
 }
 
 export async function screenshot(page: Page, name: string, dir: string = SCREENSHOT_DIR): Promise<void> {
@@ -88,6 +122,12 @@ export async function screenshot(page: Page, name: string, dir: string = SCREENS
 export async function openDraft(page: Page): Promise<void> {
   await page.getByTestId('sidebar').getByRole('button', { name: /^새 채팅/ }).click();
   await expect(page.getByTestId('draft')).toBeVisible();
+}
+
+/** Sidebar nav 더보기 (⋯) -> `label` (계정, 사용량, 설정, 키보드 단축키, 앱 정보, 보관된 스레드). */
+export async function openFromMore(page: Page, label: string): Promise<void> {
+  await page.getByTestId('sidebar-nav').getByRole('button', { name: '더보기' }).click();
+  await page.getByRole('menu', { name: '탐색 더보기' }).getByRole('menuitem', { name: new RegExp(`^${label}`) }).click();
 }
 
 /**

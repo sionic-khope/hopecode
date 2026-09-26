@@ -7,6 +7,7 @@ import { isAbsolute, resolve } from 'node:path';
 import { isStrictlyInside } from '../containment';
 import type { GitService } from '../contracts';
 import type { GitChangedFile, GitChanges, GitFileDiff, GitFileStatus, GitRemoteInfo, StructuredPatchHunk } from '../../shared/types';
+import { branchNameError } from '../../core/branchName';
 import { parseUnifiedDiff } from './unifiedDiff';
 
 export interface GitServiceDeps {
@@ -437,6 +438,21 @@ export function createGitService(deps: GitServiceDeps = {}): GitService {
       } catch (err) {
         return { ok: false, error: `PR을 만들지 못했습니다: ${err instanceof Error ? err.message : String(err)}` };
       }
+    },
+
+    async createBranch(cwd, name) {
+      const invalid = branchNameError(name);
+      if (invalid) return { ok: false, error: invalid };
+      const inside = await git(['rev-parse', '--is-inside-work-tree'], cwd);
+      if (!inside.ok || inside.stdout.trim() !== 'true') return { ok: false, error: 'git 저장소가 아닙니다' };
+      const format = await git(['check-ref-format', '--branch', name], cwd);
+      if (!format.ok) return { ok: false, error: '브랜치 이름으로 쓸 수 없습니다' };
+      const exists = await git(['rev-parse', '--verify', '-q', `refs/heads/${name}`], cwd);
+      if (exists.ok) return { ok: false, error: `이미 있는 브랜치입니다: ${name}` };
+      // A leading '-' is refused above, so git never reads the name as an option.
+      const res = await git(['switch', '-c', name], cwd);
+      if (!res.ok) return { ok: false, error: `브랜치를 만들지 못했습니다: ${shortError(res.stderr || res.stdout)}` };
+      return { ok: true, branch: name };
     },
   };
 }

@@ -8,6 +8,7 @@ import {
   createSandbox,
   launch,
   menuShortcut,
+  openFromMore,
   screenshot,
   sendMessage,
   startThread,
@@ -45,8 +46,10 @@ test('launch opens a draft; sending without a folder points at the folder chip a
   await expect(chip).toHaveText(/폴더 선택/);
   const box = page.locator('.hc-composer__textarea');
   await expect(box).toHaveAttribute('placeholder', '무엇이든 요청하세요');
-  // No toolbar above the chat any more: the controls live in the composer.
-  await expect(page.locator('.hc-toolbar')).toHaveCount(0);
+  // Window controls sit in the top-right toolbar; the composer keeps only the chat controls.
+  await expect(page.getByRole('toolbar', { name: '스레드 도구' })).toBeVisible();
+  await expect(page.locator('.hc-composer .hc-chip--account')).toHaveCount(0);
+  await expect(page.locator('.hc-composer').getByRole('button', { name: '터미널 패널' })).toHaveCount(0);
   await screenshot(page, 'v2-draft-empty-no-folder', SHOTS);
 
   await sendMessage(page, FIRST);
@@ -120,7 +123,7 @@ test('⌘N opens a draft at once in the last used folder; nothing is created unt
   await screenshot(page, 'v2-draft-empty', SHOTS);
   await page.locator('.hc-composer__textarea').fill('README의 인사말을 Hopecode로 바꾸고 테스트를 추가해 주세요');
   await expect(send).toBeEnabled();
-  await expect.poll(() => send.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(27, 110, 243)');
+  await expect.poll(() => send.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(0, 83, 253)');
   await screenshot(page, 'v2-draft-typed', SHOTS);
   await page.locator('.hc-composer__textarea').fill('');
 
@@ -198,24 +201,28 @@ test('effort on a live thread goes to the running session and persists', async (
   expect(threads.find((t) => t.title === '[whoami] 초안 설정 확인')?.effort).toBeNull();
 });
 
-test('sidebar search filters threads by title', async () => {
+test('sidebar 검색 opens the palette and finds threads by title', async () => {
   const { page } = run;
   await startThread(page, sandbox, '[text] 두 번째 스레드: 결제 모듈 리팩터링');
   const sidebar = page.getByTestId('sidebar');
   const rows = sidebar.locator('.hc-thread');
   await expect(rows).toHaveCount(3);
 
-  await sidebar.getByRole('button', { name: '검색', exact: true }).click();
-  const input = sidebar.getByRole('searchbox', { name: '스레드 제목 검색' });
+  await sidebar.getByRole('button', { name: /^검색/ }).click();
+  const palette = page.getByTestId('command-palette');
+  const input = page.getByRole('combobox', { name: '명령 검색' });
   await expect(input).toBeFocused();
   await input.fill('결제');
-  await expect(rows).toHaveCount(1);
-  await expect(rows.first()).toContainText('결제 모듈');
+  // One thread matches; the thread ranks first. ("에디터에서 열기" also lists, since its subtitle is the open thread.)
+  const threadOptions = palette.getByRole('option').filter({ hasText: sandbox.project.split('/').pop()! });
+  await expect(threadOptions).toHaveCount(1);
+  await expect(palette.getByRole('option').first()).toContainText('결제 모듈');
   await input.fill('존재하지 않는 제목');
-  await expect(rows).toHaveCount(0);
-  await expect(sidebar).toContainText('일치하는 스레드가 없습니다');
+  await expect(palette.getByRole('option')).toHaveCount(0);
+  await expect(palette).toContainText('일치하는 항목이 없습니다');
   await input.press('Escape');
-  await expect(input).toHaveCount(0);
+  await expect(palette).toHaveCount(0);
+  // The sidebar list is never filtered.
   await expect(rows).toHaveCount(3);
 });
 
@@ -274,7 +281,7 @@ test('⌘B collapses the sidebar to a full-width chat; the titlebar button bring
 
 test('계정 opens the Accounts page (Korean copy)', async () => {
   const { page } = run;
-  await page.getByTestId('sidebar').getByRole('button', { name: /^계정/ }).click();
+  await openFromMore(page, '계정');
   const accounts = page.locator('.hc-accounts-page');
   await expect(accounts.getByRole('heading', { name: '계정' })).toBeVisible();
   await expect(accounts).toContainText('3/3 활성');

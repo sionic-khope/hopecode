@@ -3,6 +3,8 @@ import { Menu, type MenuSection } from '../common';
 import { COMPOSER_MENU_WIDTH } from './ComposerControls';
 import { ArrowUpIcon, FolderOpenIcon, PaperclipIcon, PlusIcon, SpinnerIcon, StopIcon } from './icons';
 import { isSubmitKey } from './composerKeys';
+import type { ChatImage } from '../../../shared/types';
+import { ComposerImageTray, useComposerImages } from '../Images/ComposerImages';
 import './Chat.css';
 
 export const COMPOSER_PLACEHOLDER = '무엇이든 요청하세요';
@@ -19,7 +21,9 @@ export interface ComposerProps {
    * Returns (or resolves) `true` when the text was taken (the box clears), `false` to keep it — e.g. a draft
    * without a folder, or a start that failed.
    */
-  onSend: (text: string) => boolean | Promise<boolean>;
+  onSend: (text: string, images?: ChatImage[]) => boolean | Promise<boolean>;
+  /** Paste / drop images to send with the message (image content blocks); off = text only. */
+  acceptImages?: boolean;
   onInterrupt?: () => void;
   /** A turn is running: the send button becomes Stop. */
   running: boolean;
@@ -28,7 +32,7 @@ export interface ComposerProps {
   /** Shows a spinner in the send button (draft being started). */
   busy?: boolean;
   placeholder?: string;
-  /** Chips left of the spacer (folder, permission, account). */
+  /** Chips left of the spacer (agent, folder, permission). */
   leading?: ReactNode;
   /** Controls right of the spacer, before the send button (model picker). */
   trailing?: ReactNode;
@@ -72,6 +76,7 @@ export const Composer = memo(function Composer({
   handleRef,
   prefill = null,
   onPrefillApplied,
+  acceptImages = false,
 }: ComposerProps) {
   const [text, setText] = useState('');
   const [plusOpen, setPlusOpen] = useState(false);
@@ -113,11 +118,16 @@ export const Composer = memo(function Composer({
     if (autoFocus) taRef.current?.focus();
   }, [autoFocus]);
 
+  const attachments = useComposerImages(acceptImages);
+
   const submit = () => {
     const trimmed = text.trim();
     if (!trimmed || disabled || busy) return;
-    void Promise.resolve(onSend(trimmed)).then((taken) => {
-      if (taken) setText('');
+    const images = attachments.images;
+    void Promise.resolve(images.length > 0 ? onSend(trimmed, images) : onSend(trimmed)).then((taken) => {
+      if (!taken) return;
+      setText('');
+      if (images.length > 0) attachments.clear();
     });
   };
 
@@ -180,7 +190,11 @@ export const Composer = memo(function Composer({
 
   return (
     <div className={`hc-composer hc-composer--${size}`}>
-      <div className={`hc-composer__card${disabled ? ' hc-composer__card--disabled' : ''}`}>
+      <div
+        className={`hc-composer__card${disabled ? ' hc-composer__card--disabled' : ''}${attachments.dragging ? ' hc-composer__card--dragging' : ''}`}
+        {...attachments.dropProps}
+      >
+        <ComposerImageTray images={attachments.images} error={attachments.error} onRemove={attachments.remove} />
         <textarea
           ref={taRef}
           className="hc-composer__textarea"
@@ -191,6 +205,7 @@ export const Composer = memo(function Composer({
           disabled={disabled}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
+          onPaste={attachments.onPaste}
         />
         <div className="hc-composer__bar">
           <button
