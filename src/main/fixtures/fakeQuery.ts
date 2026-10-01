@@ -775,6 +775,56 @@ function screenshotSteps(prefix: string): FakeStep[] {
   ];
 }
 
+/**
+ * `[toolrun]` / `[toolfail]`: a turn of consecutive quiet calls (commands, reads, a search) that the transcript folds
+ * into one tool group, then an Edit with a diff (its own card) and a closing line. `[toolfail]` makes one command
+ * fail, so its group opens by itself.
+ */
+function toolRunSteps(prefix: string, cwd: string, fail: boolean): FakeStep[] {
+  let n = 0;
+  const call = (name: string, input: Record<string, unknown>, content: string, isError = false): FakeStep[] => {
+    const id = `${prefix}_${++n}`;
+    return [
+      {
+        type: 'emit',
+        message: { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id, name, input }] }, parent_tool_use_id: null },
+      },
+      {
+        type: 'emit',
+        delayMs: 120,
+        message: {
+          type: 'user',
+          message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content, is_error: isError }] },
+          parent_tool_use_id: null,
+        },
+      },
+    ];
+  };
+  const readme = join(cwd, 'README.md');
+  return [
+    { type: 'text', text: '저장소 상태부터 확인하겠습니다.', chunks: 2 },
+    ...call('Bash', { command: 'git status --short', description: 'Show working tree status' }, ' M README.md\n'),
+    ...call('Bash', { command: 'ls -la' }, 'total 8\n-rw-r--r--  1 hope  staff  32 README.md\n'),
+    ...(fail
+      ? call('Bash', { command: 'npm test -- --run tool-fixture' }, 'npm ERR! Missing script: "test"\nexit code 1', true)
+      : call('Bash', { command: 'node --version' }, 'v22.11.0\n')),
+    ...call('Bash', { command: 'cat package.json 2>/dev/null || echo "no package.json"' }, 'no package.json\n'),
+    ...call('Bash', { command: 'wc -l README.md' }, '       2 README.md\n'),
+    ...call('Read', { file_path: readme }, '# Hopecode fixture\nHello world\n'),
+    ...call('Read', { file_path: join(cwd, '.gitignore') }, 'node_modules\n'),
+    ...call('Grep', { pattern: 'Hello', path: cwd }, 'README.md:2:Hello world\n'),
+    { type: 'text', text: 'README에 인사말 한 줄만 있습니다. 인사말을 바꾸겠습니다.', chunks: 2 },
+    {
+      type: 'tool',
+      name: 'Edit',
+      input: { file_path: 'README.md', old_string: 'Hello world', new_string: 'Hello Hopecode' },
+      result: 'The file README.md has been updated.',
+      structuredPatch: FIXTURE_EDIT_PATCH,
+    },
+    { type: 'text', text: fail ? '테스트 스크립트는 없지만 인사말은 바꿨습니다.' : '인사말을 "Hello Hopecode"로 바꿨습니다.', chunks: 2 },
+  ];
+}
+
 export function createFixtureScenario(): FakeScenario {
   let fixtureIds = 0;
   const rejectedOnce = new Set<string>();
@@ -863,6 +913,9 @@ export function createFixtureScenario(): FakeScenario {
     }
     if (prompt.includes('[screenshot]')) {
       return screenshotSteps(`toolu_fixture_shot_${++fixtureIds}`);
+    }
+    if (prompt.includes('[toolrun]') || prompt.includes('[toolfail]')) {
+      return toolRunSteps(`toolu_fixture_run_${++fixtureIds}`, options.cwd ?? '', prompt.includes('[toolfail]'));
     }
     // A slash command reaches the CLI as the prompt text itself; the fixture echoes what it received.
     if (prompt.startsWith('/')) {

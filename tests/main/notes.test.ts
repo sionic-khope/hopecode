@@ -36,7 +36,7 @@ import { createNoteChats } from '../../src/main/notes/noteChats';
 import { TOOL_BLOCKED_ERROR, runNoteAi, type NoteAiDeps } from '../../src/main/notes/noteAi';
 import { buildNotesHandlers, type NotesServices } from '../../src/main/ipc/notesHandlers';
 import { createFakeQuery, createFixtureScenario } from '../../src/main/fixtures/fakeQuery';
-import { buildNoteSystemPrompt, buildNoteUserPrompt } from '../../src/core/notes/notePrompt';
+import { buildNoteInlinePrompt, buildNoteSystemPrompt } from '../../src/core/notes/notePrompt';
 import { DEFAULT_SETTINGS } from '../../src/shared/constants';
 import type { Account, AppSettings } from '../../src/shared/types';
 import type { NoteAiEvent, NoteChange } from '../../src/shared/notes';
@@ -173,12 +173,12 @@ describe('runNoteAi (Claude)', () => {
     const deltas: string[] = [];
     const res = await runNoteAi(
       aiDeps(fake.query),
-      { agent: 'claude-code', model: 'opus', effort: 'high', system: buildNoteSystemPrompt(), prompt: '## 작업 (전체 수정)\n\n## 요청\n정리\n' },
+      { agent: 'claude-code', model: 'opus', effort: 'high', system: buildNoteSystemPrompt(), prompt: '## 작업 (대화)\n\n## 요청\n전체 정리' },
       (t) => deltas.push(t),
       new AbortController().signal,
     );
     expect(res).toEqual({ ok: true, stopped: false });
-    expect(deltas.join('')).toContain('FIXTURE-REWRITE: 정리');
+    expect(deltas.join('')).toContain('FIXTURE-REWRITE: 전체 정리');
     const opts = fake.calls[0].options;
     expect(opts.tools).toEqual([]);
     expect(opts.maxTurns).toBe(1);
@@ -258,7 +258,7 @@ describe('notes handlers', () => {
     expect(settings().activeNoteVault).toBe('');
   });
 
-  it('aiStart builds the prompt with style refs, streams events and records a summary', async () => {
+  it('aiStart (chat) builds the prompt with style refs and history, streams events and records the whole answer', async () => {
     const { h, events, runAi } = setup();
     await h['notes:addVault'](undefined);
     const req = {
@@ -267,24 +267,74 @@ describe('notes handlers', () => {
       agent: 'claude-code',
       model: null,
       effort: null,
-      mode: 'write',
+      kind: 'chat',
       request: '분산 락',
-      document: '',
-      target: null,
+      document: '# Lock\n\n### 1. 개념\nbody\n',
+      selection: null,
     };
     await expect(h['notes:aiStart']({ ...req, agent: 'hermes' })).rejects.toThrow();
-    await expect(h['notes:aiStart']({ ...req, mode: 'section', target: '  ' })).resolves.toMatchObject({ ok: false });
+    await expect(h['notes:aiStart']({ ...req, kind: 'write' })).rejects.toThrow(/invalid kind/);
+    await expect(h['notes:aiStart']({ ...req, selection: { from: 0, to: 1 } })).rejects.toThrow(/invalid selection/);
     expect(await h['notes:aiStart'](req)).toEqual({ ok: true });
     await vi.waitFor(() => expect(events.at(-1)).toEqual({ requestId: 'r1', type: 'done', stopped: false }));
     expect(events[0]).toEqual({ requestId: 'r1', type: 'delta', text: '# 새 노트\n' });
     const run = runAi.mock.calls[0][0];
     expect(run.prompt).toContain('<reference path="Back-End/cache.md">');
+    expect(run.prompt).toContain('## 작업 (대화)');
+    expect(run.prompt).toContain('- ### 1. 개념');
     expect(run.system).toContain('좋은 질문입니다');
-    const chat = await h['notes:chat']({ path: 'Back-End/distlock.md' });
-    expect(chat.map((c) => c.role)).toEqual(['user', 'assistant']);
-    expect(chat[1].text).toContain('커서 위치에');
-    // Nothing was written into the vault by the request.
+    let chat = await h['notes:chat']({ path: 'Back-End/distlock.md' });
+    expect(chat.map((c) => [c.role, c.text, c.status])).toEqual([
+      ['user', '분산 락', undefined],
+      ['assistant', '# 새 노트\n', 'done'],
+    ]);
+    // The next turn carries the conversation so far.
+    expect(await h['notes:aiStart']({ ...req, requestId: 'r2', request: '더' })).toEqual({ ok: true });
+    await vi.waitFor(() => expect(events.at(-1)).toMatchObject({ requestId: 'r2', type: 'done' }));
+    expect(runAi.mock.calls[1][0].prompt).toContain('## 이전 대화\n<user>\n분산 락\n</user>\n<assistant>\n# 새 노트\n</assistant>');
+
+    // Card marks are kept with the answer; bad marks are refused.
+    const answer = chat[1];
+    const mark = { state: 'applied', at: 3, inserted: 'x', original: '' };
+    expect(await h['notes:chatCard']({ path: 'Back-End/distlock.md', itemId: answer.id, card: 0, mark })).toBe(true);
+    expect(await h['notes:chatCard']({ path: 'Back-End/distlock.md', itemId: 'gone', card: 0, mark })).toBe(false);
+    await expect(h['notes:chatCard']({ path: 'Back-End/distlock.md', itemId: answer.id, card: 0, mark: { state: 'eaten' } })).rejects.toThrow(/invalid mark/);
+    await expect(h['notes:chatCard']({ path: '../x.md', itemId: answer.id, card: 0, mark })).rejects.toThrow(/invalid path/);
+    chat = await h['notes:chat']({ path: 'Back-End/distlock.md' });
+    expect(chat[1].cards).toEqual({ '0': mark });
+    await h['notes:chatCard']({ path: 'Back-End/distlock.md', itemId: answer.id, card: 0, mark: { state: 'reverted', at: 1 } });
+    expect((await h['notes:chat']({ path: 'Back-End/distlock.md' }))[1].cards).toEqual({ '0': { state: 'reverted' } });
+    // Nothing was written into the vault by the requests.
     expect(readFileSync(join(vault, 'Back-End', 'distlock.md'), 'utf8')).toBe('# Lock\n\nbody\n');
+  });
+
+  it('aiStart (inline) sends the selection and keeps it out of the conversation; a failed chat turn keeps only its error', async () => {
+    const { h, events, runAi } = setup();
+    await h['notes:addVault'](undefined);
+    const doc = '# Lock\n\n첫 문장이다. 둘째 문장이다.\n';
+    const from = doc.indexOf('둘째');
+    const req = { requestId: 'i1', path: 'Back-End/distlock.md', agent: 'codex', model: null, effort: null, kind: 'inline', request: '짧게', document: doc };
+    await expect(h['notes:aiStart']({ ...req, selection: null })).rejects.toThrow(/selection required/);
+    await expect(h['notes:aiStart']({ ...req, selection: { from: 5, to: 2 } })).rejects.toThrow(/invalid selection/);
+    await expect(h['notes:aiStart']({ ...req, selection: { from: 0, to: doc.length + 1 } })).rejects.toThrow(/invalid selection/);
+    expect(await h['notes:aiStart']({ ...req, selection: { from: 6, to: 8 } })).toEqual({ ok: false, error: '고칠 부분이 비어 있습니다' });
+    expect(await h['notes:aiStart']({ ...req, selection: { from, to: doc.length - 1 } })).toEqual({ ok: true });
+    await vi.waitFor(() => expect(events.at(-1)).toMatchObject({ requestId: 'i1', type: 'done' }));
+    expect(runAi.mock.calls[0][0].prompt).toContain('<selection>\n둘째 문장이다.\n</selection>');
+    expect(runAi.mock.calls[0][0].agent).toBe('codex');
+    expect(await h['notes:chat']({ path: 'Back-End/distlock.md' })).toEqual([]);
+
+    runAi.mockImplementationOnce(async (_run, onDelta) => {
+      onDelta('반쯤 쓴 답');
+      return { ok: false, stopped: false, error: '도구를 쓰려고 해서 중단' };
+    });
+    expect(await h['notes:aiStart']({ ...req, requestId: 'c1', kind: 'chat', selection: null })).toEqual({ ok: true });
+    await vi.waitFor(() => expect(events.at(-1)).toEqual({ requestId: 'c1', type: 'error', message: '도구를 쓰려고 해서 중단' }));
+    const chat = await h['notes:chat']({ path: 'Back-End/distlock.md' });
+    expect(chat.map((c) => [c.role, c.text, c.status])).toEqual([
+      ['user', '짧게', undefined],
+      ['assistant', '도구를 쓰려고 해서 중단', 'error'],
+    ]);
   });
 });
 
@@ -313,9 +363,9 @@ describe('runNoteAi (Codex, fake ACP agent)', () => {
   it('runs read-only with every tool family Codex can switch off disabled in CODEX_CONFIG', async () => {
     const { deps, specs } = codexDeps();
     const deltas: string[] = [];
-    const res = await runNoteAi(deps, { agent: 'codex', model: null, effort: null, system: buildNoteSystemPrompt(), prompt: '## 작업 (전체 수정)\n\n## 요청\n정리\n' }, (t) => deltas.push(t), new AbortController().signal);
+    const res = await runNoteAi(deps, { agent: 'codex', model: null, effort: null, system: buildNoteSystemPrompt(), prompt: '## 작업 (대화)\n\n## 요청\n전체 정리' }, (t) => deltas.push(t), new AbortController().signal);
     expect(res).toEqual({ ok: true, stopped: false });
-    expect(deltas.join('')).toContain('CODEX-REWRITE: 정리');
+    expect(deltas.join('')).toContain('CODEX-REWRITE: 전체 정리');
     const env = specs[0].env;
     expect(env.INITIAL_AGENT_MODE).toBe('read-only');
     const config = JSON.parse(env.CODEX_CONFIG) as { web_search: string; features: Record<string, boolean>; mcp_servers: Record<string, unknown> };
@@ -332,7 +382,7 @@ describe('runNoteAi (Codex, fake ACP agent)', () => {
     const deltas: string[] = [];
     const res = await runNoteAi(
       deps,
-      { agent: 'codex', model: null, effort: null, system: buildNoteSystemPrompt(), prompt: '## 작업 (전체 수정)\n\n## 요청\n[tool] 정리\n' },
+      { agent: 'codex', model: null, effort: null, system: buildNoteSystemPrompt(), prompt: '## 작업 (대화)\n\n## 요청\n[tool] 전체 정리' },
       (t) => deltas.push(t),
       new AbortController().signal,
     );
@@ -561,8 +611,8 @@ describe('vaultFs hardening', () => {
     expect(listing.truncated).toBe(true);
   });
 
-  it('a section target is clipped in the prompt like the document', () => {
-    const prompt = buildNoteUserPrompt({ mode: 'section', request: 'r', notePath: 'a.md', document: 'd', target: 'x'.repeat(500_000), styleRefs: [] });
+  it('an inline selection is clipped in the prompt like the document', () => {
+    const prompt = buildNoteInlinePrompt({ request: 'r', notePath: 'a.md', document: 'x'.repeat(500_000), selection: { from: 0, to: 500_000 }, styleRefs: [] });
     expect(prompt.length).toBeLessThan(70_000);
     expect(prompt).toContain('생략');
   });

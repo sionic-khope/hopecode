@@ -1,5 +1,6 @@
-// CodeMirror configuration of the note editor: markdown (GFM) with fenced-code languages, the theme tokens, history,
-// search, and slots (compartments) for Live Preview, read-only (while an answer streams) and section tracking.
+// CodeMirror configuration of the note editor: markdown (GFM) with fenced-code languages, Live Preview (always on),
+// the theme tokens, history, search, the AI range marker, ⌘I for the inline prompt and a read-only slot (while an
+// inline answer streams).
 import { Compartment, EditorState, type Extension } from '@codemirror/state';
 import { EditorView, drawSelection, keymap, placeholder, type KeyBinding } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
@@ -9,9 +10,8 @@ import { languages } from '@codemirror/language-data';
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
 import { tags as t } from '@lezer/highlight';
 import { livePreview } from './livePreview';
-import { sectionTrackerSlot, sectionTracking, targetField } from './noteTarget';
+import { targetField } from './noteTarget';
 
-export const livePreviewSlot = new Compartment();
 export const readOnlySlot = new Compartment();
 
 export function readOnly(on: boolean): Extension {
@@ -46,8 +46,8 @@ const noteTheme = EditorView.theme(
   {
     '&': { height: '100%', backgroundColor: 'transparent', color: 'var(--label)' },
     '.cm-scroller': { fontFamily: 'var(--font-chat)', fontSize: 'var(--text-chat)', lineHeight: 'var(--lh-chat)', overflow: 'auto' },
-    '.cm-content': { padding: '28px 0 40vh', maxWidth: '760px', margin: '0 auto', caretColor: 'var(--select)' },
-    '.cm-line': { padding: '0 32px' },
+    '.cm-content': { padding: '36px 0 40vh', maxWidth: '720px', margin: '0 auto', caretColor: 'var(--select)' },
+    '.cm-line': { padding: '0 40px' },
     '&.cm-focused': { outline: 'none' },
     '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--select)', borderLeftWidth: '2px' },
     '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, ::selection': {
@@ -61,14 +61,25 @@ const noteTheme = EditorView.theme(
 
 export interface NoteEditorHooks {
   onSave: () => void;
+  /** ⌘I: the inline prompt over the selection (or at the caret). */
+  onInlinePrompt: () => void;
 }
 
-export function noteExtensions(hooks: NoteEditorHooks, opts: { live: boolean; sectionTracking: boolean }): Extension[] {
+export function noteExtensions(hooks: NoteEditorHooks): Extension[] {
   const saveKey: KeyBinding = {
     key: 'Mod-s',
     preventDefault: true,
     run: () => {
       hooks.onSave();
+      return true;
+    },
+  };
+  // ⌘K is the app's command palette (a menu accelerator), so the editor's own prompt key is ⌘I.
+  const inlineKey: KeyBinding = {
+    key: 'Mod-i',
+    preventDefault: true,
+    run: () => {
+      hooks.onInlinePrompt();
       return true;
     },
   };
@@ -80,13 +91,12 @@ export function noteExtensions(hooks: NoteEditorHooks, opts: { live: boolean; se
     highlightSelectionMatches(),
     markdown({ base: markdownLanguage, codeLanguages: languages, addKeymap: false }),
     syntaxHighlighting(noteHighlight),
-    keymap.of([saveKey, ...markdownKeymap, ...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
-    placeholder('# 제목부터 쓰거나, 오른쪽에서 노트 작성을 요청하세요'),
+    keymap.of([saveKey, inlineKey, ...markdownKeymap, ...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
+    placeholder('# 제목부터 쓰거나, 오른쪽 대화에서 노트를 부탁하세요'),
     noteTheme,
     targetField,
-    livePreviewSlot.of(opts.live ? livePreview() : []),
+    livePreview(),
     readOnlySlot.of(readOnly(false)),
-    sectionTrackerSlot.of(sectionTracking(opts.sectionTracking)),
     EditorView.contentAttributes.of({ 'aria-label': '노트 편집기', spellcheck: 'false' }),
   ];
 }

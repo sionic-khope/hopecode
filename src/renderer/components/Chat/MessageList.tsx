@@ -1,17 +1,18 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { AgentKind, ChatItem, PermissionDecision, PermissionRequest } from '../../../shared/types';
+import type { AgentKind, AssistantTextItem, ChatItem, PermissionDecision, PermissionRequest } from '../../../shared/types';
 import type { TurnPhase } from '../../store';
 import { AGENTS } from '../../../shared/agents';
 import { AgentIcon } from '../Agent/AgentIcon';
 import { GlyphEditResend } from '../common/glyphs';
 import { AssistantText } from './AssistantText';
 import { CopyButton } from './CopyButton';
-import { ToolCard } from './ToolCard';
+import { ToolCard, ToolGroup, ToolRow } from './ToolCard';
 import { PermissionCard } from './PermissionCard';
 import { SystemNotice } from './SystemNotice';
 import { AgentWarningNotice, ErrorCard, type ErrorCardActions } from './ErrorCard';
 import { TurnActivity } from './TurnActivity';
 import { splitAgentWarning } from './agentIssues';
+import { buildTranscript, type TurnSegment } from './toolGroups';
 import { buildChatTree, findSubagentNode, type ChatNode, type SubagentSummary } from '../../../core/subagents';
 import { SubagentCard, SubagentNavContext, SubagentRouting } from '../Subagents/SubagentCard';
 import { SubagentDetail } from '../Subagents/SubagentDetail';
@@ -41,13 +42,6 @@ export interface MessageListProps {
 }
 
 const NEAR_BOTTOM_PX = 96;
-
-/** Agent output that opens / continues an avatar run (a text that is only an agent warning renders as a notice). */
-function isAgentOutput(it: ChatItem | undefined): boolean {
-  if (!it) return false;
-  if (it.type === 'assistant-text') return splitAgentWarning(it.text)?.rest !== '';
-  return it.type === 'tool' || it.type === 'image-gallery';
-}
 
 /** Id of the error notice that ended the latest turn: no user message after it. */
 function latestErrorId(items: readonly ChatItem[]): string | null {
@@ -99,7 +93,7 @@ function renderSubagentChild(node: ChatNode): ReactNode {
       </>
     );
   }
-  if (item.type === 'tool') return <ToolCard item={item} defaultExpanded={item.isError === true} />;
+  if (item.type === 'tool') return <ToolRow item={item} />;
   return null;
 }
 
@@ -148,11 +142,26 @@ export function MessageList({
     onScrolledChange?.(el.scrollTop > 0);
   };
 
-  const byToolUseId = new Map(permissionRequests.map((r) => [r.toolUseId, r]));
-  const rendered = new Set<string>();
+  const byToolUseId = useMemo(() => new Map(permissionRequests.map((r) => [r.toolUseId, r])), [permissionRequests]);
   // Subagent frames nest under their Task/Agent card; permission requests of nested calls stay in the bottom list.
   const nodes = useMemo(() => buildChatTree(items), [items]);
   const routing = useMemo(() => routingByTurn(nodes), [nodes]);
+  // One block per agent turn (text and tool groups flow inside it) or per user message / notice.
+  const blocks = useMemo(() => buildTranscript(nodes, new Set(byToolUseId.keys())), [nodes, byToolUseId]);
+  const rendered = useMemo(() => {
+    const ids = new Set<string>();
+    for (const block of blocks) {
+      if (block.kind !== 'turn') continue;
+      for (const seg of block.segments) {
+        const item = seg.kind === 'card' ? seg.item : seg.kind === 'node' ? seg.node.item : null;
+        const request = item?.type === 'tool' ? byToolUseId.get(item.toolUseId) : undefined;
+        if (request) ids.add(request.requestId);
+      }
+    }
+    return ids;
+  }, [blocks, byToolUseId]);
+  // "생각하는 중…" continues the turn on screen instead of opening a second portrait.
+  const activityInTurn = blocks[blocks.length - 1]?.kind === 'turn';
   const errorId = useMemo(() => (errorActions ? latestErrorId(items) : null), [errorActions, items]);
   const subNode = subView && subView.threadId === threadId ? findSubagentNode(nodes, subView.toolUseId) : null;
   const subKey = subNode?.item.toolUseId ?? null;
@@ -189,38 +198,35 @@ export function MessageList({
         <div className="hc-messages__empty">{emptyLabel}</div>
       ) : (
         <div className="hc-messages__inner">
-          {nodes.map((node, i) => {
-            const item = node.item;
-            const pendingRequest = item.type === 'tool' ? byToolUseId.get(item.toolUseId) : undefined;
-            if (pendingRequest) rendered.add(pendingRequest.requestId);
-            // The agent avatar opens each run of agent output (text / tools / galleries) after a user message.
-            const prev = i > 0 ? nodes[i - 1]?.item : undefined;
-            const leadsRun = isAgentOutput(item) && !isAgentOutput(prev);
-            if (node.kind === 'subagent') {
-              const turnRouting = routing.get(item.id);
+          {blocks.map((block, i) => {
+            if (block.kind === 'turn') {
               return (
-                <AgentRow key={item.id} agent={agent} leadsRun={leadsRun}>
-                  {turnRouting ? <SubagentRouting subagents={turnRouting} /> : null}
-                  <SubagentCard node={node} renderChild={renderSubagentChild} />
-                  {pendingRequest ? <PermissionCard request={pendingRequest} onDecide={onPermissionDecision} /> : null}
-                </AgentRow>
+                <AgentTurn
+                  key={block.id}
+                  segments={block.segments}
+                  agent={agent}
+                  streamingItemId={streamingItemId}
+                  pendingByToolUseId={byToolUseId}
+                  onPermissionDecision={onPermissionDecision}
+                  routing={routing}
+                  activity={i === blocks.length - 1 ? activity : null}
+                />
               );
             }
+            const item = block.node.item;
             return (
               <MessageItem
                 key={item.id}
                 item={item}
                 agent={agent}
-                leadsRun={leadsRun}
-                streaming={item.id === streamingItemId}
-                pendingRequest={pendingRequest}
-                onPermissionDecision={onPermissionDecision}
                 onEditResend={onEditResend}
                 errorActions={item.id === errorId ? errorActions : null}
               />
             );
           })}
-          {activity ? <TurnActivity agent={agent} phase={activity.phase} startedAt={activity.startedAt} /> : null}
+          {activity && !activityInTurn ? (
+            <TurnActivity agent={agent} phase={activity.phase} startedAt={activity.startedAt} />
+          ) : null}
           {permissionRequests
             .filter((r) => !rendered.has(r.requestId))
             .map((r) => (
@@ -250,33 +256,108 @@ function AgentNameTag({ agent }: { agent: AgentKind }) {
   );
 }
 
-/**
- * Agent column: portrait gutter (filled on the first item of a run) + content. The name tag sits on top of the run's
- * first card, or inside the dialogue box when the run opens with text (`nameInBox`, the box renders it).
- */
-function AgentRow({
-  agent,
-  leadsRun,
-  nameInBox = false,
-  children,
-}: {
-  agent: AgentKind;
-  leadsRun: boolean;
-  nameInBox?: boolean;
-  children: ReactNode;
-}) {
+/** Text of an assistant item without a leading agent warning (the warning renders as its own notice). */
+function answerOf(item: AssistantTextItem): { text: string; warning: ReturnType<typeof splitAgentWarning> } {
+  const split = splitAgentWarning(item.text);
+  return { text: split ? split.rest : item.text, warning: split };
+}
+
+/** One paragraph run of the turn: markdown, its images, and a model warning streamed ahead of it. */
+const TurnText = memo(function TurnText({ item, streaming }: { item: AssistantTextItem; streaming: boolean }) {
+  const { text, warning } = answerOf(item);
   return (
-    <div className={`hc-agent-row hc-msg-enter${leadsRun ? ' hc-agent-row--lead' : ''}`}>
+    <>
+      {warning ? <AgentWarningNotice warning={warning.warning} /> : null}
+      {text !== '' ? <AssistantText text={text} streaming={streaming} /> : null}
+      {item.images && item.images.length > 0 ? <AgentImages images={item.images} /> : null}
+    </>
+  );
+});
+
+/**
+ * One agent turn: the portrait and "* CLAUDE" tag once, then text, tool groups and the cards that need their own
+ * surface (diffs, permission prompts, subagents, galleries) in order inside a single dialogue box.
+ */
+function AgentTurn({
+  segments,
+  agent,
+  streamingItemId,
+  pendingByToolUseId,
+  onPermissionDecision,
+  routing,
+  activity,
+}: {
+  segments: TurnSegment[];
+  agent: AgentKind;
+  streamingItemId: string | null;
+  pendingByToolUseId: ReadonlyMap<string, PermissionRequest>;
+  onPermissionDecision: (requestId: string, decision: PermissionDecision) => void;
+  routing: ReadonlyMap<string, SubagentSummary[]>;
+  activity: TurnPhase | null;
+}) {
+  const streaming = segments.some((seg) => seg.kind === 'text' && seg.item.id === streamingItemId);
+  const copyText = segments
+    .flatMap((seg) => (seg.kind === 'text' ? [answerOf(seg.item).text.trim()] : []))
+    .filter(Boolean)
+    .join('\n\n');
+  return (
+    <div className="hc-agent-row hc-agent-row--lead hc-msg-enter hc-turn" data-testid="agent-turn">
       <span className="hc-agent-row__avatar">
-        {leadsRun ? (
-          <span className="hc-agent-avatar" title={AGENTS[agent].name} aria-label={AGENTS[agent].name} role="img">
-            <AgentIcon kind={agent} size={22} />
-          </span>
-        ) : null}
+        <span className="hc-agent-avatar" title={AGENTS[agent].name} aria-label={AGENTS[agent].name} role="img">
+          <AgentIcon kind={agent} size={22} />
+        </span>
       </span>
       <div className="hc-agent-row__body">
-        {leadsRun && !nameInBox ? <AgentNameTag agent={agent} /> : null}
-        {children}
+        {/* Dialogue box: white pixel frame, the speaker's name tag on its first line. */}
+        <div className="hc-say hc-say--lead hc-turn__box">
+          <AgentNameTag agent={agent} />
+          {segments.map((seg) => {
+            switch (seg.kind) {
+              case 'text':
+                return <TurnText key={seg.item.id} item={seg.item} streaming={seg.item.id === streamingItemId} />;
+              case 'tools':
+                return seg.tools.length === 1 ? (
+                  <ToolRow key={seg.id} item={seg.tools[0]!} />
+                ) : (
+                  <ToolGroup key={seg.id} id={seg.id} tools={seg.tools} />
+                );
+              case 'card': {
+                const request = pendingByToolUseId.get(seg.item.toolUseId);
+                return (
+                  <div key={seg.item.id} className="hc-turn__card">
+                    <ToolCard item={seg.item} defaultExpanded={seg.item.isError === true} />
+                    {request ? <PermissionCard request={request} onDecide={onPermissionDecision} /> : null}
+                  </div>
+                );
+              }
+              case 'node': {
+                const node = seg.node;
+                if (node.kind === 'subagent') {
+                  const turnRouting = routing.get(node.item.id);
+                  const request = pendingByToolUseId.get(node.item.toolUseId);
+                  return (
+                    <div key={node.item.id} className="hc-turn__card">
+                      {turnRouting ? <SubagentRouting subagents={turnRouting} /> : null}
+                      <SubagentCard node={node} renderChild={renderSubagentChild} />
+                      {request ? <PermissionCard request={request} onDecide={onPermissionDecision} /> : null}
+                    </div>
+                  );
+                }
+                return node.item.type === 'image-gallery' ? (
+                  <ImageGalleryCard key={node.item.id} paths={node.item.paths} />
+                ) : null;
+              }
+              default:
+                return null;
+            }
+          })}
+          {activity ? <TurnActivity agent={agent} phase={activity.phase} startedAt={activity.startedAt} inline /> : null}
+        </div>
+        {streaming || copyText === '' ? null : (
+          <div className="hc-msg-actions hc-msg-actions--agent">
+            <CopyButton text={copyText} label="답변 복사" className="hc-msg-action" />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -285,19 +366,11 @@ function AgentRow({
 const MessageItem = memo(function MessageItem({
   item,
   agent,
-  leadsRun,
-  streaming,
-  pendingRequest,
-  onPermissionDecision,
   onEditResend,
   errorActions,
 }: {
   item: ChatItem;
   agent: AgentKind;
-  leadsRun: boolean;
-  streaming: boolean;
-  pendingRequest?: PermissionRequest;
-  onPermissionDecision: (requestId: string, decision: PermissionDecision) => void;
   onEditResend?: (text: string) => void;
   errorActions?: ErrorCardActions | null;
 }) {
@@ -327,53 +400,14 @@ const MessageItem = memo(function MessageItem({
         </div>
       );
     case 'assistant-text': {
-      // "Model metadata for … not found" and the like: a warning the agent streamed, not part of its answer.
+      // A text that is only a "Model metadata for … not found"-style warning (no answer after it).
       const split = splitAgentWarning(item.text);
-      const text = split ? split.rest : item.text;
-      const answer =
-        text === '' ? (
-          item.images && item.images.length > 0 ? (
-            <AgentRow agent={agent} leadsRun={leadsRun}>
-              <AgentImages images={item.images} />
-            </AgentRow>
-          ) : null
-        ) : (
-          <AgentRow agent={agent} leadsRun={leadsRun} nameInBox>
-            {/* Dialogue box: white pixel frame, the speaker's name tag on its first line. */}
-            <div className={`hc-say${leadsRun ? ' hc-say--lead' : ''}`}>
-              {leadsRun ? <AgentNameTag agent={agent} /> : null}
-              <AssistantText text={text} streaming={streaming} />
-            </div>
-            {streaming ? null : (
-              <div className="hc-msg-actions hc-msg-actions--agent">
-                <CopyButton text={text} label="답변 복사" className="hc-msg-action" />
-              </div>
-            )}
-          </AgentRow>
-        );
-      if (!split) return answer;
-      return (
-        <>
-          <div className="hc-msg-enter">
-            <AgentWarningNotice warning={split.warning} />
-          </div>
-          {answer}
-        </>
-      );
+      return split ? (
+        <div className="hc-msg-enter">
+          <AgentWarningNotice warning={split.warning} />
+        </div>
+      ) : null;
     }
-    case 'tool':
-      return (
-        <AgentRow agent={agent} leadsRun={leadsRun}>
-          <ToolCard item={item} defaultExpanded={item.isError === true} />
-          {pendingRequest ? <PermissionCard request={pendingRequest} onDecide={onPermissionDecision} /> : null}
-        </AgentRow>
-      );
-    case 'image-gallery':
-      return (
-        <AgentRow agent={agent} leadsRun={leadsRun}>
-          <ImageGalleryCard paths={item.paths} />
-        </AgentRow>
-      );
     case 'notice':
       if (item.level === 'error') {
         return (

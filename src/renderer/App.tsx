@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { concreteModelLabel, defaultModelLabelFrom } from '../core/modelDisplay';
 import './App.css';
 import { invoke, on } from './api';
@@ -288,6 +288,13 @@ export function App() {
   const onOpenSchedule = useCallback(() => useAppStore.getState().setRoute('schedule'), []);
   const onOpenPlugins = useCallback(() => useAppStore.getState().setRoute('plugins'), []);
   const onOpenNotes = useCallback(() => useAppStore.getState().setRoute('notes'), []);
+  // 노트 folds the sidebar away and its "← 돌아가기" returns to whatever screen was open before it.
+  const beforeNotes = useRef<Exclude<typeof route, 'notes'>>('chat');
+  useEffect(() => {
+    if (route !== 'notes') beforeNotes.current = route;
+  }, [route]);
+  const onLeaveNotes = useCallback(() => useAppStore.getState().setRoute(beforeNotes.current), []);
+  const sidebarHidden = sidebarCollapsed || route === 'notes';
   const onBackToChat = useCallback(() => useAppStore.getState().setRoute('chat'), []);
   // "이 PR로 새 채팅": a draft in the PR's project whose worktree starts from the PR branch.
   const onNewChatFromPr = useCallback((projectId: string, pr: PullRequestInfo) => {
@@ -535,7 +542,8 @@ export function App() {
     'app',
     shownTerminal ? 'app--terminal-open' : 'app--terminal-closed',
     shownPanel ? 'app--panel-open' : 'app--panel-closed',
-    sidebarCollapsed ? 'app--sidebar-collapsed' : '',
+    sidebarHidden ? 'app--sidebar-collapsed' : '',
+    route === 'notes' ? 'app--notes' : '',
     resizing ? 'app--resizing' : '',
     resizingTerminal ? 'app--resizing-rows' : '',
   ]
@@ -546,7 +554,7 @@ export function App() {
 
   return (
     <div className={shellClass} style={{ ['--app-panel-w' as string]: shownPanel ? `${panelWidth}px` : '0px' }}>
-      <aside className="app__sidebar" data-testid="sidebar" aria-hidden={sidebarCollapsed} inert={sidebarCollapsed}>
+      <aside className="app__sidebar" data-testid="sidebar" aria-hidden={sidebarHidden} inert={sidebarHidden}>
         <div className="app__sidebar-card">
           <div className="app__titlebar app__titlebar--sidebar drag-region">
             <WindowButton label="사이드바 숨기기 (⌘B)" onClick={onToggleSidebar}>
@@ -598,6 +606,8 @@ export function App() {
         </div>
       </aside>
       <main className="app__chat" data-testid="chat">
+        {/* 노트 draws its own bar (back button, breadcrumb) in the title bar row. */}
+        {route === 'notes' ? null : (
         <div
           className={`app__titlebar app__titlebar--chat drag-region${route === 'chat' && activeThread && chatScrolled ? ' app__titlebar--scrolled' : ''}`}
         >
@@ -658,6 +668,7 @@ export function App() {
             </div>
           ) : null}
         </div>
+        )}
         <div className="app__body app__body--fill">
           <div className="app__view" key={route === 'chat' ? (activeThread ? `thread:${activeThread.id}` : 'draft') : route}>
             {route === 'accounts' ? (
@@ -682,7 +693,7 @@ export function App() {
             ) : route === 'plugins' ? (
               <PluginsPage homeDir={homeDir} onBack={onBackToChat} />
             ) : route === 'notes' ? (
-              <NotesPage settings={settings} models={models} defaultModelLabel={defaultModelLabel} homeDir={homeDir} />
+              <NotesPage settings={settings} models={models} defaultModelLabel={defaultModelLabel} homeDir={homeDir} onBack={onLeaveNotes} />
             ) : route === 'settings' ? (
               <SettingsPage
                 settings={settings}

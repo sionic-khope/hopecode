@@ -11,12 +11,22 @@ export function IconNotePage({ plus, ...props }: SVGProps<SVGSVGElement> & { plu
   );
 }
 
-/** Collapse / expand a side pane. */
-export function IconPane({ side, ...props }: SVGProps<SVGSVGElement> & { side: 'left' | 'right' }) {
+/** "← 돌아가기": a pixel arrow pointing left. */
+export function IconBack(props: SVGProps<SVGSVGElement>) {
   return (
-    <svg width={16} height={16} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden {...props}>
-      <rect x="2.75" y="3.75" width="14.5" height="12.5" rx="1" />
-      {side === 'left' ? <path d="M7.5 3.75v12.5" /> : <path d="M12.5 3.75v12.5" />}
+    <svg width={14} height={14} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="square" aria-hidden {...props}>
+      <path d="M14 8H3M7 3.5 2.5 8 7 12.5" />
+    </svg>
+  );
+}
+
+/** A sparkle (an AI request). Square strokes to sit with the pixel type. */
+export function IconSpark(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width={14} height={14} viewBox="0 0 16 16" fill="currentColor" aria-hidden {...props}>
+      <path d="M7 1h2v4h4v2H9v4H7V7H3V5h4z" transform="translate(0 2)" />
+      <rect x="12" y="1" width="2" height="2" />
+      <rect x="2" y="12" width="2" height="2" />
     </svg>
   );
 }

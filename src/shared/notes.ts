@@ -7,10 +7,13 @@ export type NoteAgent = Extract<AgentKind, 'claude-code' | 'codex'>;
 
 export const NOTE_AGENTS: readonly NoteAgent[] = ['claude-code', 'codex'];
 
-/** 작성 (insert at the caret), 이 섹션 (replace the target range), 전체 수정 (rewrite the whole note). */
-export type NoteAiMode = 'write' | 'section' | 'rewrite';
+/**
+ * `chat`: a conversation turn in the AI pane (free text; note content comes back as `note-*` blocks shown as cards).
+ * `inline`: the floating prompt over an editor selection (the answer replaces the selection, or lands at the caret).
+ */
+export type NoteAiKind = 'chat' | 'inline';
 
-export const NOTE_AI_MODES: readonly NoteAiMode[] = ['write', 'section', 'rewrite'];
+export const NOTE_AI_KINDS: readonly NoteAiKind[] = ['chat', 'inline'];
 
 export interface NoteEntry {
   /** Last path segment. */
@@ -50,14 +53,25 @@ export interface NoteGitStatus {
   changed: string[];
 }
 
+/** A note card the user put into the editor (or took back out). Kept with the conversation row. */
+export interface NoteCardMark {
+  state: 'applied' | 'reverted';
+  /** Applied: where the text landed and what it replaced, so "되돌리기" can find it again (absent when too large). */
+  at?: number;
+  inserted?: string;
+  original?: string;
+}
+
 export interface NoteChatItem {
   id: string;
   role: 'user' | 'assistant';
-  mode: NoteAiMode;
+  /** User rows: the request; assistant rows: the whole answer (cards included) or the error. */
   text: string;
   createdAt: number;
   /** Assistant rows: how the run ended. */
   status?: 'done' | 'stopped' | 'error';
+  /** Assistant rows: card index (order in the answer) -> what the user did with it. */
+  cards?: Record<string, NoteCardMark>;
 }
 
 export interface NoteAiStartRequest {
@@ -68,12 +82,12 @@ export interface NoteAiStartRequest {
   /** Claude model value / Codex model id; null = default. */
   model: string | null;
   effort: string | null;
-  mode: NoteAiMode;
+  kind: NoteAiKind;
   request: string;
   /** The whole editor text (unsaved edits included). */
   document: string;
-  /** 이 섹션: the target text; 작성: the text around the caret is not sent separately. */
-  target: string | null;
+  /** inline: the selected range of `document` (from === to: write at the caret). null for chat. */
+  selection: { from: number; to: number } | null;
 }
 
 export type NoteAiEvent =

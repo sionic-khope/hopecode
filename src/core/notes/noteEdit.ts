@@ -1,6 +1,10 @@
-// 노트 모드 editor math, independent of CodeMirror (pure, unit-tested): the heading section around the caret, the
-// changes that stream an answer into a range, and how the final answer is fitted into the document.
-import type { NoteAiMode } from '../../shared/notes';
+// 노트 모드 editor math, independent of CodeMirror (pure, unit-tested): heading sections, the changes that stream an
+// inline answer into a range, how an answer is fitted into the document, and how a conversation card is put into the
+// note (and taken back out).
+import type { NoteCard } from './noteReply';
+
+/** Where fitted text goes: at the caret, over a heading section, over the whole note. */
+export type FitMode = 'insert' | 'section' | 'all';
 
 export interface TextRange {
   from: number;
@@ -44,7 +48,7 @@ export function headingLines(text: string): HeadingLine[] {
 }
 
 /**
- * Target of an "이 섹션" request. A non-empty selection wins as is. Otherwise the heading at or above `pos` and
+ * The heading section around `pos`. A non-empty selection wins as is. Otherwise the heading at or above `pos` and
  * everything up to the next heading of the same or a higher level (or the end); before the first heading, the
  * leading text up to that heading.
  */
@@ -124,10 +128,10 @@ export function commitStream(state: StreamState, final: string | null): { revert
  * The cleaned answer fitted into its place: a replaced section keeps the original's trailing blank lines, a full
  * rewrite ends with one newline, an insertion is separated from the text around it by a blank line.
  */
-export function fitAnswer(answer: string, mode: NoteAiMode, around: { original: string; before: string; after: string }): string {
+export function fitAnswer(answer: string, mode: FitMode, around: { original: string; before: string; after: string }): string {
   const body = answer.replace(/\s+$/, '');
   if (!body) return '';
-  if (mode === 'rewrite') return `${body}\n`;
+  if (mode === 'all') return `${body}\n`;
   if (mode === 'section') {
     const trailing = /\s*$/.exec(around.original)?.[0] ?? '';
     return body + (trailing || (around.after ? '\n' : ''));
@@ -135,4 +139,106 @@ export function fitAnswer(answer: string, mode: NoteAiMode, around: { original: 
   const lead = around.before === '' || around.before.endsWith('\n\n') ? '' : around.before.endsWith('\n') ? '\n' : '\n\n';
   const tail = around.after === '' ? '\n' : around.after.startsWith('\n') ? '\n' : '\n\n';
   return lead + body + tail;
+}
+
+/**
+ * An inline answer over a selection: the selection's own leading and trailing whitespace stay as they were, so a
+ * phrase replaced inside a paragraph does not gain or lose a line break.
+ */
+export function fitSelection(answer: string, original: string): string {
+  const body = answer.trim();
+  if (!body) return '';
+  const lead = /^\s*/.exec(original)?.[0] ?? '';
+  const trail = /\s*$/.exec(original)?.[0] ?? '';
+  return lead + body + trail;
+}
+
+/** Heading text as compared for a card's `section="…"`: marks, emphasis and spacing dropped, lowercase. */
+export function normalizeHeading(title: string): string {
+  return title
+    .replace(/^\s*#{1,6}\s*/, '')
+    .replace(/[*_`]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+/** `2. 구조` / `2) 구조` / `2 구조` -> `구조`. */
+function withoutNumber(title: string): string {
+  return title.replace(/^\d+(?:\.\d+)*[.)]?\s+/, '');
+}
+
+export type SectionMatch = { ok: true; range: SectionRange } | { ok: false; error: string };
+
+/**
+ * The section a card names: the heading whose text equals `title` (normalized), else the one equal once leading
+ * numbers are dropped on both sides. Several equal headings, or none, is an error (the card is not applied).
+ */
+export function findSection(doc: string, title: string): SectionMatch {
+  const want = normalizeHeading(title);
+  if (!want) return { ok: false, error: '바꿀 섹션이 지정되지 않았습니다' };
+  const heads = headingLines(doc);
+  const pick = (pred: (t: string) => boolean): SectionMatch | null => {
+    const hits = heads.filter((h) => pred(normalizeHeading(h.title)));
+    if (hits.length === 1) return { ok: true, range: sectionRange(doc, hits[0].start) };
+    if (hits.length > 1) return { ok: false, error: `'${title}' 섹션이 ${hits.length}개 있어 고를 수 없습니다` };
+    return null;
+  };
+  return (
+    pick((t) => t === want) ??
+    pick((t) => withoutNumber(t) === withoutNumber(want) && withoutNumber(want) !== '') ?? {
+      ok: false,
+      error: `'${title}' 섹션을 노트에서 찾을 수 없습니다`,
+    }
+  );
+}
+
+export interface CardPlan {
+  change: TextChange;
+  /** What the change replaces (for "되돌리기"). */
+  original: string;
+}
+
+/**
+ * The change that puts a card into `doc`: insert at `caret` (an empty note takes the card as its whole text), replace
+ * the named section, or replace everything. A card with no body, or a section that cannot be found, is an error.
+ */
+export function planCard(doc: string, card: Pick<NoteCard, 'kind' | 'section' | 'body'>, caret: number): { ok: true; plan: CardPlan } | { ok: false; error: string } {
+  const body = card.body.replace(/\s+$/, '');
+  if (!body.trim()) return { ok: false, error: '카드가 비어 있습니다' };
+  let range: TextRange;
+  let mode: FitMode;
+  if (card.kind === 'replace-all' || doc.trim() === '') {
+    range = { from: 0, to: doc.length };
+    mode = 'all';
+  } else if (card.kind === 'replace') {
+    const match = findSection(doc, card.section ?? '');
+    if (!match.ok) return match;
+    range = match.range;
+    mode = 'section';
+  } else {
+    const at = Math.max(0, Math.min(caret, doc.length));
+    range = { from: at, to: at };
+    mode = 'insert';
+  }
+  const original = doc.slice(range.from, range.to);
+  const insert = fitAnswer(body, mode, { original, before: doc.slice(0, range.from), after: doc.slice(range.to) });
+  return { ok: true, plan: { change: { from: range.from, to: range.to, insert }, original } };
+}
+
+/**
+ * Takes an applied card back out: the inserted text is put back to what it replaced, where it landed when it still
+ * sits there, else at its only occurrence in the note. null when the text was edited since (⌘Z still can).
+ */
+export function revertCard(doc: string, applied: { at: number; inserted: string; original: string }): TextChange | null {
+  const { at, inserted, original } = applied;
+  if (inserted === '') return null;
+  let from = -1;
+  if (doc.slice(at, at + inserted.length) === inserted) from = at;
+  else {
+    const first = doc.indexOf(inserted);
+    if (first !== -1 && doc.indexOf(inserted, first + 1) === -1) from = first;
+  }
+  if (from === -1) return null;
+  return { from, to: from + inserted.length, insert: original };
 }

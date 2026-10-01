@@ -1,53 +1,117 @@
 import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { CodexEffortLevel, EffortLevel, ModelOption } from '../../../shared/types';
-import { NOTE_AGENTS, type NoteAgent, type NoteAiMode, type NoteChatItem } from '../../../shared/notes';
-import { NOTE_MODE_LABEL } from '../../../core/notes/notePrompt';
+import { NOTE_AGENTS, type NoteAgent, type NoteCardMark, type NoteChatItem } from '../../../shared/notes';
+import { parseNoteReply, type NoteCard as NoteCardData } from '../../../core/notes/noteReply';
+import { codexModelLabel, concreteModelLabel } from '../../../core/modelDisplay';
 import { useAppStore } from '../../store';
 import { useNotesStore } from '../../store/notesStore';
-import { Segmented } from '../common';
-import { Composer } from '../Chat/Composer';
+import { AssistantText } from '../Chat/AssistantText';
+import { Composer, type ComposerHandle } from '../Chat/Composer';
 import { AcpModelChip, AgentChip, ModelPicker } from '../Chat/ComposerControls';
 import { codexEffortChoices, codexModelChoices, effortValueLabel } from '../Chat/acpChips';
+import { NoteCard } from './NoteCard';
 
-const MODE_OPTIONS = (['write', 'section', 'rewrite'] as const).map((value) => ({
-  value,
-  label: NOTE_MODE_LABEL[value],
-  title:
-    value === 'write'
-      ? '요청한 주제로 노트를 써서 커서 위치에 넣습니다 (빈 문서는 문서 전체)'
-      : value === 'section'
-        ? '노란 프레임으로 표시된 섹션(또는 선택 영역)만 고쳐 씁니다'
-        : '문서 전체를 다시 씁니다',
-}));
+const SUGGESTIONS = ['이 주제로 학습 노트 초안을 써 줘', '2번 섹션에 예시를 더 넣어 줘', '전체를 더 짧게 정리해 줘'];
 
-const PLACEHOLDER: Record<NoteAiMode, string> = {
-  write: '무엇에 대한 노트를 쓸까요? 예: Redis 분산 락과 Redlock',
-  section: '노란 프레임 안의 섹션을 어떻게 고칠까요?',
-  rewrite: '문서 전체를 어떻게 다시 쓸까요?',
-};
+const AGENT_NAME: Record<NoteAgent, string> = { 'claude-code': 'Claude Code', codex: 'Codex' };
 
-export interface NoteRunState {
-  mode: NoteAiMode;
-  chars: number;
+/** "Claude Code · Opus" for the agent and model the note requests run with (the inline prompt shows it too). */
+export function useNoteAgentLabel(models: readonly ModelOption[], defaultModelLabel: string): string {
+  const settings = useAppStore((s) => s.settings);
+  const agent = useNotesStore((s) => s.agent);
+  const claudeModel = useNotesStore((s) => s.claudeModel) ?? settings.defaultModel;
+  const codexModel = useNotesStore((s) => s.codexModel) ?? settings.codexDefaultModel;
+  if (agent === 'codex') return `${AGENT_NAME.codex} · ${codexModel ? codexModelLabel(codexModel) : '기본 모델'}`;
+  return `${AGENT_NAME['claude-code']} · ${concreteModelLabel(claudeModel || 'default', models, { defaultLabel: defaultModelLabel })}`;
+}
+
+export interface NoteChatRun {
+  /** The answer streamed so far. */
+  text: string;
 }
 
 export interface NoteChatPanelProps {
   path: string | null;
   items: NoteChatItem[];
-  running: NoteRunState | null;
+  /** The conversation turn streaming right now (null otherwise). */
+  running: NoteChatRun | null;
+  /** Any note request (an inline edit included) is running: cards and the composer wait. */
+  busy: boolean;
   error: string | null;
+  onDismissError: () => void;
   models: ModelOption[];
   defaultModelLabel: string;
   onSend: (text: string) => Promise<boolean>;
   onStop: () => void;
+  /** Why a card cannot go into the open note right now (null when it can). */
+  cardProblem: (card: NoteCardData) => string | null;
+  onApply: (itemId: string, index: number, card: NoteCardData) => void;
+  onRevert: (itemId: string, index: number, mark: NoteCardMark) => void;
 }
 
-/** Right pane: the note's request history (short summaries; the text itself goes into the editor) and the composer. */
-export const NoteChatPanel = memo(function NoteChatPanel({ path, items, running, error, models, defaultModelLabel, onSend, onStop }: NoteChatPanelProps) {
+function Reply({
+  text,
+  streaming,
+  itemId,
+  marks,
+  busy,
+  cardProblem,
+  onApply,
+  onRevert,
+}: {
+  text: string;
+  streaming: boolean;
+  itemId: string | null;
+  marks?: Record<string, NoteCardMark>;
+  busy: boolean;
+  cardProblem: NoteChatPanelProps['cardProblem'];
+  onApply: NoteChatPanelProps['onApply'];
+  onRevert: NoteChatPanelProps['onRevert'];
+}) {
+  const segments = useMemo(() => parseNoteReply(text, streaming), [text, streaming]);
+  return (
+    <>
+      {segments.map((seg, i) =>
+        seg.type === 'text' ? (
+          <AssistantText key={`t${i}`} text={seg.text} />
+        ) : (
+          <NoteCard
+            key={`c${seg.index}`}
+            card={seg.card}
+            mark={marks?.[String(seg.index)]}
+            problem={seg.card.complete ? cardProblem(seg.card) : null}
+            busy={busy || streaming || itemId === null}
+            onApply={() => itemId && onApply(itemId, seg.index, seg.card)}
+            onRevert={() => {
+              const mark = marks?.[String(seg.index)];
+              if (itemId && mark) onRevert(itemId, seg.index, mark);
+            }}
+          />
+        ),
+      )}
+    </>
+  );
+}
+
+/** Right half: a free conversation about the open note. Note text comes back as cards the user puts into the editor. */
+export const NoteChatPanel = memo(function NoteChatPanel({
+  path,
+  items,
+  running,
+  busy,
+  error,
+  onDismissError,
+  models,
+  defaultModelLabel,
+  onSend,
+  onStop,
+  cardProblem,
+  onApply,
+  onRevert,
+}: NoteChatPanelProps) {
   const settings = useAppStore((s) => s.settings);
   const localAuth = useAppStore((s) => s.localAuth);
   const threads = useAppStore((s) => s.threads);
-  const aiMode = useNotesStore((s) => s.aiMode);
   const agent = useNotesStore((s) => s.agent);
   const claudeModel = useNotesStore((s) => s.claudeModel) ?? settings.defaultModel;
   const claudeEffort = useNotesStore((s) => s.claudeEffort) ?? settings.defaultEffort;
@@ -55,14 +119,16 @@ export const NoteChatPanel = memo(function NoteChatPanel({ path, items, running,
   const codexEffort = useNotesStore((s) => s.codexEffort) ?? settings.codexDefaultEffort;
   const patch = useNotesStore((s) => s.patch);
   const listRef = useRef<HTMLOListElement>(null);
+  const composer = useRef<ComposerHandle>(null);
 
   const codexModels = useMemo(() => (agent === 'codex' ? codexModelChoices(threads, codexModel) : []), [agent, threads, codexModel]);
   const codexEfforts = useMemo(() => (agent === 'codex' ? codexEffortChoices(threads) : []), [agent, threads]);
 
+  // Follow the conversation while it grows (new rows, streamed text).
   useEffect(() => {
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [items.length, running]);
+  }, [items.length, running?.text.length, path]);
 
   const setAgent = useCallback((next: string) => patch({ agent: next as NoteAgent }), [patch]);
   const recheckAgents = useCallback(() => {
@@ -95,56 +161,88 @@ export const NoteChatPanel = memo(function NoteChatPanel({ path, items, running,
       />
     );
 
+  const empty = items.length === 0 && !running;
+
   return (
     <div className="hc-notechat" data-testid="note-chat">
-      <div className="hc-notechat__head">
-        <span className="hc-notechat__title">노트 도우미</span>
-        <span className="hc-notechat__sub">{path ? path : '노트를 열면 요청할 수 있습니다'}</span>
-      </div>
-      <ol className="hc-notechat__list" ref={listRef} aria-label="요청 기록" aria-live="polite">
-        {items.length === 0 && !running ? (
+      <ol className="hc-notechat__list" ref={listRef} aria-label="노트 대화" aria-live="polite">
+        {empty ? (
           <li className="hc-notechat__empty">
-            주제를 말하면 학습 노트 형식으로 에디터에 바로 써 넣습니다. <b>이 섹션</b>은 커서가 있는 heading 섹션만, <b>전체 수정</b>은 문서 전체를 고칩니다.
-            모든 변경은 ⌘Z 한 번으로 되돌릴 수 있습니다.
+            <p className="hc-notechat__empty-lede">
+              {path ? '이 노트에 대해 자유롭게 이야기하세요.' : '노트를 열면 대화할 수 있습니다.'}
+            </p>
+            <p className="hc-notechat__empty-hint">
+              본문에 들어갈 내용은 <b>카드</b>로 받습니다. 카드의 <b>본문에 넣기</b>를 누르면 커서 위치나 해당 섹션에 들어갑니다. 에디터에서 글을 드래그하면 그 부분만 고칠 수 있습니다.
+            </p>
+            {path ? (
+              <div className="hc-notechat__suggest">
+                {SUGGESTIONS.map((s) => (
+                  <button key={s} type="button" className="hc-notechat__chip" onClick={() => composer.current?.setText(s)}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </li>
         ) : null}
-        {items.map((item) => (
-          <li
-            key={item.id}
-            className={`hc-notechat__item hc-notechat__item--${item.role}${item.status ? ` hc-notechat__item--${item.status}` : ''}`}
-            data-testid={`note-chat-${item.role}`}
-          >
-            {item.role === 'user' ? <span className="hc-notechat__mode">{NOTE_MODE_LABEL[item.mode]}</span> : null}
-            <span className="hc-notechat__text">{item.text}</span>
-          </li>
-        ))}
+        {items.map((item) =>
+          item.role === 'user' ? (
+            <li key={item.id} className="hc-notechat__msg hc-notechat__msg--user" data-testid="note-chat-user">
+              {item.text}
+            </li>
+          ) : (
+            <li
+              key={item.id}
+              className={`hc-notechat__msg hc-notechat__msg--assistant${item.status ? ` hc-notechat__msg--${item.status}` : ''}`}
+              data-testid="note-chat-assistant"
+            >
+              {item.status === 'error' ? (
+                <p className="hc-notechat__failed">{item.text}</p>
+              ) : (
+                <Reply
+                  text={item.text}
+                  streaming={false}
+                  itemId={item.id}
+                  marks={item.cards}
+                  busy={busy}
+                  cardProblem={cardProblem}
+                  onApply={onApply}
+                  onRevert={onRevert}
+                />
+              )}
+              {item.status === 'stopped' ? <span className="hc-notechat__tag">중지됨</span> : null}
+            </li>
+          ),
+        )}
         {running ? (
-          <li className="hc-notechat__item hc-notechat__item--running" data-testid="note-chat-running">
-            <span className="hc-notechat__dot" aria-hidden />
-            {NOTE_MODE_LABEL[running.mode]} 중… {running.chars.toLocaleString('ko-KR')}자
+          <li className="hc-notechat__msg hc-notechat__msg--assistant hc-notechat__msg--running" data-testid="note-chat-running">
+            {running.text.trim() ? (
+              <Reply text={running.text} streaming itemId={null} busy cardProblem={cardProblem} onApply={onApply} onRevert={onRevert} />
+            ) : (
+              <span className="hc-notechat__thinking">
+                <span className="hc-notechat__dot" aria-hidden />
+                생각 중…
+              </span>
+            )}
           </li>
         ) : null}
       </ol>
       {error ? (
         <div className="hc-notechat__error" role="alert">
-          {error}
+          <span>{error}</span>
+          <button type="button" className="hc-notechat__error-close" aria-label="닫기" onClick={onDismissError}>
+            ×
+          </button>
         </div>
       ) : null}
       <div className="hc-notechat__compose">
-        <Segmented
-          options={MODE_OPTIONS}
-          value={aiMode}
-          onChange={(v) => patch({ aiMode: v })}
-          size="sm"
-          aria-label="요청 범위"
-          className="hc-notechat__modes"
-        />
         <Composer
+          handleRef={composer}
           running={running !== null}
           onInterrupt={onStop}
-          disabled={!path}
+          disabled={!path || (busy && running === null)}
           onSend={onSend}
-          placeholder={path ? PLACEHOLDER[aiMode] : '왼쪽에서 노트를 먼저 여세요'}
+          placeholder={path ? '노트에 대해 묻거나, 쓰거나 고쳐 달라고 하세요' : '노트를 먼저 여세요'}
           leading={<AgentChip value={agent} onChange={setAgent} localAuth={localAuth} onRecheck={recheckAgents} agents={NOTE_AGENTS} />}
           trailing={trailing}
         />

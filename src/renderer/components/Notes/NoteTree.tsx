@@ -118,10 +118,12 @@ export interface NoteTreeProps {
   /** A file or folder was renamed (the open note may need to follow). */
   onRenamed: (from: string, entry: NoteEntry) => void;
   onTrashed: (path: string) => void;
+  /** Starts a "새 노트" / "새 폴더" name field from outside (the empty editor's button); once per nonce. */
+  draftRequest?: { kind: 'file' | 'dir'; nonce: number } | null;
 }
 
-/** Left pane: the vault's folders and `.md` files, loaded one folder at a time; name search; create / rename / trash. */
-export const NoteTree = memo(function NoteTree({ vault, openPath, onOpen, onRenamed, onTrashed }: NoteTreeProps) {
+/** The file drawer's body: the vault's folders and `.md` files, loaded one folder at a time; name search; create / rename / trash. */
+export const NoteTree = memo(function NoteTree({ vault, openPath, onOpen, onRenamed, onTrashed, draftRequest = null }: NoteTreeProps) {
   const children = useNotesStore((s) => s.children);
   const expanded = useNotesStore((s) => s.expanded);
   const [error, setError] = useState<string | null>(null);
@@ -173,6 +175,14 @@ export const NoteTree = memo(function NoteTree({ vault, openPath, onOpen, onRena
     setQuery('');
     setDraft({ parent, kind });
   };
+
+  const handledDraft = useRef(0);
+  useEffect(() => {
+    if (!draftRequest || draftRequest.nonce === handledDraft.current) return;
+    handledDraft.current = draftRequest.nonce;
+    setQuery('');
+    setDraft({ parent: selectedDir, kind: draftRequest.kind });
+  }, [draftRequest, selectedDir]);
 
   const create = async (name: string): Promise<string | null> => {
     if (!draft) return null;

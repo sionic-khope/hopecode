@@ -37,15 +37,35 @@ export interface TurnActivityProps {
   phase: TurnPhaseKind;
   /** epoch ms the turn started (elapsed timer). */
   startedAt: number;
+  /** Inside the turn already on screen (no portrait of its own): the status line continues the agent's turn. */
+  inline?: boolean;
 }
 
 /**
  * The agent's slot while a turn runs with nothing streaming: avatar with a soft breathing ring, a shimmering status
  * line and the turn's elapsed time. Appears after a short delay so a quick hand-off between outputs does not flash.
  */
-export function TurnActivity({ agent, phase, startedAt }: TurnActivityProps) {
+export function TurnActivity({ agent, phase, startedAt, inline = false }: TurnActivityProps) {
   const now = useTicker(true);
   const label = turnPhaseLabel(phase, agent);
+  const status = (
+    <>
+      <span className="hc-activity__label" data-text={label} role="status" aria-live="polite">
+        {label}
+      </span>
+      {/* Ticks every second: kept out of the live region so screen readers hear the phase, not the clock. */}
+      <span className="hc-activity__elapsed" data-testid="turn-elapsed" aria-hidden>
+        {formatElapsed(now - startedAt)}
+      </span>
+    </>
+  );
+  if (inline) {
+    return (
+      <div className="hc-activity hc-activity--inline" data-testid="turn-activity" data-phase={phase}>
+        {status}
+      </div>
+    );
+  }
   return (
     <div className="hc-agent-row hc-agent-row--lead hc-activity" data-testid="turn-activity" data-phase={phase}>
       <span className="hc-agent-row__avatar">
@@ -53,15 +73,7 @@ export function TurnActivity({ agent, phase, startedAt }: TurnActivityProps) {
           <AgentIcon kind={agent} size={22} />
         </span>
       </span>
-      <div className="hc-agent-row__body hc-activity__body">
-        <span className="hc-activity__label" data-text={label} role="status" aria-live="polite">
-          {label}
-        </span>
-        {/* Ticks every second: kept out of the live region so screen readers hear the phase, not the clock. */}
-        <span className="hc-activity__elapsed" data-testid="turn-elapsed" aria-hidden>
-          {formatElapsed(now - startedAt)}
-        </span>
-      </div>
+      <div className="hc-agent-row__body hc-activity__body">{status}</div>
     </div>
   );
 }

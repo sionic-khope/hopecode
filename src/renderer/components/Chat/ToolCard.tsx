@@ -1,4 +1,4 @@
-import { createContext, memo, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, memo, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { displayPath } from '../../../core/displayPath';
 import type { ToolItem } from '../../../shared/types';
 import { Collapse } from '../common';
@@ -8,6 +8,16 @@ import { ToolImages } from '../Images/ChatImages';
 import { imageCaption } from '../../../core/agentImages';
 import { useTicker } from './TurnActivity';
 import { formatElapsed } from './agentIssues';
+import {
+  formatDuration,
+  groupStartsOpen,
+  runningLine,
+  summarizeToolGroup,
+  summarizeToolInput,
+  toolDurationMs,
+  toolGroupLabel,
+  toolState,
+} from './toolGroups';
 import './Chat.css';
 
 export interface ToolCardProps {
@@ -22,68 +32,55 @@ export const ToolPathContext = createContext<{ cwd?: string | null; home?: strin
  *  from an earlier, interrupted turn keeps only its spinner). */
 export const TurnLiveContext = createContext(false);
 
-/** Best-effort one-line summary of a tool_use input, per tool name. */
-function summarize(item: ToolItem, cwd?: string | null, home?: string | null): string {
-  const { name, input } = item;
-  const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
-  const pth = (v: unknown): string | undefined => (typeof v === 'string' ? displayPath(v, cwd, home) : undefined);
-  // ACP tool calls carry the agent's own one-line title (plan 2.4); it beats any per-tool guess.
-  const title = str(input.title)?.trim();
-  if (title) return title;
+/** Disclosure choices the user made this session, by `tool:<item id>` / `group:<first item id>` (survive thread
+ *  switches and list re-mounts; a group and its first row share an item id, hence the prefixes). */
+const rememberedOpen = new Map<string, boolean>();
 
-  switch (name) {
-    case 'Read':
-    case 'NotebookEdit':
-      return pth(input.file_path) ?? pth(input.notebook_path) ?? '';
-    case 'Edit':
-    case 'MultiEdit':
-    case 'Write':
-      return pth(input.file_path) ?? '';
-    case 'Bash':
-      return str(input.command) ?? '';
-    case 'Grep': {
-      const pattern = str(input.pattern) ?? '';
-      const path = pth(input.path);
-      return path ? `${pattern}  ·  ${path}` : pattern;
-    }
-    case 'Glob': {
-      const pattern = str(input.pattern) ?? '';
-      const path = pth(input.path);
-      return path ? `${pattern}  ·  ${path}` : pattern;
-    }
-    case 'WebFetch':
-    case 'WebSearch':
-      return str(input.url) ?? str(input.query) ?? '';
-    case 'Task':
-      return str(input.description) ?? str(input.subagent_type) ?? '';
-    case 'TodoWrite': {
-      const todos = input.todos;
-      return Array.isArray(todos) ? `${todos.length} item${todos.length === 1 ? '' : 's'}` : '';
-    }
-    default: {
-      const entries = Object.entries(input).slice(0, 2);
-      return entries.map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`).join('  ');
-    }
-  }
+/**
+ * Open state of a disclosure keyed by item id: the user's last choice this session, else `fallback` (which may
+ * change, e.g. a group opens itself when one of its calls fails, until the user picks a state).
+ */
+function useRememberedOpen(key: string, fallback: boolean): [boolean, () => void] {
+  const [choice, setChoice] = useState<boolean | undefined>(() => rememberedOpen.get(key));
+  const open = choice ?? fallback;
+  const toggle = useCallback(() => {
+    rememberedOpen.set(key, !open);
+    setChoice(!open);
+  }, [key, open]);
+  return [open, toggle];
 }
 
-/** Collapsible card for one tool_use / tool_result pair. */
-export const ToolCard = memo(function ToolCard({ item, defaultExpanded = false }: ToolCardProps) {
-  const [open, setOpen] = useState(defaultExpanded);
-  const Icon = iconForTool(item.name);
-  const running = item.result === undefined;
-  const hasError = item.isError === true;
-  const live = useContext(TurnLiveContext) && running;
-  const now = useTicker(live);
-  // The check pops in only when this card watched the call finish (not for finished calls loaded from history).
+/** Click sound of a disclosure: opening selects, closing goes back (read by the capture-phase sound delegate). */
+const sfxFor = (open: boolean) => (open ? 'back' : 'select');
+
+/** The check pops in only when this view watched the call finish (not for finished calls loaded from history). */
+function useSettled(running: boolean): boolean {
   const sawRunning = useRef(running);
   const [settled, setSettled] = useState(false);
   useEffect(() => {
     if (running) sawRunning.current = true;
     else if (sawRunning.current) setSettled(true);
   }, [running]);
+  return settled;
+}
+
+function StatusIcon({ state }: { state: 'running' | 'error' | 'done' }) {
+  if (state === 'running') return <SpinnerIcon width={13} height={13} />;
+  if (state === 'error') return <ErrorCircleIcon width={13} height={13} />;
+  return <CheckCircleIcon width={13} height={13} />;
+}
+
+/** Collapsible card for one tool_use / tool_result pair that needs its own surface (diff, permission, images). */
+export const ToolCard = memo(function ToolCard({ item, defaultExpanded = false }: ToolCardProps) {
+  const [open, toggle] = useRememberedOpen(`tool:${item.id}`, defaultExpanded);
+  const Icon = iconForTool(item.name);
+  const running = item.result === undefined;
+  const hasError = item.isError === true;
+  const live = useContext(TurnLiveContext) && running;
+  const now = useTicker(live);
+  const settled = useSettled(running);
   const paths = useContext(ToolPathContext);
-  const summary = summarize(item, paths.cwd, paths.home);
+  const summary = summarizeToolInput(item, paths.cwd, paths.home);
   const hasPatch = Array.isArray(item.patch) && item.patch.length > 0;
   const diffs = item.diffs ?? [];
   const editFallback =
@@ -93,14 +90,9 @@ export const ToolCard = memo(function ToolCard({ item, defaultExpanded = false }
     <div
       className={`hc-tool${open ? ' hc-tool--open' : ''}${live ? ' hc-tool--running' : ''}`}
       data-tool-id={item.toolUseId}
-      data-state={running ? 'running' : hasError ? 'error' : 'done'}
+      data-state={toolState(item)}
     >
-      <button
-        type="button"
-        className="hc-tool__header"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-      >
+      <button type="button" className="hc-tool__header" aria-expanded={open} data-sfx={sfxFor(open)} onClick={toggle}>
         <span className="hc-tool__icon">
           <Icon width={14} height={14} />
         </span>
@@ -115,13 +107,7 @@ export const ToolCard = memo(function ToolCard({ item, defaultExpanded = false }
               실행 중…<span className="hc-tool__elapsed" aria-hidden>{formatElapsed(now - item.createdAt)}</span>
             </span>
           ) : null}
-          {running ? (
-            <SpinnerIcon width={13} height={13} />
-          ) : hasError ? (
-            <ErrorCircleIcon width={13} height={13} />
-          ) : (
-            <CheckCircleIcon width={13} height={13} />
-          )}
+          <StatusIcon state={toolState(item)} />
         </span>
         <span className="hc-tool__chevron">
           <ChevronIcon width={13} height={13} />
@@ -157,6 +143,139 @@ export const ToolCard = memo(function ToolCard({ item, defaultExpanded = false }
           />
         </div>
       ) : null}
+    </div>
+  );
+});
+
+/**
+ * One quiet call as a frameless line: icon, name, input (mono, ellipsized), status and time on the right. The line
+ * is a button; its output opens under it behind a thin rule. A failed call starts open.
+ */
+export const ToolRow = memo(function ToolRow({ item }: { item: ToolItem }) {
+  const state = toolState(item);
+  const [open, toggle] = useRememberedOpen(`tool:${item.id}`, state === 'error');
+  const Icon = iconForTool(item.name);
+  const running = state === 'running';
+  const live = useContext(TurnLiveContext) && running;
+  const now = useTicker(live);
+  const settled = useSettled(running);
+  const paths = useContext(ToolPathContext);
+  const summary = summarizeToolInput(item, paths.cwd, paths.home);
+  const duration = toolDurationMs(item);
+
+  return (
+    <div
+      className={`hc-tool hc-tool--row${open ? ' hc-tool--open' : ''}${live ? ' hc-tool--running' : ''}`}
+      data-tool-id={item.toolUseId}
+      data-state={state}
+    >
+      <button
+        type="button"
+        className="hc-tool__header hc-soul"
+        aria-expanded={open}
+        data-sfx={sfxFor(open)}
+        onClick={toggle}
+        title={summary || item.name}
+      >
+        <span className="hc-tool__icon">
+          <Icon width={13} height={13} />
+        </span>
+        <span className="hc-tool__name">{item.name}</span>
+        <span className="hc-tool__summary">{summary}</span>
+        <span
+          className={`hc-tool__status hc-tool__status--${running ? 'running' : state === 'error' ? 'error' : 'ok'}${settled ? ' hc-tool__status--settled' : ''}`}
+          role={live ? 'status' : undefined}
+        >
+          {live ? (
+            <span className="hc-tool__progress">
+              실행 중…<span className="hc-tool__elapsed" aria-hidden>{formatElapsed(now - item.createdAt)}</span>
+            </span>
+          ) : null}
+          {duration !== null ? <span className="hc-tool__duration">{formatDuration(duration)}</span> : null}
+          <StatusIcon state={state} />
+        </span>
+      </button>
+      <Collapse open={open}>
+        <div className="hc-tool__output" data-testid="tool-output">
+          {item.result !== undefined ? (
+            <pre className={`hc-tool__result${state === 'error' ? ' hc-tool__result--error' : ''}`}>
+              {item.result.trim() === '' ? '(출력 없음)' : item.result}
+            </pre>
+          ) : (
+            <p className="hc-tool__waiting">{live ? '실행 중…' : '결과를 받지 못했습니다.'}</p>
+          )}
+        </div>
+      </Collapse>
+    </div>
+  );
+});
+
+/**
+ * Consecutive quiet calls folded into one frameless summary line ("▸ 명령 8개 실행 · 12s ✓"). While a call runs the
+ * line shows it live; a failure opens the group and adds a red "실패 n". Expanded, every call is a ToolRow.
+ */
+export const ToolGroup = memo(function ToolGroup({ id, tools }: { id: string; tools: ToolItem[] }) {
+  const summary = summarizeToolGroup(tools);
+  const [open, toggle] = useRememberedOpen(`group:${id}`, groupStartsOpen(tools));
+  const turnLive = useContext(TurnLiveContext);
+  const live = turnLive && summary.running !== null;
+  const now = useTicker(live);
+  const settled = useSettled(summary.running !== null);
+  const paths = useContext(ToolPathContext);
+  const label = toolGroupLabel(summary);
+  const current = summary.running ? runningLine(summary.running, paths.cwd, paths.home) : null;
+
+  return (
+    <div
+      className={`hc-toolgroup${open ? ' hc-toolgroup--open' : ''}`}
+      data-testid="tool-group"
+      data-state={summary.state}
+      data-count={summary.total}
+    >
+      <button
+        type="button"
+        className="hc-toolgroup__summary hc-soul"
+        aria-expanded={open}
+        data-sfx={sfxFor(open)}
+        onClick={toggle}
+      >
+        <span className="hc-toolgroup__chevron" aria-hidden>
+          <ChevronIcon width={12} height={12} />
+        </span>
+        <span className="hc-toolgroup__label" data-testid="tool-group-label">
+          {label}
+        </span>
+        {summary.failed > 0 ? (
+          <span className="hc-toolgroup__failed" data-testid="tool-group-failed">
+            실패 {summary.failed}
+          </span>
+        ) : null}
+        {current !== null ? (
+          <span className="hc-toolgroup__current" data-testid="tool-group-current" title={current}>
+            {current}
+          </span>
+        ) : null}
+        <span
+          className={`hc-toolgroup__status hc-tool__status--${summary.state === 'running' ? 'running' : summary.state === 'error' ? 'error' : 'ok'}${settled ? ' hc-tool__status--settled' : ''}`}
+          role={live ? 'status' : undefined}
+        >
+          {live && summary.running ? (
+            <span className="hc-toolgroup__time" aria-hidden>
+              {formatElapsed(now - summary.running.createdAt)}
+            </span>
+          ) : summary.durationMs !== null ? (
+            <span className="hc-toolgroup__time">{formatDuration(summary.durationMs)}</span>
+          ) : null}
+          <StatusIcon state={summary.state} />
+        </span>
+      </button>
+      <Collapse open={open}>
+        <div className="hc-toolgroup__rows">
+          {tools.map((t) => (
+            <ToolRow key={t.id} item={t} />
+          ))}
+        </div>
+      </Collapse>
     </div>
   );
 });

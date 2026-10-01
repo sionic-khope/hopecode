@@ -1,20 +1,21 @@
 // Invoke handlers of 노트 모드 (notes:*). Same rules as registerIpc: every request is narrowed from `unknown`; the
 // renderer names vault-relative paths only and main resolves them inside the active vault (notes/vaultFs.ts).
 import type { InvokeResponse } from '../../shared/ipc';
-import { NOTE_AGENTS, NOTE_AI_MODES, type NoteAgent, type NoteAiEvent, type NoteAiMode } from '../../shared/notes';
+import { NOTE_AGENTS, NOTE_AI_KINDS, type NoteAgent, type NoteAiEvent, type NoteAiKind, type NoteCardMark } from '../../shared/notes';
 import type { AppSettings } from '../../shared/types';
 import { NOTE_VAULTS_MAX } from '../../shared/constants';
 import { isNoteVaultPath } from '../../core/settings';
 import {
-  NOTE_MODE_LABEL,
+  HISTORY_MAX_ITEMS,
   REQUEST_MAX_CHARS,
   STYLE_REF_MAX_FILES,
+  buildNoteChatPrompt,
+  buildNoteInlinePrompt,
   buildNoteSystemPrompt,
-  buildNoteUserPrompt,
   styleRefExcerpt,
 } from '../../core/notes/notePrompt';
+import { replyProse } from '../../core/notes/noteReply';
 import { NOTE_MAX_BYTES, normalizeNotePath } from '../../core/notes/notePaths';
-import { headingLines } from '../../core/notes/noteEdit';
 import type { Broadcaster, Store } from '../contracts';
 import type { NoteChats } from '../notes/noteChats';
 import type { NoteGit } from '../notes/noteGit';
@@ -49,6 +50,7 @@ export const NOTES_CHANNELS = [
   'notes:gitStatus',
   'notes:commit',
   'notes:chat',
+  'notes:chatCard',
   'notes:aiStart',
   'notes:aiStop',
   'notes:enableGit',
@@ -75,15 +77,17 @@ export interface NotesServices {
   runAi(run: NoteAiRun, onDelta: (text: string) => void, signal: AbortSignal): Promise<NoteAiResult>;
 }
 
-function summary(mode: NoteAiMode, chars: number, result: NoteAiResult, target: string | null): string {
-  const n = `${chars.toLocaleString('ko-KR')}자`;
-  if (!result.ok) return `실패: ${result.error}`;
-  if (result.stopped) return chars > 0 ? `중지했다. 그때까지 받은 ${n}를 반영했다.` : '중지했다. 바뀐 내용은 없다.';
-  if (chars === 0) return '받은 내용이 없어 문서를 그대로 두었다.';
-  if (mode === 'write') return `커서 위치에 ${n}를 작성했다.`;
-  if (mode === 'rewrite') return `문서 전체를 다시 썼다 (${n}).`;
-  const title = target ? headingLines(target)[0]?.title : undefined;
-  return title ? `「${title}」 섹션을 고쳐 썼다 (${n}).` : `선택한 범위를 고쳐 썼다 (${n}).`;
+const isOffset = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= NOTE_MAX_BYTES;
+
+/** A card mark from the renderer, narrowed (null clears). */
+function cardMarkOf(raw: unknown): NoteCardMark | null | undefined {
+  if (raw === null) return null;
+  if (!isPlainObject(raw) || (raw.state !== 'applied' && raw.state !== 'reverted')) return undefined;
+  const mark: NoteCardMark = { state: raw.state };
+  if (raw.state === 'applied' && isOffset(raw.at) && isString(raw.inserted) && isString(raw.original)) {
+    if (raw.inserted.length + raw.original.length <= NOTE_MAX_BYTES * 2) Object.assign(mark, { at: raw.at, inserted: raw.inserted, original: raw.original });
+  }
+  return mark;
 }
 
 export function buildNotesHandlers(store: Pick<Store, 'get' | 'update'>, broadcaster: Broadcaster, notes: NotesServices): NotesHandlers {
@@ -220,65 +224,89 @@ export function buildNotesHandlers(store: Pick<Store, 'get' | 'update'>, broadca
       return notes.chats.list(activeVault('notes:chat'), needPath('notes:chat', (req as { path?: unknown }).path));
     },
 
+    'notes:chatCard': async (req) => {
+      const ch = 'notes:chatCard';
+      assertReq(ch, isPlainObject(req) && isNonEmptyString(req.itemId) && (req.itemId as string).length <= 64, 'itemId required');
+      const r = req as Record<string, unknown>;
+      assertReq(ch, typeof r.card === 'number' && Number.isInteger(r.card) && r.card >= 0 && r.card < 1000, 'invalid card');
+      const mark = cardMarkOf(r.mark);
+      assertReq(ch, mark !== undefined, 'invalid mark');
+      return notes.chats.markCard(activeVault(ch), needPath(ch, r.path), r.itemId as string, r.card as number, mark as NoteCardMark | null);
+    },
+
     'notes:aiStart': async (req) => {
       const ch = 'notes:aiStart';
       assertReq(ch, isPlainObject(req), 'request required');
       const r = req as Record<string, unknown>;
       assertReq(ch, isString(r.requestId) && REQUEST_ID.test(r.requestId), 'invalid requestId');
       assertReq(ch, (NOTE_AGENTS as readonly unknown[]).includes(r.agent), 'invalid agent');
-      assertReq(ch, (NOTE_AI_MODES as readonly unknown[]).includes(r.mode), 'invalid mode');
+      assertReq(ch, (NOTE_AI_KINDS as readonly unknown[]).includes(r.kind), 'invalid kind');
       assertReq(ch, isNullableString(r.model) && (r.model === null || r.model.length <= 200), 'invalid model');
       assertReq(ch, isNullableString(r.effort) && (r.effort === null || r.effort.length <= 40), 'invalid effort');
       assertReq(ch, isNonEmptyString(r.request) && r.request.length <= REQUEST_MAX_CHARS, 'request text required');
       assertReq(ch, isString(r.document) && r.document.length <= NOTE_MAX_BYTES, 'document required');
-      assertReq(ch, isNullableString(r.target) && (r.target === null || r.target.length <= NOTE_MAX_BYTES), 'invalid target');
+      const kind = r.kind as NoteAiKind;
+      const document = r.document as string;
+      let selection: { from: number; to: number } | null = null;
+      if (kind === 'inline') {
+        const sel = r.selection;
+        assertReq(ch, isPlainObject(sel) && isOffset(sel.from) && isOffset(sel.to), 'selection required');
+        const { from, to } = sel as { from: number; to: number };
+        assertReq(ch, from <= to && to <= document.length, 'invalid selection');
+        selection = { from, to };
+      } else {
+        assertReq(ch, r.selection === null || r.selection === undefined, 'invalid selection');
+      }
       const vault = activeVault(ch);
       const path = needPath(ch, r.path);
       const requestId = r.requestId as string;
       if (running.has(requestId)) return { ok: false, error: '이미 실행 중인 요청입니다' };
       if (running.size >= NOTE_AI_MAX_RUNNING) return { ok: false, error: '진행 중인 요청이 끝난 뒤 다시 보내세요' };
-      const mode = r.mode as NoteAiMode;
-      const target = mode === 'section' ? (r.target as string | null) : null;
-      if (mode === 'section' && !target?.trim()) return { ok: false, error: '고칠 섹션이 비어 있습니다' };
+      if (selection && selection.from < selection.to && !document.slice(selection.from, selection.to).trim()) {
+        return { ok: false, error: '고칠 부분이 비어 있습니다' };
+      }
 
       const refs = await siblingNotes(vault, path, STYLE_REF_MAX_FILES);
+      const styleRefs = refs.map((ref) => ({ path: ref.path, excerpt: styleRefExcerpt(ref.text) }));
+      const request = r.request as string;
+      let prompt: string;
+      if (selection) {
+        prompt = buildNoteInlinePrompt({ request, notePath: path, document, selection, styleRefs });
+      } else {
+        const earlier = (await notes.chats.list(vault, path)).filter((it) => it.status !== 'error').slice(-HISTORY_MAX_ITEMS);
+        const history = earlier.map((it) => ({ role: it.role, text: it.role === 'assistant' ? replyProse(it.text) : it.text }));
+        prompt = buildNoteChatPrompt({ request, notePath: path, document, history, styleRefs });
+      }
       const run: NoteAiRun = {
         agent: r.agent as NoteAgent,
         model: r.model as string | null,
         effort: r.effort as string | null,
         system: buildNoteSystemPrompt(),
-        prompt: buildNoteUserPrompt({
-          mode,
-          request: r.request as string,
-          notePath: path,
-          document: r.document as string,
-          target,
-          styleRefs: refs.map((ref) => ({ path: ref.path, excerpt: styleRefExcerpt(ref.text) })),
-        }),
+        prompt,
       };
       const abort = new AbortController();
       running.set(requestId, abort);
       const emit = (event: NoteAiEvent) => broadcaster.emit('notes:ai', event);
-      await notes.chats.append(vault, path, { role: 'user', mode, text: r.request as string });
+      // Only the conversation is recorded; an inline edit lives in the editor's undo history.
+      if (kind === 'chat') await notes.chats.append(vault, path, { role: 'user', text: request });
       void (async () => {
-        let chars = 0;
+        let text = '';
         const result = await notes.runAi(
           run,
-          (text) => {
-            chars += text.length;
-            emit({ requestId, type: 'delta', text });
+          (delta) => {
+            text += delta;
+            emit({ requestId, type: 'delta', text: delta });
           },
           abort.signal,
         );
         running.delete(requestId);
-        await notes.chats
-          .append(vault, path, {
-            role: 'assistant',
-            mode,
-            text: `${NOTE_MODE_LABEL[mode]} · ${summary(mode, chars, result, target)}`,
-            status: !result.ok ? 'error' : result.stopped ? 'stopped' : 'done',
-          })
-          .catch(() => {});
+        if (kind === 'chat') {
+          // A failed run keeps only its error: what streamed before it (a Codex turn cut at a tool call) is dropped.
+          const row = !result.ok
+            ? { role: 'assistant' as const, text: result.error, status: 'error' as const }
+            : { role: 'assistant' as const, text: text.trim() ? text : result.stopped ? '중지했다.' : '받은 내용이 없다.', status: result.stopped ? ('stopped' as const) : ('done' as const) };
+          await notes.chats.append(vault, path, row).catch(() => {});
+        }
         emit(result.ok ? { requestId, type: 'done', stopped: result.stopped } : { requestId, type: 'error', message: result.error });
       })();
       return { ok: true };

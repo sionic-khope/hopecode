@@ -1,12 +1,14 @@
 // 노트 모드 UI state that outlives the page (switching to a chat and back keeps the open note, the expanded folders
-// and the pane layout). Files themselves live on disk; nothing here is persisted.
+// and the split). Files themselves live on disk; nothing here is persisted.
 import { create } from 'zustand';
-import type { NoteAgent, NoteAiMode, NoteEntry } from '../../shared/notes';
+import type { NoteAgent, NoteEntry } from '../../shared/notes';
 
-export type NoteViewMode = 'live' | 'source' | 'preview';
+/** Editor share of the editor | AI split (0.5 = 반반). */
+export const NOTE_SPLIT = { min: 0.3, max: 0.7, initial: 0.5 };
 
-export const NOTE_TREE_W = { min: 180, max: 480, initial: 260 };
-export const NOTE_CHAT_W = { min: 300, max: 640, initial: 380 };
+export function clampSplit(v: number): number {
+  return Math.min(NOTE_SPLIT.max, Math.max(NOTE_SPLIT.min, Math.round(v * 1000) / 1000));
+}
 
 export interface NotesUiState {
   /** Vault the cached tree belongs to. */
@@ -16,12 +18,7 @@ export interface NotesUiState {
   expanded: string[];
   /** Loaded folder listings. */
   children: Record<string, NoteEntry[]>;
-  treeW: number;
-  chatW: number;
-  treeOpen: boolean;
-  chatOpen: boolean;
-  view: NoteViewMode;
-  aiMode: NoteAiMode;
+  split: number;
   agent: NoteAgent;
   /** null = the settings default of that agent. */
   claudeModel: string | null;
@@ -38,12 +35,7 @@ export const useNotesStore = create<NotesUiState>((set) => ({
   openPath: null,
   expanded: [],
   children: {},
-  treeW: NOTE_TREE_W.initial,
-  chatW: NOTE_CHAT_W.initial,
-  treeOpen: true,
-  chatOpen: true,
-  view: 'live',
-  aiMode: 'write',
+  split: NOTE_SPLIT.initial,
   agent: 'claude-code',
   claudeModel: null,
   claudeEffort: null,

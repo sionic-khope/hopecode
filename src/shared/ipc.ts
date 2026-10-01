@@ -41,6 +41,7 @@ import type {
   NoteAiEvent,
   NoteAiStartRequest,
   NoteChange,
+  NoteCardMark,
   NoteChatItem,
   NoteDirListing,
   NoteEntry,
@@ -262,8 +263,10 @@ export interface InvokeMap {
   'notes:enableGit': { req: void; res: AppSettings };
   /** `git add` + `git commit` of the changed `.md` files of the active vault only. Never pushes. */
   'notes:commit': { req: { message: string }; res: GitActionResult<{ sha: string; files: number }> };
-  /** The note's AI conversation summary (stored in the app data folder, never in the vault). */
+  /** The note's AI conversation (stored in the app data folder, never in the vault). */
   'notes:chat': { req: { path: string }; res: NoteChatItem[] };
+  /** What the user did with a card of an answer (applied / taken back); null clears it. */
+  'notes:chatCard': { req: { path: string; itemId: string; card: number; mark: NoteCardMark | null }; res: boolean };
   /** Starts a note AI request; its text streams as `notes:ai` events. */
   'notes:aiStart': { req: NoteAiStartRequest; res: { ok: true } | { ok: false; error: string } };
   /** Stops a running request; what streamed so far stays. */
@@ -410,6 +413,7 @@ export const INVOKE_CHANNELS = [
   'notes:gitStatus',
   'notes:commit',
   'notes:chat',
+  'notes:chatCard',
   'notes:aiStart',
   'notes:aiStop',
   'notes:enableGit',

@@ -1,4 +1,4 @@
-// Streams a note AI answer into the editor: the target range is framed and the editor locked while text arrives
+// Streams an inline answer into the editor: the target range is marked and the editor locked while text arrives
 // (each piece kept out of the undo history), then the final text lands as one history event, so a single ⌘Z puts the
 // note back the way it was before the request.
 import { Annotation, Transaction } from '@codemirror/state';
@@ -26,7 +26,7 @@ export class EditorStream {
     this.state = startStream(range, doc);
     this.before = doc.slice(0, range.from);
     this.after = doc.slice(range.to);
-    view.dispatch({ effects: [readOnlySlot.reconfigure(readOnly(true)), setTargetRange.of(range)] });
+    view.dispatch({ effects: [readOnlySlot.reconfigure(readOnly(true)), setTargetRange.of({ ...range, kind: 'busy' })] });
   }
 
   get original(): string {
@@ -44,7 +44,7 @@ export class EditorStream {
     const end = state.from + state.shown;
     this.view.dispatch({
       changes: change,
-      effects: setTargetRange.of({ from: state.from, to: end }),
+      effects: setTargetRange.of({ from: state.from, to: end, kind: 'busy' }),
       annotations: [Transaction.addToHistory.of(false), aiChange.of('stream')],
     });
     // Keep the growing end in sight while it is near the bottom of the viewport.

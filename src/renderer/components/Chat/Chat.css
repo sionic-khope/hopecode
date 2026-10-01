@@ -392,10 +392,6 @@
   background: var(--bg-card);
   box-shadow: var(--shadow-card);
   overflow: hidden;
-  transition: box-shadow var(--motion-2) var(--ease-soft);
-}
-.hc-tool:hover {
-  box-shadow: var(--shadow-card-hover);
 }
 .hc-tool__header {
   display: flex;
@@ -518,6 +514,197 @@
   font-size: var(--text-xs);
 }
 
+/* ---------- Agent turn: one dialogue box, text and tool lines flowing in order ---------- */
+.hc-turn__box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.hc-turn__box > .hc-agent-name {
+  margin-bottom: -4px;
+}
+.hc-turn__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+/* Tool lines sit tight against each other; text keeps its paragraph gap from them. */
+.hc-turn__box > .hc-tool--row + .hc-tool--row,
+.hc-turn__box > .hc-tool--row + .hc-toolgroup,
+.hc-turn__box > .hc-toolgroup + .hc-tool--row,
+.hc-turn__box > .hc-toolgroup + .hc-toolgroup {
+  margin-top: calc(var(--space-3) * -1 + 2px);
+}
+
+/* ---------- Tool line (one quiet call, no frame) ---------- */
+.hc-tool--row,
+.hc-toolgroup {
+  --tool-gutter: 20px;
+}
+.hc-tool--row {
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+/* Lines run to the box's inner edge: the heart sits in the padding left of the icon, which lines up with the text. */
+.hc-turn__box > .hc-tool--row,
+.hc-turn__box > .hc-toolgroup {
+  margin-left: calc(var(--tool-gutter) * -1);
+}
+.hc-tool--row.hc-tool--running::before {
+  display: none;
+}
+.hc-tool--row .hc-tool__header,
+.hc-toolgroup__summary {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 28px;
+  padding: 0 6px 0 var(--tool-gutter);
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--label);
+  font-family: var(--font-ui);
+  font-size: var(--text-md);
+  text-align: left;
+  cursor: default;
+  transition: background-color var(--motion-1) var(--ease-soft);
+}
+.hc-tool--row .hc-tool__header::before,
+.hc-toolgroup__summary::before {
+  left: 2px;
+}
+.hc-tool--row .hc-tool__header:hover,
+.hc-toolgroup__summary:hover {
+  background: color-mix(in srgb, var(--frame) 6%, transparent);
+}
+.hc-tool--row .hc-tool__header:hover::before,
+.hc-tool--row .hc-tool__header:focus-visible::before,
+.hc-toolgroup__summary:hover::before,
+.hc-toolgroup__summary:focus-visible::before {
+  opacity: 1;
+}
+.hc-tool--row .hc-tool__header:focus-visible,
+.hc-toolgroup__summary:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--select);
+}
+.hc-tool--row .hc-tool__icon {
+  width: 16px;
+  height: 16px;
+  background: none;
+  box-shadow: none;
+  color: var(--label-tertiary);
+}
+.hc-tool--row .hc-tool__name {
+  font-weight: var(--weight-regular);
+  color: var(--label);
+}
+.hc-tool--row .hc-tool__summary {
+  font-size: 12px;
+}
+.hc-tool--row .hc-tool__status {
+  gap: 8px;
+}
+.hc-tool__duration,
+.hc-toolgroup__time {
+  color: var(--label-tertiary);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+/* Output under its line: a thin rule on the left, mono, scrolls past a few screens of text. */
+.hc-tool__output {
+  margin: 2px 0 6px calc(var(--tool-gutter) + 7px);
+  padding: 2px 0 2px 12px;
+  border-left: 2px solid var(--separator);
+}
+.hc-tool--row .hc-tool__result {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--label-secondary);
+  max-height: 260px;
+}
+.hc-tool--row .hc-tool__result--error {
+  background: transparent;
+  color: var(--crit-text);
+}
+.hc-tool--row.hc-tool--open[data-state='error'] .hc-tool__output {
+  border-left-color: var(--crit);
+}
+.hc-tool__waiting {
+  margin: 0;
+  color: var(--label-tertiary);
+  font-size: var(--text-xs);
+}
+
+/* ---------- Tool group (consecutive calls folded into one line) ---------- */
+.hc-toolgroup__summary {
+  color: var(--label-secondary);
+}
+.hc-toolgroup__summary:hover .hc-toolgroup__label {
+  color: var(--label);
+}
+.hc-toolgroup__chevron {
+  flex: none;
+  display: inline-flex;
+  width: 16px;
+  justify-content: center;
+  color: var(--label-tertiary);
+  transform: rotate(-90deg);
+  transition: transform var(--motion-2) var(--ease-soft);
+}
+.hc-toolgroup--open .hc-toolgroup__chevron {
+  transform: none;
+}
+.hc-toolgroup__label {
+  flex: none;
+  white-space: nowrap;
+}
+.hc-toolgroup__failed {
+  flex: none;
+  padding: 0 6px;
+  line-height: 16px;
+  color: var(--crit-text);
+  box-shadow: inset 0 0 0 2px var(--crit-border);
+}
+.hc-toolgroup__current {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--label-tertiary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.hc-toolgroup__current::before {
+  content: '· ';
+  font-family: var(--font-ui);
+}
+.hc-toolgroup__status {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.hc-toolgroup__time::before {
+  content: '· ';
+  font-family: var(--font-ui);
+}
+/* Expanded: the calls hang under the summary, one step in. */
+.hc-toolgroup__rows {
+  display: flex;
+  flex-direction: column;
+  padding: 2px 0 4px 14px;
+}
+
 /* ---------- Diff view ---------- */
 .hc-diff {
   border-radius: var(--radius-control);
@@ -584,14 +771,12 @@
   font-style: italic;
 }
 
-/* ---------- Permission card: yellow frame + hard drop, it needs an answer ---------- */
+/* ---------- Permission card: yellow frame, it needs an answer ---------- */
 .hc-permission {
   position: relative;
   border-radius: var(--radius-card);
   background: var(--bg-card);
-  box-shadow:
-    inset 0 0 0 var(--frame-w) var(--select),
-    6px 6px 0 0 var(--drop);
+  box-shadow: inset 0 0 0 var(--frame-w-sm) var(--select);
   padding: 14px var(--space-4) var(--space-4);
   animation: hc-perm-in var(--motion-3) var(--ease-soft);
 }
@@ -1177,6 +1362,13 @@ button.hc-chip--warn[aria-expanded='true'] {
   50% {
     opacity: 1;
   }
+}
+/* Inside the turn already on screen: the status line continues it (no second portrait). */
+.hc-activity--inline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 28px;
 }
 .hc-activity__body {
   flex-direction: row;

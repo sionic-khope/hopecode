@@ -6,8 +6,8 @@ import {
   NOTE_PROMPT_HEAD,
   STYLE_REF_MAX_FILES,
   STYLE_REF_MAX_LINES,
+  buildNoteChatPrompt,
   buildNoteSystemPrompt,
-  buildNoteUserPrompt,
   cleanNoteOutput,
   clipDocument,
   styleRefExcerpt,
@@ -88,11 +88,11 @@ describe('stream edits', () => {
   });
 
   it('fits answers into their place', () => {
-    expect(fitAnswer('# T\nbody\n\n', 'rewrite', { original: 'x', before: '', after: '' })).toBe('# T\nbody\n');
+    expect(fitAnswer('# T\nbody\n\n', 'all', { original: 'x', before: '', after: '' })).toBe('# T\nbody\n');
     expect(fitAnswer('## S\nnew', 'section', { original: '## S\nold\n\n', before: '', after: '# N' })).toBe('## S\nnew\n\n');
-    expect(fitAnswer('text', 'write', { original: '', before: 'a\n', after: '' })).toBe('\ntext\n');
-    expect(fitAnswer('text', 'write', { original: '', before: 'a', after: 'b' })).toBe('\n\ntext\n\n');
-    expect(fitAnswer('   ', 'write', { original: '', before: '', after: '' })).toBe('');
+    expect(fitAnswer('text', 'insert', { original: '', before: 'a\n', after: '' })).toBe('\ntext\n');
+    expect(fitAnswer('text', 'insert', { original: '', before: 'a', after: 'b' })).toBe('\n\ntext\n\n');
+    expect(fitAnswer('   ', 'insert', { original: '', before: '', after: '' })).toBe('');
   });
 });
 
@@ -110,20 +110,6 @@ describe('notePrompt', () => {
     expect(sys).toContain('영어 원어');
   });
 
-  it('user prompt: mode task, request, capped style refs, target only for a section', () => {
-    const refs = Array.from({ length: 4 }, (_, i) => ({ path: `a/${i}.md`, excerpt: `ref ${i}` }));
-    const write = buildNoteUserPrompt({ mode: 'write', request: '분산 락', notePath: 'a/x.md', document: '', target: null, styleRefs: refs });
-    expect(write).toContain('## 작업 (작성)');
-    expect(write).toContain('## 요청\n분산 락');
-    expect(write).toContain('(빈 문서)');
-    expect(write).not.toContain('<target>');
-    expect(write.match(/<reference /g)).toHaveLength(STYLE_REF_MAX_FILES);
-    const section = buildNoteUserPrompt({ mode: 'section', request: 'r', notePath: 'a/x.md', document: '# A\nb', target: '# A\nb', styleRefs: [] });
-    expect(section).toContain('## 작업 (이 섹션)');
-    expect(section).toContain('<target>\n# A\nb\n</target>');
-    expect(section).not.toContain('<reference');
-  });
-
   it('style refs keep the first lines; long documents keep both ends', () => {
     const long = Array.from({ length: 200 }, (_, i) => `line ${i}`).join('\n');
     expect(styleRefExcerpt(long).split('\n')).toHaveLength(STYLE_REF_MAX_LINES);
@@ -137,10 +123,10 @@ describe('notePrompt', () => {
     expect(cleanNoteOutput('\n\n# T\n\n```java\nint a;\n```\n')).toBe('# T\n\n```java\nint a;\n```');
   });
 
-  it('the fixture answers follow the mode of the prompt', () => {
-    const prompt = buildNoteUserPrompt({ mode: 'section', request: '더 자세히', notePath: 'x.md', document: '## S\nb', target: '## S\nb', styleRefs: [] });
-    expect(parseNotePrompt(prompt)).toEqual({ mode: 'section', request: '더 자세히', targetHeading: '## S' });
-    expect(noteFixtureAnswer(prompt).startsWith('## S\n\nFIXTURE-SECTION: 더 자세히')).toBe(true);
+  it('the fixture answers follow the kind of the prompt', () => {
+    const prompt = buildNoteChatPrompt({ request: '2번 섹션 더 자세히', notePath: 'x.md', document: '# T\n\n### 1. 개념\na\n\n### 2. 정리\nb\n', history: [], styleRefs: [] });
+    expect(parseNotePrompt(prompt)).toEqual({ kind: 'chat', request: '2번 섹션 더 자세히', headings: ['T', '1. 개념', '2. 정리'] });
+    expect(noteFixtureAnswer(prompt)).toContain('```note-replace section="2. 정리"\n### 2. 정리\n\nFIXTURE-SECTION: 2번 섹션 더 자세히');
   });
 });
 
