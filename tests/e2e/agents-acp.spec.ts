@@ -137,7 +137,7 @@ test('agent menu lists Claude Code, Codex and Hermes (fixture logins: all usable
     await expect(row).toBeEnabled();
   }
   // Short vendor · default-model lines; the chip itself carries no tooltip repeating them.
-  for (const line of ['Anthropic · Opus 5.5', 'OpenAI · GPT-6.1-Sol', 'Nous Research · 시스템 기본 모델']) await expect(menu).toContainText(line);
+  for (const line of ['Anthropic · Opus 5.5', 'OpenAI · GPT-6.1-Sol', 'Nous Research · DeepSeek V4.1 Flash Ultrafast']) await expect(menu).toContainText(line);
   await expect(page.getByTestId('draft').locator('.hc-chip--agent')).not.toHaveAttribute('title', /.+/);
   await screenshot(page, 'v8-agent-menu', SHOTS);
   await page.keyboard.press('Escape');
@@ -232,7 +232,7 @@ test('hermes: system default model (reported by the agent), ACP mode chip, scena
   await openDraft(page);
   await pickAgent(page, 'Hermes');
   const draft = page.getByTestId('draft');
-  await expect(draft.getByTestId('system-model-tag')).toHaveText('시스템 기본값');
+  await expect(draft.getByTestId('system-model-tag')).toHaveText('DeepSeek V4.1 Flash Ultrafast');
   await expect(draft.locator('.hc-chip--perm')).toHaveCount(0);
   await chooseFixtureFolder(page, sandbox);
   await sendMessage(page, 'hello hermes');
@@ -242,7 +242,7 @@ test('hermes: system default model (reported by the agent), ACP mode chip, scena
   expect(await threadById(page, created.id)).toMatchObject({ agent: 'hermes', model: '', effort: null });
   expect(created.worktree?.branch).toMatch(/^hopecode\//);
 
-  await expect(composer(page).getByTestId('system-model-tag')).toHaveText('시스템 기본값 · og/deepseek-fixture');
+  await expect(composer(page).getByTestId('system-model-tag')).toHaveText('DeepSeek Fixture');
   const mode = composer(page).getByRole('button', { name: /^모드:/ });
   await expect(mode).toHaveAttribute('aria-label', '모드: Ask before edits');
   // The selected Hermes thread polls `hermes usage` (fixture: two windows).

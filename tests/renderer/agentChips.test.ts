@@ -11,7 +11,7 @@ import {
   codexModelChoices,
   codexThreadChip,
   EFFORT_LABEL,
-  hermesModelLabel,
+  hermesModelChip,
 } from '../../src/renderer/components/Chat/acpChips';
 import { chatSectionThreads } from '../../src/renderer/components/Sidebar/chatSection';
 import { DENY_CANCELS_TURN, MAY_PERSIST, permissionButtons } from '../../src/renderer/components/Chat/permissionButtons';
@@ -111,7 +111,7 @@ describe('draft defaults per agent (chips)', () => {
     const label = codexModelChoices([], codex.model).find((c) => c.value === codex.model)?.label;
     expect(`${label} · ${EFFORT_LABEL[codex.effort as 'high']}`).toBe('GPT-6.1-Sol · High');
     expect(draftAgentDefaults('hermes', DEFAULT_SETTINGS)).toEqual({ model: '', effort: null });
-    expect(hermesModelLabel(null)).toBe('시스템 기본값');
+    expect(hermesModelChip(null).label).toBe('시스템 기본값');
   });
 });
 
@@ -141,9 +141,16 @@ describe('codex chips', () => {
 });
 
 describe('hermes chips', () => {
-  it('model label is read-only system default with the reported model', () => {
-    expect(hermesModelLabel('og/deepseek-fixture')).toBe('시스템 기본값 · og/deepseek-fixture');
-    expect(hermesModelLabel('  ')).toBe('시스템 기본값');
+  it('model label is the model name; the tooltip marks it as the system default', () => {
+    const info = { defaultModel: 'deepseek/deepseek-v4.1-flash-ultrafast', defaultProvider: 'og' };
+    expect(hermesModelChip('og/deepseek-fixture')).toEqual({ label: 'DeepSeek Fixture', title: '시스템 기본값 · og/deepseek-fixture' });
+    expect(hermesModelChip('  ').label).toBe('시스템 기본값');
+    expect(hermesModelChip(null, info)).toEqual({
+      label: 'DeepSeek V4.1 Flash Ultrafast',
+      title: '시스템 기본값 · og · deepseek/deepseek-v4.1-flash-ultrafast',
+    });
+    // The session-reported model wins over the detected default.
+    expect(hermesModelChip('gpt-6.1-sol', info)).toEqual({ label: 'GPT 6.1 Sol', title: '시스템 기본값 · og · gpt-6.1-sol' });
   });
 
   it('mode chip follows the session modes; a pending choice wins', () => {

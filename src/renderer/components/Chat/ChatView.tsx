@@ -9,7 +9,7 @@ import { MessageList } from './MessageList';
 import { ToolPathContext } from './ToolCard';
 import { Composer } from './Composer';
 import { AcpModelChip, AgentChip, AgentModeChip, FolderTag, ModelPicker, NO_PROJECT_LABEL, PermissionChip, SystemModelTag } from './ComposerControls';
-import { agentModeChip, codexThreadChip, hermesModelLabel } from './acpChips';
+import { agentModeChip, codexThreadChip, hermesModelChip } from './acpChips';
 import './Chat.css';
 
 export interface ChatViewProps {
@@ -98,9 +98,10 @@ export function ChatView({
   const codex = thread.agent === 'codex' ? codexThreadChip(thread) : null;
   const modeChip = features.agentModes ? agentModeChip(thread.acp) : null;
 
+  const hermesInfo = useAppStore((s) => s.localAuth.find((i) => i.agent === 'hermes'));
   const trailing =
     thread.agent === 'hermes' ? (
-      <SystemModelTag label={hermesModelLabel(thread.acp?.controls?.reportedModel)} />
+      <SystemModelTag {...hermesModelChip(thread.acp?.controls?.reportedModel, hermesInfo)} />
     ) : codex ? (
       <AcpModelChip
         model={codex.model}

@@ -69,6 +69,8 @@ export const NO_PROJECT_LABEL = '프로젝트 없음';
 
 /** One width for every composer menu (+, folder, permission, account, model). */
 export const COMPOSER_MENU_WIDTH = 288;
+/** The agent menu carries "<vendor> · <model>" lines; give them room so model names do not truncate. */
+const AGENT_MENU_WIDTH = 360;
 
 export const FolderChip = memo(function FolderChip({
   projects,
@@ -426,7 +428,7 @@ export const AgentChip = memo(function AgentChip({
         <span className="hc-chip__label">{current.name}</span>
         <ChevronDownSmallIcon className="hc-chip__chevron" />
       </button>
-      <Menu open={open} onClose={() => setOpen(false)} anchorRef={ref} sections={sections} label="에이전트" placement="top-start" width={COMPOSER_MENU_WIDTH} />
+      <Menu open={open} onClose={() => setOpen(false)} anchorRef={ref} sections={sections} label="에이전트" placement="top-start" width={AGENT_MENU_WIDTH} />
     </>
   );
 });
@@ -531,12 +533,12 @@ export const AcpModelChip = memo(function AcpModelChip({
 });
 
 /** Hermes: the model is the agent's own system default; the app only shows what it reported. */
-export function SystemModelTag({ label }: { label: string }) {
+export function SystemModelTag({ label, title }: { label: string; title?: string }) {
   return (
     <span
       className="hc-chip hc-chip--model hc-chip--readonly"
       aria-label={`모델: ${label}`}
-      title="Hermes의 시스템 기본 설정을 그대로 씁니다. 모델은 Hermes에서 바꾸세요"
+      title={title ? `${title}\nHermes의 시스템 기본 설정을 그대로 씁니다` : 'Hermes의 시스템 기본 설정을 그대로 씁니다. 모델은 Hermes에서 바꾸세요'}
       data-testid="system-model-tag"
     >
       <BoltIcon />

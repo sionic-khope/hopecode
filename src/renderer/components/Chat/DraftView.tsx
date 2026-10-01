@@ -7,7 +7,7 @@ import { BrandMark } from '../common';
 import { GlyphBranch, GlyphChanges, GlyphCode, GlyphTerminal } from '../common/glyphs';
 import { Composer, type ComposerHandle } from './Composer';
 import { AcpModelChip, AgentChip, FolderChip, ModelPicker, PermissionChip, SystemModelTag } from './ComposerControls';
-import { SYSTEM_DEFAULT_LABEL, codexEffortChoices, codexModelChoices, effortValueLabel } from './acpChips';
+import { codexEffortChoices, codexModelChoices, effortValueLabel, hermesModelChip } from './acpChips';
 import { BoltIcon } from './icons';
 import './Chat.css';
 
@@ -125,7 +125,7 @@ export function DraftView({
 
   const trailing =
     draft.agent === 'hermes' ? (
-      <SystemModelTag label={SYSTEM_DEFAULT_LABEL} />
+      <SystemModelTag {...hermesModelChip(null, localAuth.find((i) => i.agent === 'hermes'))} />
     ) : draft.agent === 'codex' ? (
       <AcpModelChip
         model={draft.model}

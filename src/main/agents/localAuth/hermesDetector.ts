@@ -2,6 +2,7 @@
 // ACP `initialize` probe whose agent-type authMethod id is the active provider. The probe spawns a process, so it
 // only runs when `opts.probe` is true (app start, user recheck).
 import { spawn } from 'node:child_process';
+import { join } from 'node:path';
 import { parseHermesAuthList, parseHermesAuthStatus } from '../../../core/hermesAuthParse';
 import type { LocalAuthInfo } from '../../../shared/types';
 import { baseInfo, type DetectorDeps } from './detectorDeps';
@@ -77,12 +78,57 @@ export const spawnInitializeProbe: InitializeProbe = (command, args, env, timeou
     );
   });
 
+const CONFIG_MAX_BYTES = 1024 * 1024;
+
+/** Minimal read of the `model:` block of config.yaml (only `default` and `provider`, quotes and comments stripped). */
+export function parseHermesModelConfig(yaml: string): { model: string | null; provider: string | null } {
+  let inModel = false;
+  let model: string | null = null;
+  let provider: string | null = null;
+  for (const line of yaml.split(/\r?\n/)) {
+    if (/^\s*(#.*)?$/.test(line)) continue;
+    if (!/^\s/.test(line)) {
+      inModel = /^model\s*:\s*(#.*)?$/.test(line);
+      continue;
+    }
+    if (!inModel) continue;
+    const m = /^\s+(default|provider)\s*:\s*(.*)$/.exec(line);
+    if (!m) continue;
+    const value = (m[2] as string).replace(/\s+#.*$/, '').trim().replace(/^(["'])(.*)\1$/, '$2').trim();
+    if (!value) continue;
+    if (m[1] === 'default') model = value;
+    else provider = value;
+  }
+  return { model, provider };
+}
+
 export interface HermesDetectorDeps extends DetectorDeps {
   /** `agentBinaries.resolveHermes` (null = not installed). */
   hermesPath: () => string | null;
   /** Login-shell env for the child processes. */
   env: () => Record<string, string>;
   probeInitialize?: InitializeProbe;
+}
+
+/** Hermes' system default model: `hermes config get` first, then a read-only look at config.yaml. */
+async function readDefaultModel(
+  deps: HermesDetectorDeps,
+  run: (args: string[]) => Promise<{ code: number; stdout: string }>,
+  env: Record<string, string>,
+): Promise<{ defaultModel: string | null; defaultProvider: string | null }> {
+  const get = async (key: string): Promise<string | null> => {
+    const r = await run(['config', 'get', key]);
+    return r.code === 0 ? r.stdout.trim().split(/\r?\n/)[0]?.trim() || null : null;
+  };
+  const [model, provider] = await Promise.all([get('model.default'), get('model.provider')]);
+  if (model) return { defaultModel: model, defaultProvider: provider };
+  try {
+    const home = env['HERMES_HOME'] || join(deps.homedir(), '.hermes');
+    const parsed = parseHermesModelConfig(await deps.readFile(join(home, 'config.yaml'), CONFIG_MAX_BYTES));
+    return { defaultModel: parsed.model, defaultProvider: parsed.provider ?? provider };
+  } catch {
+    return { defaultModel: null, defaultProvider: provider };
+  }
 }
 
 export async function detectHermes(
@@ -106,11 +152,12 @@ export async function detectHermes(
   const providers = list.code === 0 ? parseHermesAuthList(list.stdout) : [];
   const statuses = await Promise.all(providers.map((p) => run(['auth', 'status', p.id])));
   const loggedInProviders = providers.filter((_, i) => parseHermesAuthStatus((statuses[i] as { stdout: string }).stdout) === true);
-  const common = { ...withVer, providers };
+  const defaults = await readDefaultModel(deps, run, env);
+  const common = { ...withVer, providers, ...defaults };
 
   if (!opts.probe && opts.prev && opts.prev.agent === 'hermes' && opts.prev.state !== 'not-installed') {
     // Probe result stays cached; only binary/version/providers refresh.
-    return { ...opts.prev, version, providers, source: info.source, checkedAt: info.checkedAt };
+    return { ...opts.prev, version, providers, ...defaults, source: info.source, checkedAt: info.checkedAt };
   }
 
   const probe = deps.probeInitialize ?? spawnInitializeProbe;

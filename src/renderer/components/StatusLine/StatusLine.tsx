@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState } from 'react';
 import type { Account, ModelOption, PoolSnapshot, Thread } from '../../../shared/types';
 import { modelLabel } from '../../../core/modelLabel';
 import { codexModelLabel } from '../../../core/modelDisplay';
+import { hermesModelChip } from '../Chat/acpChips';
 import { formatSessionDuration } from '../../../core/format';
 import { Pill } from '../common';
 import { AccountsPopover } from '../Accounts/AccountsPopover';
@@ -49,11 +50,12 @@ export const StatusLine = memo(function StatusLine({ pool, accounts, activeThrea
   const available = summary.available;
   const availLevel = total === 0 ? 'ok' : available === 0 ? 'crit' : available < total ? 'warn' : 'ok';
 
+  const hermesInfo = useAppStore((s) => s.localAuth.find((i) => i.agent === 'hermes'));
   const modelId = activeThread ? (activeThread.resolvedModel ?? activeThread.model) : null;
   const agentModelText = (): string | null => {
     if (!activeThread) return null;
     if (activeThread.agent === 'codex' && modelId) return codexModelLabel(modelId, activeThread.acp?.controls?.configOptions ?? []);
-    if (activeThread.agent === 'hermes') return activeThread.acp?.controls?.reportedModel || '시스템 기본값';
+    if (activeThread.agent === 'hermes') return hermesModelChip(activeThread.acp?.controls?.reportedModel, hermesInfo).label;
     return null;
   };
   const modelText = modelTextProp ?? agentModelText() ?? (modelId ? modelLabel(modelId, models) : '–');

@@ -52,7 +52,7 @@ test('switching the draft agent resets the model chip to that agent\'s default',
   await pickAgent(page, 'Codex');
   await expect(draftModel(page)).toHaveAttribute('aria-label', '모델: GPT-6.1-Sol · High');
   await pickAgent(page, 'Hermes');
-  await expect(page.getByTestId('draft').getByTestId('system-model-tag')).toHaveText('시스템 기본값');
+  await expect(page.getByTestId('draft').getByTestId('system-model-tag')).toHaveText('DeepSeek V4.1 Flash Ultrafast');
   await pickAgent(page, 'Claude Code');
   await expect(draftModel(page)).toHaveAttribute('aria-label', '모델: Opus 5.5 · High');
 });
@@ -81,7 +81,7 @@ test('Settings: per-agent defaults apply to the next draft and its session', asy
   await openFromMore(page, '설정');
   const settings = page.getByTestId('settings');
   const section = settings.getByRole('region', { name: '새 채팅 기본 모델' });
-  await expect(section.getByTestId('hermes-default')).toHaveText('시스템 기본값');
+  await expect(section.getByTestId('hermes-default')).toHaveText('시스템 기본값 (DeepSeek V4.1 Flash Ultrafast · og)');
   await section.getByRole('radiogroup', { name: '기본 effort', exact: true }).getByRole('radio', { name: 'Low', exact: true }).click();
   await section.getByRole('radiogroup', { name: 'Codex 기본 effort' }).getByRole('radio', { name: 'Medium', exact: true }).click();
   // The Codex list is what the fixture session reported (gpt-6.1-sol / gpt-6-sol).

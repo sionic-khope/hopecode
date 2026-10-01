@@ -157,6 +157,30 @@ describe('hermes detector', () => {
     expect(probe).not.toHaveBeenCalled();
     expect(r).toMatchObject({ state: 'logged-in', provider: 'og' });
   });
+  it('default model: CLI success', async () => {
+    const { d } = mk({ ...happy, 'config get model.default': { stdout: 'deepseek/deepseek-v4.1-flash-ultrafast\n' }, 'config get model.provider': { stdout: 'og\n' } });
+    expect(await detectHermes(d, { probe: true })).toMatchObject({ defaultModel: 'deepseek/deepseek-v4.1-flash-ultrafast', defaultProvider: 'og' });
+  });
+  it('default model: CLI failure falls back to config.yaml (HERMES_HOME respected)', async () => {
+    const yaml = "# c\nmodel:\n  default: 'deepseek/deepseek-v4.1-flash-ultrafast'  # note\n  provider: og\n  other: x\nagent:\n  default: nope\n";
+    const { d } = mk(happy);
+    const read = vi.fn(async (p: string) => {
+      if (p === '/fake/home/.hermes/config.yaml') return yaml;
+      throw new Error('ENOENT');
+    });
+    expect(await detectHermes({ ...d, readFile: read }, { probe: true })).toMatchObject({ defaultModel: 'deepseek/deepseek-v4.1-flash-ultrafast', defaultProvider: 'og' });
+    const custom = vi.fn(async (p: string) => {
+      if (p === '/custom/hh/config.yaml') return yaml;
+      throw new Error('ENOENT');
+    });
+    const env = () => ({ PATH: '/p', HERMES_HOME: '/custom/hh' });
+    expect(await detectHermes({ ...d, env, readFile: custom }, { probe: true })).toMatchObject({ defaultModel: 'deepseek/deepseek-v4.1-flash-ultrafast' });
+  });
+  it('default model: CLI and yaml both fail -> null', async () => {
+    const { d } = mk(happy);
+    const r = await detectHermes({ ...d, readFile: async () => { throw new Error('ENOENT'); } }, { probe: true });
+    expect(r).toMatchObject({ state: 'logged-in', defaultModel: null, defaultProvider: null });
+  });
   it('not installed / check failure', async () => {
     expect((await detectHermes(mk(happy, null).d, { probe: true })).state).toBe('not-installed');
     expect(await detectHermes(mk({ ...happy, 'acp --check': { code: 1 } }).d, { probe: true })).toMatchObject({ state: 'error', detail: 'acp-check-failed' });

@@ -523,6 +523,10 @@ export interface LocalAuthInfo {
   provider: string | null;
   /** Hermes: credential count per provider from `hermes auth list` (no labels, no values). */
   providers?: { id: string; count: number }[];
+  /** Hermes: system default model id (`model.default` of config.yaml), e.g. `deepseek/deepseek-v4.1-flash-ultrafast`. */
+  defaultModel?: string | null;
+  /** Hermes: provider of the default model (`model.provider`). */
+  defaultProvider?: string | null;
   /** Display-only origin ('~/.codex/auth.json', 'Keychain: Claude Code-credentials', '~/.local/bin/hermes'). */
   source: string;
   version: string | null;

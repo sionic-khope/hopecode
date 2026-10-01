@@ -26,7 +26,7 @@ export function createFixtureLocalAuth(env: NodeJS.ProcessEnv = process.env): Lo
     const state = overrides[agent] ?? defaults.state;
     const base: LocalAuthInfo = { agent, ...defaults, state, checkedAt: AT };
     if (state === 'logged-in') return base;
-    return { ...base, method: null, email: null, plan: null, provider: null, detail: state === 'error' ? 'fixture-error' : null };
+    return { ...base, method: null, email: null, plan: null, provider: null, defaultModel: null, defaultProvider: null, detail: state === 'error' ? 'fixture-error' : null };
   }
 
   const claude = make('claude-code', {
@@ -58,6 +58,8 @@ export function createFixtureLocalAuth(env: NodeJS.ProcessEnv = process.env): Lo
     source: '~/.local/bin/hermes',
     version: '0.0.0-fixture',
     detail: null,
+    defaultModel: 'deepseek/deepseek-v4.1-flash-ultrafast',
+    defaultProvider: 'og',
   });
 
   return createLocalAuthService({

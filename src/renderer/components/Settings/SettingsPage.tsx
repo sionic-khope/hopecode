@@ -26,6 +26,7 @@ import { isModelSelected, modelMenuLabel } from '../../../core/modelDisplay';
 import { tildePath } from '../../../core/format';
 import { AGENTS } from '../../../shared/agents';
 import type { AgentKind } from '../../../shared/types';
+import { hermesModelLabel } from '../../../core/hermesModelLabel';
 import { useAppStore } from '../../store';
 import { AgentIcon } from '../Agent/AgentIcon';
 import { Button, Menu, Modal, Segmented, Switch, type MenuSection } from '../common';
@@ -152,6 +153,7 @@ export function SettingsPage({
 
   const modelOptions = models.length > 0 ? models : [{ value: 'default', label: 'Default' }];
   const threads = useAppStore((s) => s.threads);
+  const hermesInfo = useAppStore((s) => s.localAuth.find((i) => i.agent === 'hermes'));
   const codexModels = useMemo(() => codexModelChoices(threads, settings.codexDefaultModel), [threads, settings.codexDefaultModel]);
   const effortLabel = (e: EffortLevel | CodexEffortLevel) => (e === 'xhigh' ? 'XHigh' : EFFORT_LABEL[e]);
   const codexEfforts = useMemo(() => codexEffortChoices(threads), [threads]);
@@ -220,9 +222,11 @@ export function SettingsPage({
           />
         </Row>
         <AgentGroup agent="hermes" />
-        <Row label="모델 · effort" hint="Hermes 자신의 설정을 그대로 씁니다. 바꾸려면 Hermes에서 설정하세요">
+        <Row label="모델 · effort" hint="Hermes 자신의 설정을 그대로 씁니다. `hermes model` 명령으로 변경하세요">
           <span className="hc-settings__fixed" data-testid="hermes-default">
-            {SYSTEM_DEFAULT_LABEL}
+            {hermesInfo?.defaultModel
+              ? `${SYSTEM_DEFAULT_LABEL} (${hermesModelLabel(hermesInfo.defaultModel)}${hermesInfo.defaultProvider ? ` · ${hermesInfo.defaultProvider}` : ''})`
+              : SYSTEM_DEFAULT_LABEL}
           </span>
         </Row>
       </Section>

@@ -1,9 +1,10 @@
 // What the composer's agent-specific chips show (plan 2.11): Codex model / effort from the session's ACP config
 // options (the built-in label table before the first session), Hermes' read-only "시스템 기본값" label and its
 // ACP session modes. Pure, so the chips stay thin.
+import { hermesModelLabel } from '../../../core/hermesModelLabel';
 import { codexModelLabel } from '../../../core/modelDisplay';
 import { CODEX_EFFORT_LEVELS, CODEX_MODEL_LABELS } from '../../../shared/constants';
-import type { AcpConfigOptionLite, AcpControls, CodexEffortLevel, Thread } from '../../../shared/types';
+import type { AcpConfigOptionLite, AcpControls, CodexEffortLevel, LocalAuthInfo, Thread } from '../../../shared/types';
 
 /** Labels of Claude's levels plus Codex's `ultra` (CodexEffortLevel is the superset). */
 export const EFFORT_LABEL: Record<CodexEffortLevel, string> = {
@@ -107,10 +108,23 @@ export function codexThreadChip(thread: Pick<Thread, 'model' | 'effort' | 'acp'>
   };
 }
 
-/** Hermes model label: `시스템 기본값 · <reported>` or just `시스템 기본값` (the app never picks Hermes' model). */
-export function hermesModelLabel(reportedModel: string | null | undefined): string {
-  const m = reportedModel?.trim();
-  return m ? `${SYSTEM_DEFAULT_LABEL} · ${m}` : SYSTEM_DEFAULT_LABEL;
+/**
+ * Hermes model chip: `시스템 기본값 · <name>`. The model the live session reported is what really runs, so it wins over
+ * the detected config default; with neither only `시스템 기본값` remains. The tooltip carries provider and raw id.
+ */
+export function hermesModelChip(
+  reportedModel: string | null | undefined,
+  info?: Pick<LocalAuthInfo, 'defaultModel' | 'defaultProvider'> | null,
+): { label: string; title: string } {
+  const reported = reportedModel?.trim();
+  const model = reported || info?.defaultModel?.trim() || null;
+  if (!model) return { label: SYSTEM_DEFAULT_LABEL, title: '' };
+  const provider = info?.defaultProvider;
+  // The chip shows the model itself (it would truncate behind a prefix); the tooltip says where it comes from.
+  return {
+    label: hermesModelLabel(model),
+    title: `${SYSTEM_DEFAULT_LABEL} · ${provider ? `${provider} · ${model}` : model}`,
+  };
 }
 
 export interface ModeChipState {

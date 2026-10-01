@@ -35,12 +35,15 @@ import {
 } from './components/common/glyphs';
 import { disposeTerminalEntry, resetTerminalEntry } from './components/Terminal/terminalRegistry';
 import { ipcErrorMessage } from './errors';
+import { hermesModelChip } from './components/Chat/acpChips';
+import { codexModelLabel } from '../core/modelDisplay';
 import { useNotifications } from './hooks/useNotifications';
 import {
   initStoreEventSubscriptions,
   selectAccounts,
   selectChatScrolled,
   selectDraft,
+  selectLocalAuthFor,
   selectHomeDir,
   selectModels,
   selectPanel,
@@ -361,10 +364,15 @@ export function App() {
 
   const activePage: NavPage = route === 'chat' ? (activeThread ? null : 'draft') : route;
   // Statusline model: the thread's (resolved) model, or what the draft will start with.
+  const hermesAuth = useAppStore((st) => selectLocalAuthFor(st, 'hermes'));
   const statusModel = activeThread
     ? concreteModelLabel(activeThread.model, models, { resolvedModel: activeThread.resolvedModel, defaultLabel: defaultModelLabel })
     : route === 'chat'
-      ? concreteModelLabel(draft.model, models, { defaultLabel: defaultModelLabel })
+      ? draft.agent === 'hermes'
+        ? hermesModelChip(null, hermesAuth).label
+        : draft.agent === 'codex'
+          ? codexModelLabel(draft.model)
+          : concreteModelLabel(draft.model, models, { defaultLabel: defaultModelLabel })
       : null;
   const activeProject = activeThread ? (projects.find((p) => p.id === activeThread.projectId) ?? null) : null;
   // The panel belongs to the conversation view; other routes keep it closed without forgetting the tab.

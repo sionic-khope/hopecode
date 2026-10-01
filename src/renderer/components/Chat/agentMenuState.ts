@@ -1,6 +1,7 @@
 // Agent picker rows: whether each agent can start a chat on this Mac, and the reason line shown when it cannot.
 // Mirrors main's LocalAuthService.availability(); Claude Code runs on the account pool, so its own local login
 // never disables it.
+import { hermesModelLabel } from '../../../core/hermesModelLabel';
 import { AGENT_KINDS, AGENTS } from '../../../shared/agents';
 import type { AgentAvailability, AgentKind, LocalAuthInfo } from '../../../shared/types';
 
@@ -40,8 +41,11 @@ export function agentMenuRow(agent: AgentKind, localAuth: readonly LocalAuthInfo
   const a = agentAvailability(agent, localAuth);
   if (!a) return { agent, name, disabled: true, reason: 'checking', description: '설치·로그인 상태 확인 중' };
   switch (a.reason) {
-    case 'ok':
-      return { agent, name, disabled: false, reason: 'ok', description: AGENTS[agent].description };
+    case 'ok': {
+      const defaultModel = agent === 'hermes' ? localAuth.find((i) => i.agent === agent)?.defaultModel : null;
+      const description = defaultModel ? `Nous Research · ${hermesModelLabel(defaultModel)}` : AGENTS[agent].description;
+      return { agent, name, disabled: false, reason: 'ok', description };
+    }
     case 'not-installed':
       return { agent, name, disabled: true, reason: a.reason, description: `설치되지 않음 · ${INSTALL_HINT[agent] ?? '설치 후 다시 확인'}` };
     case 'not-logged-in':
