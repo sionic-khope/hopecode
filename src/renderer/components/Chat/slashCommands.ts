@@ -4,7 +4,10 @@ import type { AcpCommandLite, SlashCommandInfo, SlashCommandSource } from '../..
 
 /** One picker row, whichever agent it came from. */
 export interface SlashItem {
+  /** Full command name the agent receives (`oh-my-claudecode:ultragoal`). */
   name: string;
+  /** What the picker shows and the composer gets (`ultragoal`); the full name when the short one is ambiguous. */
+  label: string;
   description: string;
   /** null = takes no arguments (Enter sends it right away). */
   argumentHint: string | null;
@@ -41,8 +44,22 @@ export function slashTokenAt(text: string, caret: number): SlashToken | null {
 
 /** Fuzzy ranking (the ⌘K palette's): name prefix > word start > substring > description > subsequence. */
 export function filterSlashCommands(items: readonly SlashItem[], query: string, limit = SLASH_RESULT_LIMIT): SlashItem[] {
-  const rows = items.map((item, i) => ({ id: String(i), title: item.name, subtitle: item.description, group: item.source, item }));
+  const rows = items.map((item, i) => ({
+    id: String(i),
+    title: item.label,
+    subtitle: item.label === item.name ? item.description : `${item.name} ${item.description}`,
+    group: item.source,
+    item,
+  }));
   return searchPalette(rows, query, limit).map((m) => m.item.item);
+}
+
+/** `/label args` -> `/name args` for a shortened plugin command, so the agent always gets the namespaced name. */
+export function expandSlashLabel(text: string, items: readonly SlashItem[]): string {
+  const m = /^\/(\S+)/.exec(text);
+  if (!m) return text;
+  const item = items.find((i) => i.label === m[1] && i.label !== i.name);
+  return item ? `/${item.name}${text.slice(m[0].length)}` : text;
 }
 
 /** Replaces the token with `/name ` and puts the caret after the space. */
@@ -61,14 +78,24 @@ export function sendsOnEnter(item: SlashItem, text: string, token: SlashToken): 
 }
 
 export function claudeBadge(c: Pick<SlashCommandInfo, 'source' | 'plugin'>): string {
-  if (c.source === 'plugin') return `plugin:${c.plugin ?? '?'}`;
+  if (c.source === 'plugin') return c.plugin ?? 'plugin';
   if (c.source === 'builtin') return 'Claude 내장';
   return c.source;
 }
 
+/** `plugin:skill` -> `skill` unless another command has that name or short form. */
+function shortLabels(names: readonly string[]): Map<string, string> {
+  const short = (n: string) => n.slice(n.lastIndexOf(':') + 1);
+  const count = new Map<string, number>();
+  for (const n of names) for (const k of new Set([n, short(n)])) count.set(k, (count.get(k) ?? 0) + 1);
+  return new Map(names.map((n) => [n, n.includes(':') && count.get(short(n)) === 1 ? short(n) : n]));
+}
+
 export function fromClaude(commands: readonly SlashCommandInfo[]): SlashItem[] {
+  const labels = shortLabels(commands.map((c) => c.name));
   return commands.map((c) => ({
     name: c.name,
+    label: labels.get(c.name) ?? c.name,
     description: c.description,
     argumentHint: c.argumentHint,
     source: c.source,
@@ -82,6 +109,7 @@ export function fromClaude(commands: readonly SlashCommandInfo[]): SlashItem[] {
 export function fromAcp(commands: readonly AcpCommandLite[], agentName: string): SlashItem[] {
   return commands.map((c) => ({
     name: c.name,
+    label: c.name,
     description: c.description,
     argumentHint: c.hint,
     source: 'builtin',

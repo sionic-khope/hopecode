@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   applySlashChoice,
   claudeBadge,
+  expandSlashLabel,
   filterSlashCommands,
   fromAcp,
+  fromClaude,
   sendsOnEnter,
   slashTokenAt,
   type SlashItem,
@@ -11,6 +13,7 @@ import {
 
 const item = (name: string, description = '', argumentHint: string | null = null): SlashItem => ({
   name,
+  label: name,
   description,
   argumentHint,
   source: 'user',
@@ -73,9 +76,36 @@ describe('choosing a row', () => {
   });
 });
 
+describe('plugin short labels', () => {
+  const info = (name: string, plugin?: string) =>
+    ({ name, description: '', argumentHint: null, source: plugin ? 'plugin' : 'user', ...(plugin ? { plugin } : {}), kind: 'skill' }) as const;
+
+  it('shows the short name when unique, keeps the full one when it collides', () => {
+    const items = fromClaude([
+      info('oh-my-claudecode:ultragoal', 'oh-my-claudecode'),
+      info('oh-my-claudecode:plan', 'oh-my-claudecode'),
+      info('other:plan', 'other'),
+      info('demo'),
+    ]);
+    expect(items.map((i) => i.label)).toEqual(['ultragoal', 'oh-my-claudecode:plan', 'other:plan', 'demo']);
+    expect(filterSlashCommands(items, 'ultra')[0]?.name).toBe('oh-my-claudecode:ultragoal');
+    // The plugin name stays searchable.
+    expect(filterSlashCommands(items, 'oh-my').map((i) => i.name)).toContain('oh-my-claudecode:ultragoal');
+  });
+
+  it('expands a short label to the namespaced name on send, leaves everything else alone', () => {
+    const items = fromClaude([info('oh-my-claudecode:ultragoal', 'oh-my-claudecode'), info('demo')]);
+    expect(expandSlashLabel('/ultragoal ship it', items)).toBe('/oh-my-claudecode:ultragoal ship it');
+    expect(expandSlashLabel('/ultragoal', items)).toBe('/oh-my-claudecode:ultragoal');
+    expect(expandSlashLabel('/demo x', items)).toBe('/demo x');
+    expect(expandSlashLabel('/ultragoalx', items)).toBe('/ultragoalx');
+    expect(expandSlashLabel('hi /ultragoal', items)).toBe('hi /ultragoal');
+  });
+});
+
 describe('badges', () => {
   it('labels sources', () => {
-    expect(claudeBadge({ source: 'plugin', plugin: 'omc' })).toBe('plugin:omc');
+    expect(claudeBadge({ source: 'plugin', plugin: 'omc' })).toBe('omc');
     expect(claudeBadge({ source: 'builtin' })).toBe('Claude 내장');
     expect(claudeBadge({ source: 'project' })).toBe('project');
     expect(fromAcp([{ name: 'review', description: 'r', hint: 'x' }], 'Codex')[0]).toMatchObject({ badge: 'Codex 내장', argumentHint: 'x' });

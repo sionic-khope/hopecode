@@ -7,7 +7,7 @@ import { playSfx } from '../../sound/engine';
 import type { ChatImage } from '../../../shared/types';
 import { ComposerImageTray, useComposerImages } from '../Images/ComposerImages';
 import { SlashMenu, slashOptionId, useSlashItems, type SlashSource } from './SlashMenu';
-import { applySlashChoice, filterSlashCommands, sendsOnEnter, slashTokenAt } from './slashCommands';
+import { applySlashChoice, expandSlashLabel, filterSlashCommands, sendsOnEnter, slashTokenAt } from './slashCommands';
 import './Chat.css';
 
 export const COMPOSER_PLACEHOLDER = '무엇이든 요청하세요';
@@ -178,13 +178,13 @@ export const Composer = memo(function Composer({
       submit(`/${item.name}`);
       return;
     }
-    const next = applySlashChoice(text, token, item.name);
+    const next = applySlashChoice(text, token, item.label);
     pendingCaret.current = next.caret;
     setText(next.text);
   };
 
   const submit = (override?: string) => {
-    const trimmed = (override ?? text).trim();
+    const trimmed = expandSlashLabel((override ?? text).trim(), slashItems);
     if (!trimmed || disabled || busy) return;
     playSfx('send');
     const images = attachments.images;

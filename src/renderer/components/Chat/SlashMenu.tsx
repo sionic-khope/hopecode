@@ -78,7 +78,7 @@ export function SlashMenu({
                 onClick={() => onChoose(i)}
               >
                 <span className="hc-slash__row">
-                  <span className="hc-slash__name">/{item.name}</span>
+                  <span className="hc-slash__name">/{item.label}</span>
                   <span className={`hc-slash__badge hc-slash__badge--${item.source}`}>{item.badge}</span>
                 </span>
                 {item.description ? <span className="hc-slash__desc">{item.description}</span> : null}
@@ -88,7 +88,7 @@ export function SlashMenu({
           {active ? (
             <div className="hc-slash__preview" data-testid="slash-preview" aria-live="polite">
               <div className="hc-slash__ptitle">
-                /{active.name}
+                /{active.label}
                 {active.argumentHint ? <span className="hc-slash__hint"> {active.argumentHint}</span> : null}
               </div>
               {active.description ? <p className="hc-slash__pdesc">{active.description}</p> : null}
