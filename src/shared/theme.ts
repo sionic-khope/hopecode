@@ -1,7 +1,7 @@
 // Local theme overlay (the `theme/` folder of the app data dir, `~/.hopecode/theme`). Main scans the folder at
 // start-up and serves the files over `hopecode-theme://`; the renderer swaps a slot in only when its file exists.
 
-/** Custom protocol that serves files of the theme folder (images and fonts only, GET only). */
+/** Custom protocol that serves files of the theme folder (images, fonts and sounds only, GET only). */
 export const THEME_SCHEME = 'hopecode-theme';
 /** Fixed host of every theme URL: `hopecode-theme://theme/<path inside the folder>`. */
 export const THEME_HOST = 'theme';
@@ -17,12 +17,32 @@ export const THEME_MIME: Readonly<Record<string, string>> = {
   woff: 'font/woff',
   ttf: 'font/ttf',
   otf: 'font/otf',
+  wav: 'audio/wav',
+  ogg: 'audio/ogg',
+  mp3: 'audio/mpeg',
 };
 
 /** Font slots: `fonts/<slot>.<ext>`, first existing extension wins. */
 export const THEME_FONT_EXTENSIONS = ['woff2', 'woff', 'otf', 'ttf'] as const;
 /** Sprite slots: `sprites/<slot>.png`. */
 export const THEME_SPRITE_EXTENSIONS = ['png'] as const;
+
+/** Sound slots: `sounds/<slot>.<ext>`, first existing extension wins. */
+export const THEME_SOUND_EXTENSIONS = ['wav', 'ogg', 'mp3'] as const;
+/** Sound slot names (file base names under `sounds/`). `voice` is every agent's voice unless `voice-<agent>` exists. */
+export const THEME_SOUND_SLOTS = [
+  'voice',
+  'voice-claude',
+  'voice-codex',
+  'voice-hermes',
+  'move',
+  'select',
+  'send',
+  'error',
+  'done',
+  'back',
+] as const;
+export type ThemeSoundSlot = (typeof THEME_SOUND_SLOTS)[number];
 
 /** Largest palette.json read (bytes) and the most tokens it may set. */
 export const THEME_PALETTE_MAX_BYTES = 64 * 1024;
@@ -36,6 +56,8 @@ export interface ThemeOverlay {
   dir: string;
   fonts: { ui: string | null; mono: string | null };
   sprites: { heart: string | null; logo: string | null };
+  /** Sound files that replace the synthesized sounds, by slot. */
+  sounds: Record<ThemeSoundSlot, string | null>;
   /** Validated CSS custom properties (`--name` -> color), or null without a usable palette.json. */
   palette: Record<string, string> | null;
 }
@@ -44,8 +66,13 @@ export const EMPTY_THEME_OVERLAY: ThemeOverlay = {
   dir: '',
   fonts: { ui: null, mono: null },
   sprites: { heart: null, logo: null },
+  sounds: emptySounds(),
   palette: null,
 };
+
+export function emptySounds(): Record<ThemeSoundSlot, string | null> {
+  return Object.fromEntries(THEME_SOUND_SLOTS.map((slot) => [slot, null])) as Record<ThemeSoundSlot, string | null>;
+}
 
 const TOKEN_NAME_RE = /^--[a-z][a-z0-9-]{0,63}$/;
 const HEX_RE = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;

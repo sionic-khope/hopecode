@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, type JSX, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { playSfx } from '../../sound/engine';
 import { searchPalette, type PaletteItem, type PaletteMatch } from './paletteSearch';
 import '../common/common.css';
 import './Palette.css';
@@ -159,10 +160,12 @@ export function CommandPalette({ open, onClose, commands, placeholder = '명령 
       case 'ArrowDown':
         e.preventDefault();
         if (count > 0) setActive((activeIndex + 1) % count);
+        if (count > 1) playSfx('move');
         break;
       case 'ArrowUp':
         e.preventDefault();
         if (count > 0) setActive((activeIndex - 1 + count) % count);
+        if (count > 1) playSfx('move');
         break;
       case 'Home':
         e.preventDefault();
@@ -174,6 +177,7 @@ export function CommandPalette({ open, onClose, commands, placeholder = '명령 
         break;
       case 'Enter':
         e.preventDefault();
+        if (flat[activeIndex]) playSfx('select');
         runAt(activeIndex);
         break;
       default:

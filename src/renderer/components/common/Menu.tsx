@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useRef, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
+import { playSfx } from '../../sound/engine';
 import { Popover, type PopoverPlacement } from './Popover';
 import './common.css';
 
@@ -78,6 +79,7 @@ export function Menu({ open, onClose, anchorRef, sections, label, placement = 'b
     }
     if (next) {
       e.preventDefault();
+      if (next !== document.activeElement) playSfx('move');
       next.focus();
     }
   };

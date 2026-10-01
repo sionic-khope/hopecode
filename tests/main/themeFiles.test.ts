@@ -84,6 +84,21 @@ describe('theme protocol containment', () => {
     expect(await get('hopecode-theme://theme/sprites/logo.png')).toEqual({ ok: false, status: 403 });
   });
 
+  it('serves wav / ogg / mp3 with audio content types and refuses other audio formats', async () => {
+    mkdirSync(join(theme, 'sounds'), { recursive: true });
+    for (const [name, mime] of [['voice.wav', 'audio/wav'], ['move.ogg', 'audio/ogg'], ['done.MP3', 'audio/mpeg']] as const) {
+      writeFileSync(join(theme, 'sounds', name), 'x');
+      expect(await get(`hopecode-theme://theme/sounds/${name}`), name).toMatchObject({ ok: true, mime });
+    }
+    for (const name of ['voice.flac', 'voice.m4a', 'voice.aiff']) {
+      writeFileSync(join(theme, 'sounds', name), 'x');
+      expect(await get(`hopecode-theme://theme/sounds/${name}`), name).toEqual({ ok: false, status: 403 });
+    }
+    expect(await get('hopecode-theme://theme/sounds/../../outside/secret.txt')).toMatchObject({ ok: false });
+    writeFileSync(join(theme, 'sounds', 'big.wav'), Buffer.alloc(THEME_FILE_MAX_BYTES + 1));
+    expect(await get('hopecode-theme://theme/sounds/big.wav')).toEqual({ ok: false, status: 413 });
+  });
+
   it('refuses directories, missing files and oversized files', async () => {
     mkdirSync(join(theme, 'dir.png'));
     expect(await get('hopecode-theme://theme/dir.png')).toEqual({ ok: false, status: 404 });
@@ -104,7 +119,27 @@ describe('overlay slot detection', () => {
     const overlay = await scanThemeOverlay(join(root, 'nope'));
     expect(overlay.fonts).toEqual({ ui: null, mono: null });
     expect(overlay.sprites).toEqual({ heart: null, logo: null });
+    expect(Object.values(overlay.sounds).every((v) => v === null)).toBe(true);
     expect(overlay.palette).toBeNull();
+  });
+
+  it('finds sound slots (wav over ogg over mp3), per-agent voices, and nothing else', async () => {
+    mkdirSync(join(theme, 'sounds'), { recursive: true });
+    writeFileSync(join(theme, 'sounds', 'voice.mp3'), 'mp3');
+    writeFileSync(join(theme, 'sounds', 'voice.wav'), 'wav');
+    writeFileSync(join(theme, 'sounds', 'voice-codex.ogg'), 'ogg');
+    writeFileSync(join(theme, 'sounds', 'back.mp3'), 'mp3');
+    writeFileSync(join(theme, 'sounds', 'select.flac'), 'flac');
+    writeFileSync(join(theme, 'sounds', 'other.wav'), 'wav');
+    symlinkSync(join(outside, 'secret.txt'), join(theme, 'sounds', 'done.wav'));
+    const overlay = await scanThemeOverlay(theme);
+    expect(overlay.sounds.voice).toMatch(/^hopecode-theme:\/\/theme\/sounds\/voice\.wav\?v=\d+$/);
+    expect(overlay.sounds['voice-codex']).toMatch(/^hopecode-theme:\/\/theme\/sounds\/voice-codex\.ogg\?v=\d+$/);
+    expect(overlay.sounds.back).toMatch(/\/sounds\/back\.mp3\?v=\d+$/);
+    expect(overlay.sounds['voice-claude']).toBeNull();
+    expect(overlay.sounds.select).toBeNull();
+    expect(overlay.sounds.done).toBeNull();
+    expect(Object.keys(overlay.sounds)).not.toContain('other');
   });
 
   it('finds the slots that hold a file, preferring woff2 over ttf', async () => {

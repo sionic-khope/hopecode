@@ -156,23 +156,23 @@ export function DraftView({
         </div>
         <p className="hc-draft__greeting">{greeting()}</p>
         <h1 className="hc-draft__title">무엇을 만들어 볼까요?</h1>
-        <p className="hc-draft__sub">
-          {project && draft.base ? (
-            <span data-testid="draft-pr-base">
-              <span className="hc-draft__folder">{project.name}</span>의 PR #{draft.base.pr}{' '}
-              <span className="hc-draft__folder">{draft.base.branch}</span>에서 새 worktree로 시작합니다{' '}
-              <button type="button" className="hc-draft__base-clear" onClick={() => onDraftChange({ base: null })}>
-                PR 해제
-              </button>
-            </span>
-          ) : project ? (
-            <>
-              <span className="hc-draft__folder">{project.name}</span>에서 새 worktree로 시작합니다
-            </>
-          ) : (
-            <span data-testid="draft-scratch">프로젝트 없이 새 채팅을 시작합니다 (git 기능 없음)</span>
-          )}
-        </p>
+        {project ? (
+          <p className="hc-draft__sub">
+            {draft.base ? (
+              <span data-testid="draft-pr-base">
+                <span className="hc-draft__folder">{project.name}</span>의 PR #{draft.base.pr}{' '}
+                <span className="hc-draft__folder">{draft.base.branch}</span>에서 새 worktree로 시작합니다{' '}
+                <button type="button" className="hc-draft__base-clear" onClick={() => onDraftChange({ base: null })}>
+                  PR 해제
+                </button>
+              </span>
+            ) : (
+              <>
+                <span className="hc-draft__folder">{project.name}</span>에서 새 worktree로 시작합니다
+              </>
+            )}
+          </p>
+        ) : null}
       </div>
       <Composer
         handleRef={composerRef}

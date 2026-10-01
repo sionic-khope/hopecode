@@ -49,7 +49,7 @@ test('launch opens a draft; sending without a folder starts a scratch chat (no p
   const chip = draft.locator('.hc-chip--folder');
   await expect(chip).toHaveText(/프로젝트 없음/);
   await expect(chip).not.toHaveClass(/hc-chip--attention/);
-  await expect(draft.getByTestId('draft-scratch')).toHaveText('프로젝트 없이 새 채팅을 시작합니다 (git 기능 없음)');
+  await expect(draft.getByTestId('draft-scratch')).toHaveCount(0);
   const box = page.locator('.hc-composer__textarea');
   await expect(box).toHaveAttribute('placeholder', '무엇이든 요청하세요');
   // Window controls sit in the top-right toolbar; the composer keeps only the chat controls.

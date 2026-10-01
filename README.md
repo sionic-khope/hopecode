@@ -30,8 +30,18 @@ To use your own assets, put files in the `theme/` folder of the app data dir (`~
 | `sprites/heart.png` | the heart cursor on selected rows and the send button |
 | `sprites/logo.png` | the brand mark (sidebar, new chat screen) |
 | `palette.json` | design tokens, e.g. `{ "--accent": "#9B4DFF", "--select": "#FFE14D" }` (colors only) |
+| `sounds/voice.wav` (or `.ogg`, `.mp3`) | the voice blip of every agent while a reply streams |
+| `sounds/voice-claude.*`, `sounds/voice-codex.*`, `sounds/voice-hermes.*` | the voice of one agent (wins over `voice.*`) |
+| `sounds/move.*` | moving through a menu or the command palette with the keyboard |
+| `sounds/select.*` | a click or a confirmed choice |
+| `sounds/back.*` | closing a menu, popover or dialog (Escape, 닫기, 취소, 뒤로) |
+| `sounds/send.*` | sending a message |
+| `sounds/done.*` | a turn that finished (only while the window has focus) |
+| `sounds/error.*` | an error card appearing |
 
-The app reads these files through the `hopecode-theme://` protocol. It serves only image and font files inside the folder, and it does not follow paths or symlinks that lead out of the folder. Hopecode does not download assets. Add only files you have the right to use.
+Sounds are synthesized by default; no audio file ships with the app. The speaker button at the top right (or 설정 > 사운드) turns all sounds off at once. The voice speaks only for the thread you are viewing, skips code blocks and inline code, and thins out over a long reply.
+
+The app reads these files through the `hopecode-theme://` protocol. It serves only image, font and sound files inside the folder, and it does not follow paths or symlinks that lead out of the folder. Hopecode does not download assets. Add only files you have the right to use.
 
 ## Development
 

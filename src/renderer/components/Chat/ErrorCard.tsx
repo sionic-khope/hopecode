@@ -6,6 +6,7 @@ import { Collapse } from '../common';
 import { GlyphCheck, GlyphCopy, GlyphEditResend } from '../common/glyphs';
 import { ChevronIcon, PlusIcon } from './icons';
 import { describeAgentError, type AgentWarning } from './agentIssues';
+import { playSfx } from '../../sound/engine';
 import './Chat.css';
 
 /** What the card can do for the turn it ended (only the latest error of a thread gets these). */
@@ -60,6 +61,10 @@ function CopyTextButton({ text, label }: { text: string; label: string }) {
   );
 }
 
+/** An error card younger than this plays the error cue when it appears (older ones are history, silent). */
+const ERROR_SFX_FRESH_MS = 5000;
+const errorSfxPlayed = new Set<string>();
+
 /**
  * A failed turn: icon, a plain-language title and explanation of the (already redacted) error, the raw message
  * behind 자세히 보기, and the ways forward: 다시 시도, 새 세션으로 시도, 메시지 복사.
@@ -67,6 +72,11 @@ function CopyTextButton({ text, label }: { text: string; label: string }) {
 export const ErrorCard = memo(function ErrorCard({ item, agent, actions }: ErrorCardProps) {
   const [open, setOpen] = useState(false);
   const copy = describeAgentError(item.text, AGENTS[agent].name);
+  useEffect(() => {
+    if (errorSfxPlayed.has(item.id) || Date.now() - item.createdAt > ERROR_SFX_FRESH_MS) return;
+    errorSfxPlayed.add(item.id);
+    playSfx('error');
+  }, [item.id, item.createdAt]);
   return (
     <section className="hc-error-card" role="status" aria-label={copy.title} data-testid="error-card" data-kind={copy.kind}>
       <div className="hc-error-card__head">

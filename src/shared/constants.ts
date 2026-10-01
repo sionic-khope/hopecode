@@ -90,6 +90,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autoSwitchAccounts: true,
   usagePollIntervalSec: USAGE_POLL_DEFAULT_SEC,
   notifications: true,
+  soundEnabled: true,
   defaultEditor: null,
   tosNoticeAcknowledged: false,
   newTaskTemplate: DEFAULT_NEW_TASK_TEMPLATE,

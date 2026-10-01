@@ -11,6 +11,8 @@ import {
   THEME_MIME,
   THEME_PALETTE_MAX_BYTES,
   THEME_SCHEME,
+  THEME_SOUND_EXTENSIONS,
+  THEME_SOUND_SLOTS,
   THEME_SPRITE_EXTENSIONS,
   sanitizePalette,
   type ThemeOverlay,
@@ -124,12 +126,19 @@ async function readPalette(themeDir: string): Promise<Record<string, string> | n
 
 /** Which overlay slots of `themeDir` hold a usable file. A missing folder is simply an empty overlay. */
 export async function scanThemeOverlay(themeDir: string): Promise<ThemeOverlay> {
-  const [ui, mono, heart, logo, palette] = await Promise.all([
+  const [ui, mono, heart, logo, palette, sounds] = await Promise.all([
     firstSlot(themeDir, 'fonts/ui', THEME_FONT_EXTENSIONS),
     firstSlot(themeDir, 'fonts/mono', THEME_FONT_EXTENSIONS),
     firstSlot(themeDir, 'sprites/heart', THEME_SPRITE_EXTENSIONS),
     firstSlot(themeDir, 'sprites/logo', THEME_SPRITE_EXTENSIONS),
     readPalette(themeDir),
+    Promise.all(THEME_SOUND_SLOTS.map(async (slot) => [slot, await firstSlot(themeDir, `sounds/${slot}`, THEME_SOUND_EXTENSIONS)] as const)),
   ]);
-  return { dir: resolve(themeDir), fonts: { ui, mono }, sprites: { heart, logo }, palette };
+  return {
+    dir: resolve(themeDir),
+    fonts: { ui, mono },
+    sprites: { heart, logo },
+    sounds: Object.fromEntries(sounds) as ThemeOverlay['sounds'],
+    palette,
+  };
 }

@@ -76,6 +76,7 @@ export function validateSettingsPatch(raw: unknown): SettingsPatchResult {
       case 'useWorktree':
       case 'autoSwitchAccounts':
       case 'notifications':
+      case 'soundEnabled':
         if (typeof value !== 'boolean') return { ok: false, error: `${key} must be a boolean` };
         patch[key] = value;
         break;

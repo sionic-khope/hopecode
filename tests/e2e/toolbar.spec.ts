@@ -106,7 +106,7 @@ test('thread: toolbar order, terminal and changes toggles', async () => {
 
   const bar = toolbar(page);
   const names = await bar.getByRole('button').evaluateAll((els) => els.map((el) => el.getAttribute('aria-label')));
-  expect(names).toEqual(['더보기', '공유', '환경', '하단 터미널', '변경사항 패널']);
+  expect(names).toEqual(['더보기', '공유', '환경', '하단 터미널', '변경사항 패널', '사운드 끄기']);
 
   const app = page.locator('.app');
   const terminalToggle = bar.getByRole('button', { name: '하단 터미널' });

@@ -156,4 +156,14 @@ describe('settings validation', () => {
     expect(sanitizeSettings({}).profileName).toBe('');
     expect(sanitizeSettings({ profileName: 'x\u0007' }).profileName).toBe('');
   });
+
+  it('soundEnabled: a boolean patch, on by default, kept from state.json, invalid values fall back to on', () => {
+    expect(validateSettingsPatch({ soundEnabled: false })).toEqual({ ok: true, patch: { soundEnabled: false } });
+    expect(validateSettingsPatch({ soundEnabled: 'off' }).ok).toBe(false);
+    expect(DEFAULT_SETTINGS.soundEnabled).toBe(true);
+    // Files written before the setting existed get sounds on.
+    expect(sanitizeSettings({ settingsRev: SETTINGS_REV, notifications: false }).soundEnabled).toBe(true);
+    expect(sanitizeSettings({ settingsRev: SETTINGS_REV, soundEnabled: false }).soundEnabled).toBe(false);
+    expect(sanitizeSettings({ settingsRev: SETTINGS_REV, soundEnabled: 0 }).soundEnabled).toBe(true);
+  });
 });

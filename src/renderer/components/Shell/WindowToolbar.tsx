@@ -18,6 +18,8 @@ import {
   GlyphMarkdown,
   GlyphMore,
   GlyphShare,
+  GlyphSoundOff,
+  GlyphSoundOn,
   GlyphTerminal as GlyphTerminalToggle,
 } from './toolbarGlyphs';
 import './WindowToolbar.css';
@@ -59,7 +61,8 @@ type Flash = { kind: 'ok' | 'error'; text: string } | null;
 
 /**
  * Top-right window controls, left to right: 더보기 (open in editor, account pin, rename / pin / archive / delete),
- * 공유 (Markdown file / clipboard), 환경 (git state + actions, subagents, sources), bottom terminal, changes panel.
+ * 공유 (Markdown file / clipboard), 환경 (git state + actions, subagents, sources), bottom terminal, changes panel,
+ * sound on / off.
  */
 export function WindowToolbar({
   thread,
@@ -91,6 +94,7 @@ export function WindowToolbar({
   const [commitRequest, setCommitRequest] = useState<CommitMenuRequest | null>(null);
   const [flash, setFlash] = useState<Flash>(null);
   const threadId = thread?.id ?? null;
+  const soundOn = useAppStore((s) => s.settings.soundEnabled);
 
   useEffect(() => {
     setMoreOpen(false);
@@ -308,6 +312,23 @@ export function WindowToolbar({
         onClick={() => onTogglePanel('changes')}
       >
         <GlyphChangesToggle data-glyph="changes" />
+      </button>
+      <button
+        type="button"
+        className="hc-toolbar-btn hc-toolbar-btn--icon"
+        aria-label={soundOn ? '사운드 끄기' : '사운드 켜기'}
+        aria-pressed={soundOn}
+        title={soundOn ? '사운드 끄기' : '사운드 켜기'}
+        data-testid="sound-toggle"
+        data-sfx="none"
+        onClick={() =>
+          void useAppStore
+            .getState()
+            .updateSettings({ soundEnabled: !soundOn })
+            .catch((err: unknown) => setFlash({ kind: 'error', text: `사운드 설정을 저장하지 못했습니다: ${ipcErrorMessage(err)}` }))
+        }
+      >
+        {soundOn ? <GlyphSoundOn data-glyph="sound-on" /> : <GlyphSoundOff data-glyph="sound-off" />}
       </button>
     </div>
   );

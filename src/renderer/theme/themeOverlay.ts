@@ -1,9 +1,17 @@
 // Local theme overlay on the renderer side: asks main which slots of ~/.hopecode/theme hold a file and swaps each one
 // in -- palette.json tokens on :root, fonts/ui.* and fonts/mono.* as FontFaces in front of the font stacks,
-// sprites/heart.png as --sprite-heart (list cursor + send button), sprites/logo.png in place of the brand mark.
+// sprites/heart.png as --sprite-heart (list cursor + send button), sprites/logo.png in place of the brand mark,
+// sounds/*.{wav,ogg,mp3} in place of the synthesized sounds (read by sound/engine.ts).
 // Empty slots keep the bundled originals; any failure leaves the bundled theme untouched.
 import { useSyncExternalStore } from 'react';
-import { EMPTY_THEME_OVERLAY, isThemeColor, isThemeUrl, normalizeTokenName, type ThemeOverlay } from '../../shared/theme';
+import {
+  EMPTY_THEME_OVERLAY,
+  THEME_SOUND_SLOTS,
+  isThemeColor,
+  isThemeUrl,
+  normalizeTokenName,
+  type ThemeOverlay,
+} from '../../shared/theme';
 import { invoke } from '../api';
 
 const UI_FAMILY = 'Hopecode Overlay UI';
@@ -28,6 +36,11 @@ export function useThemeOverlay(): ThemeOverlay {
   );
 }
 
+/** The applied overlay outside React (the sound engine reads the sound slots). */
+export function getThemeOverlay(): ThemeOverlay {
+  return current;
+}
+
 /** Only theme-scheme URLs and plain colors ever reach CSS, even though main already validated them. */
 function sanitize(raw: ThemeOverlay): ThemeOverlay {
   const url = (u: unknown): string | null => (isThemeUrl(u) ? u : null);
@@ -43,6 +56,7 @@ function sanitize(raw: ThemeOverlay): ThemeOverlay {
     dir: typeof raw.dir === 'string' ? raw.dir : '',
     fonts: { ui: url(raw.fonts?.ui), mono: url(raw.fonts?.mono) },
     sprites: { heart: url(raw.sprites?.heart), logo: url(raw.sprites?.logo) },
+    sounds: Object.fromEntries(THEME_SOUND_SLOTS.map((slot) => [slot, url(raw.sounds?.[slot])])) as ThemeOverlay['sounds'],
     palette,
   };
 }

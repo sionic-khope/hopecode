@@ -1,8 +1,9 @@
-import { memo, useEffect, useImperativeHandle, useRef, useState, type KeyboardEvent, type ReactNode, type Ref } from 'react';
+import { memo, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type Ref } from 'react';
 import { Menu, type MenuSection } from '../common';
 import { COMPOSER_MENU_WIDTH } from './ComposerControls';
 import { FolderOpenIcon, PaperclipIcon, PlusIcon, SpinnerIcon, StopIcon } from './icons';
 import { isSubmitKey } from './composerKeys';
+import { playSfx } from '../../sound/engine';
 import type { ChatImage } from '../../../shared/types';
 import { ComposerImageTray, useComposerImages } from '../Images/ComposerImages';
 import './Chat.css';
@@ -83,15 +84,28 @@ export const Composer = memo(function Composer({
   const taRef = useRef<HTMLTextAreaElement>(null);
   const plusRef = useRef<HTMLButtonElement>(null);
 
+  // Caret to place once the replaced text is committed. Applied in a layout effect, not a later frame: a deferred
+  // setSelectionRange could land after the user (or a test) already selected or typed in the new text.
+  const pendingCaret = useRef<number | null>(null);
   const replaceText = (next: string) => {
-    setText(next);
-    requestAnimationFrame(() => {
-      const el = taRef.current;
-      if (!el) return;
+    const el = taRef.current;
+    if (el && el.value === next) {
       el.focus();
       el.setSelectionRange(next.length, next.length);
-    });
+      return;
+    }
+    pendingCaret.current = next.length;
+    setText(next);
   };
+
+  useLayoutEffect(() => {
+    const el = taRef.current;
+    const caret = pendingCaret.current;
+    if (!el || caret === null) return;
+    pendingCaret.current = null;
+    el.focus();
+    el.setSelectionRange(caret, caret);
+  }, [text]);
 
   useImperativeHandle(handleRef, () => ({ focus: () => taRef.current?.focus(), setText: replaceText }), []);
 
@@ -123,6 +137,7 @@ export const Composer = memo(function Composer({
   const submit = () => {
     const trimmed = text.trim();
     if (!trimmed || disabled || busy) return;
+    playSfx('send');
     const images = attachments.images;
     void Promise.resolve(images.length > 0 ? onSend(trimmed, images) : onSend(trimmed)).then((taken) => {
       if (!taken) return;

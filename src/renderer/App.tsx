@@ -39,6 +39,7 @@ import { ipcErrorMessage } from './errors';
 import { hermesModelChip } from './components/Chat/acpChips';
 import { codexModelLabel } from '../core/modelDisplay';
 import { useNotifications } from './hooks/useNotifications';
+import { useSound } from './sound/useSound';
 import {
   initStoreEventSubscriptions,
   selectAccounts,
@@ -156,6 +157,7 @@ export function App() {
   const [firstMessages, setFirstMessages] = useState<Record<string, string>>({});
 
   useNotifications();
+  useSound();
 
   // Store <-> main wiring, once per mount. ⌘N / ⌘B / ⌘J / ⌘K / ⌘, come only from the app menu (`ui:*` events in
   // store/events.ts), so each shortcut runs exactly once.

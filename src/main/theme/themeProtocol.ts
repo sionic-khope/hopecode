@@ -16,7 +16,7 @@ function refuse(status: number): Response {
   return new Response(null, { status, headers: { 'cache-control': 'no-store' } });
 }
 
-/** Handler of one `hopecode-theme://` request (GET, inside the folder, image / font only). */
+/** Handler of one `hopecode-theme://` request (GET, inside the folder, image / font / sound only). */
 export async function serveThemeRequest(dir: string, request: Request): Promise<Response> {
   const hit = await resolveThemeRequest(dir, request.method, request.url);
   if (!hit.ok) return refuse(hit.status);
@@ -29,7 +29,7 @@ export async function serveThemeRequest(dir: string, request: Request): Promise<
         'content-length': String(body.byteLength),
         'cache-control': 'no-cache',
         'x-content-type-options': 'nosniff',
-        // FontFace loads are CORS requests; the page origin is file:// (null) or the dev server.
+        // FontFace loads and sound fetches are CORS requests; the page origin is file:// (null) or the dev server.
         'access-control-allow-origin': '*',
       },
     });

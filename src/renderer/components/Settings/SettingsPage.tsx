@@ -338,6 +338,9 @@ export function SettingsPage({
         <Row label="알림" hint="창이 뒤에 있을 때 턴 완료, 권한 요청, 계정 전환을 알립니다">
           <Switch size="md" checked={settings.notifications} aria-label="알림" onChange={(notifications) => save({ notifications })} />
         </Row>
+        <Row label="사운드" hint="답변이 나올 때의 목소리와 클릭, 전송, 완료, 오류 효과음입니다. 오른쪽 위 스피커 버튼과 같은 설정입니다">
+          <Switch size="md" checked={settings.soundEnabled} aria-label="사운드" onChange={(soundEnabled) => save({ soundEnabled })} />
+        </Row>
         <Row
           label="New Task Start 템플릿"
           hint="새 채팅 화면의 'New Task Start' 버튼(⌘⇧N)이 입력창에 붙여넣는 문구입니다. {project}는 폴더 이름, {date}는 오늘 날짜로 바뀝니다"

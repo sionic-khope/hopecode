@@ -122,3 +122,23 @@ export function GlyphChevronRight(props: GlyphProps) {
     </svg>
   );
 }
+
+/** 사운드 on: a speaker with two sound waves. */
+export function GlyphSoundOn(props: GlyphProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M3.25 8v4h3l4 3.25V4.75l-4 3.25Z" />
+      <path d="M13 7.5a3.5 3.5 0 0 1 0 5M15.25 5.25a6.75 6.75 0 0 1 0 9.5" />
+    </svg>
+  );
+}
+
+/** 사운드 off: the speaker, crossed out. */
+export function GlyphSoundOff(props: GlyphProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M3.25 8v4h3l4 3.25V4.75l-4 3.25Z" />
+      <path d="m13 8 4 4M17 8l-4 4" />
+    </svg>
+  );
+}

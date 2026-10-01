@@ -215,6 +215,8 @@ export interface AppSettings {
   usagePollIntervalSec: number;
   /** macOS notifications while the window is in the background (turn done, permission request, account switch). */
   notifications: boolean;
+  /** UI sounds (voice blips while a reply streams, clicks, send / done / error). Off = silent at once. */
+  soundEnabled: boolean;
   /** Default target of "에디터에서 열기"; null = the first detected editor. */
   defaultEditor: EditorId | null;
   /** Multi-account ToS notice shown once on first account add. */
