@@ -182,7 +182,7 @@
   padding: 12px 16px;
   border-radius: var(--radius-card);
   background: var(--bubble);
-  box-shadow: inset 0 0 0 var(--frame-w) var(--accent);
+  box-shadow: inset 0 0 0 var(--frame-w) var(--line-accent);
   color: var(--label);
   font-family: var(--font-chat);
   font-size: var(--text-chat);
@@ -290,7 +290,7 @@
 .hc-md blockquote {
   margin: 0 0 var(--space-3);
   padding-left: var(--space-3);
-  border-left: 3px solid var(--accent);
+  border-left: 3px solid var(--line-accent);
   color: var(--label-secondary);
 }
 .hc-md a {
@@ -427,7 +427,7 @@
   height: 24px;
   border-radius: 0;
   background: var(--accent-soft);
-  box-shadow: inset 0 0 0 2px var(--accent);
+  box-shadow: inset 0 0 0 2px var(--line-accent);
   color: var(--label);
 }
 .hc-tool__name {
@@ -787,8 +787,8 @@
   height: var(--send-size);
   margin-left: 4px;
   border-radius: 0;
-  background: var(--accent);
-  color: var(--label-on-accent);
+  background: var(--select);
+  color: var(--soul);
   box-shadow: var(--shadow-press-inset), var(--shadow-press);
   transition:
     background-color var(--motion-2) var(--ease-soft),
@@ -804,17 +804,17 @@
   mask: var(--sprite-heart) no-repeat center / contain;
 }
 .hc-send:hover:not(:disabled) {
-  background: var(--accent-hover);
+  background: var(--select-hover);
 }
 .hc-send:not(:disabled):active {
-  background: var(--accent-pressed);
+  background: var(--select-pressed);
   box-shadow: none;
   transform: translate(3px, 3px);
 }
 .hc-send:disabled {
-  background: var(--accent-soft);
+  background: transparent;
   color: var(--label-tertiary);
-  box-shadow: inset 0 0 0 2px var(--accent-border);
+  box-shadow: inset 0 0 0 2px var(--line-accent);
 }
 .hc-send:focus-visible {
   box-shadow: var(--shadow-press-inset), var(--focus-ring);
@@ -1089,7 +1089,7 @@ button.hc-chip--warn[aria-expanded='true'] {
   height: 28px;
   margin-bottom: 2px;
   background: var(--accent-soft);
-  box-shadow: inset 0 0 0 2px var(--accent);
+  box-shadow: inset 0 0 0 2px var(--line-accent);
   color: var(--label);
 }
 .hc-suggest__title {

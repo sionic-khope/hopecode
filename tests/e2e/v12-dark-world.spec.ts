@@ -65,7 +65,7 @@ test('draft: black world, pixel faces, HOPECODE lockup and the pixel mark', asyn
   await screenshot(page, 'v12-draft', SHOTS);
 });
 
-test('conversation: dialogue box with the * CLAUDE tag, violet user box, framed tool card and the diff', async () => {
+test('conversation: dialogue box with the * CLAUDE tag, yellow user box, framed tool card and the diff', async () => {
   const { page } = run;
   await startThread(page, sandbox, 'README 인사말을 바꿔 주세요');
   const permission = page.locator('.hc-permission');
@@ -82,7 +82,7 @@ test('conversation: dialogue box with the * CLAUDE tag, violet user box, framed 
   expect(await say.evaluate((el) => getComputedStyle(el).borderTopColor)).toBe('rgb(255, 255, 255)');
   expect(await style(page, '.hc-msg-assistant', 'font-family')).toMatch(/^"?Galmuri14"?,/);
   expect(await style(page, '.hc-msg-assistant', 'font-size')).toBe('15px');
-  expect(await style(page, '.hc-msg-user__bubble', 'box-shadow')).toContain('rgb(155, 77, 255)');
+  expect(await style(page, '.hc-msg-user__bubble', 'box-shadow')).toContain('rgb(255, 225, 77)');
   expect(await style(page, '.hc-agent-avatar', 'width')).toBe('52px');
   expect(await style(page, '.hc-diff__row--add', 'background-color')).toBe('rgb(13, 42, 23)');
   expect(await style(page, '.hc-diff__row--del', 'color')).toBe('rgb(255, 107, 121)');

@@ -174,7 +174,7 @@
   cursor: default;
 }
 .hc-changes__file:focus-visible {
-  box-shadow: inset 0 0 0 1.5px var(--accent-ring);
+  box-shadow: inset 0 0 0 1.5px var(--line-accent);
 }
 .hc-changes__chev {
   flex: none;

@@ -200,7 +200,7 @@ export function playSfx(kind: SfxKind): void {
   playSlot([kind], SFX[kind]);
 }
 
-/** One voice blip of `agent` (~40ms, pitch jittered a few percent so a line never sounds mechanical). */
+/** One voice blip of `agent`: a theme voice file plays as is (like the game narrator); the synth blip is pitch-jittered. */
 export function playVoice(agent: AgentKind, info: { threadId: string; itemId: string; pos: number }): void {
   if (!soundEnabled()) return;
   if (testMode()) {
@@ -209,5 +209,5 @@ export function playVoice(agent: AgentKind, info: { threadId: string; itemId: st
   }
   const voice = VOICES[agent];
   const jitter = 1 + (Math.random() - 0.5) * 0.12;
-  playSlot([voice.slot, 'voice'], (a, o) => tone(a, o, voice.wave, [[voice.base * jitter, 0.04]], 0.18), 1 + (jitter - 1) / 2);
+  playSlot([voice.slot, 'voice'], (a, o) => tone(a, o, voice.wave, [[voice.base * jitter, 0.04]], 0.18));
 }

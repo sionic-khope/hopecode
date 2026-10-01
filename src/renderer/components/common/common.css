@@ -203,7 +203,7 @@
 }
 .hc-switch[aria-checked='true'] {
   background: var(--accent);
-  box-shadow: inset 0 0 0 2px var(--accent);
+  box-shadow: inset 0 0 0 2px var(--line-accent);
 }
 .hc-switch__thumb {
   position: absolute;
@@ -285,7 +285,7 @@
   background: var(--accent-soft);
   color: var(--label-selected);
   font-weight: var(--weight-bold);
-  box-shadow: inset 0 0 0 2px var(--accent);
+  box-shadow: inset 0 0 0 2px var(--line-accent);
 }
 .hc-seg__item:disabled {
   opacity: 0.4;
@@ -509,7 +509,7 @@
   width: 36px;
   height: 36px;
   background: var(--accent-soft);
-  box-shadow: inset 0 0 0 2px var(--accent);
+  box-shadow: inset 0 0 0 2px var(--line-accent);
   color: var(--label);
 }
 .hc-modal__heading {

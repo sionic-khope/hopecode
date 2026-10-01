@@ -319,7 +319,7 @@
 }
 .hc-select:hover {
   background: var(--bg-card);
-  box-shadow: inset 0 0 0 2px var(--accent-border);
+  box-shadow: inset 0 0 0 2px var(--line-accent);
 }
 .hc-select:active {
   transform: translate(1px, 1px);

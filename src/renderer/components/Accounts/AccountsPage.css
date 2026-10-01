@@ -20,7 +20,7 @@
 }
 @keyframes hc-usage-flash {
   0% {
-    box-shadow: 0 0 0 0 var(--accent-ring);
+    box-shadow: 0 0 0 0 var(--line-accent);
   }
   30% {
     box-shadow: 0 0 0 4px var(--accent-tint-strong);

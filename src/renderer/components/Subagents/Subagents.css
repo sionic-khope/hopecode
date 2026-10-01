@@ -135,7 +135,7 @@
   margin-left: 22px;
   padding: var(--space-2) var(--space-3) var(--space-3) var(--space-3);
   border-top: 2px solid var(--separator);
-  border-left: 2px solid var(--accent);
+  border-left: 2px solid var(--line-accent);
 }
 .hc-subagent__child {
   min-width: 0;

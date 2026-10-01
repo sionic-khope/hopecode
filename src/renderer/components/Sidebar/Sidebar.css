@@ -481,7 +481,7 @@
 .hc-thread--selected,
 .hc-thread-wrap:hover .hc-thread--selected {
   background: var(--bg-sidebar-sel);
-  box-shadow: inset 0 0 0 2px var(--accent);
+  box-shadow: inset 0 0 0 2px var(--line-accent);
   color: var(--label-selected);
 }
 .hc-thread--selected::before {
@@ -495,7 +495,7 @@
   font-weight: var(--weight-regular);
 }
 .hc-thread--selected:focus-visible {
-  box-shadow: inset 0 0 0 2px var(--accent), var(--focus-ring);
+  box-shadow: inset 0 0 0 2px var(--line-accent), var(--focus-ring);
 }
 .hc-thread:focus-visible {
   box-shadow: var(--focus-ring);
@@ -724,7 +724,7 @@
   width: 28px;
   height: 28px;
   background: var(--accent-soft);
-  box-shadow: inset 0 0 0 2px var(--accent);
+  box-shadow: inset 0 0 0 2px var(--line-accent);
   color: var(--label);
 }
 

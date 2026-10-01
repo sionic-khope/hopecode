@@ -44,6 +44,9 @@
   --violet-wash: #1f1238;
   --violet-ink: #12091f;
   --select: #ffe14d;       /* selected text / cursor (yellow) */
+  --select-hover: #fff08a;
+  --select-pressed: #e6c22e;
+  --line-accent: var(--select); /* highlighted frames: user line, selected rows, focus (yellow, not violet) */
   --soul: #ff2b45;         /* pixel heart */
   --cyan: #4fe3f0;
   --drop: #4a1f94;         /* hard pixel drop under floating boxes */

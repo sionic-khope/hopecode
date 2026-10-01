@@ -14,6 +14,8 @@ import {
 } from '../../shared/theme';
 import { invoke } from '../api';
 
+import { typoMetricOverrides } from './fontMetrics';
+
 const UI_FAMILY = 'Hopecode Overlay UI';
 const MONO_FAMILY = 'Hopecode Overlay Mono';
 
@@ -63,7 +65,10 @@ function sanitize(raw: ThemeOverlay): ThemeOverlay {
 
 async function addFont(family: string, url: string): Promise<boolean> {
   try {
-    const face = new FontFace(family, `url("${url}")`, { display: 'block' });
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.arrayBuffer();
+    const face = new FontFace(family, data, { display: 'block', ...typoMetricOverrides(data) });
     await face.load();
     document.fonts.add(face);
     return true;
