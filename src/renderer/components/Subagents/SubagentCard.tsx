@@ -89,7 +89,7 @@ export const SubagentCard = memo(function SubagentCard({ node, renderChild }: Su
   );
 });
 
-/** "서브에이전트 N개 실행 중" line over a turn's subagent cards (their characters in a row). */
+/** PARTY line over a turn's subagent cards: their characters in a row and "서브에이전트 N개 실행 중". */
 export function SubagentRouting({ subagents }: { subagents: SubagentSummary[] }) {
   if (subagents.length === 0) return null;
   const running = subagents.filter((s) => s.state === 'running').length;
@@ -100,6 +100,9 @@ export function SubagentRouting({ subagents }: { subagents: SubagentSummary[] })
       : `서브에이전트 ${subagents.length}개 완료${failed > 0 ? ` · 실패 ${failed}` : ''}`;
   return (
     <div className="hc-subagent-routing" data-testid="subagent-routing" role="status">
+      <span className="hc-subagent-routing__party" aria-hidden>
+        PARTY
+      </span>
       <span className="hc-subagent-routing__sprites">
         {subagents.map((s) => (
           <PixelSprite

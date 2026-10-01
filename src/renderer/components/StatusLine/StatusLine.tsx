@@ -81,7 +81,7 @@ export const StatusLine = memo(function StatusLine({ pool, accounts, activeThrea
       {modelText}
     </Pill>
   );
-  const ctx = <UsageMeter label="ctx" percent={activeThread?.ctxPercent ?? null} now={now} width={32} />;
+  const ctx = <UsageMeter label="ctx" percent={activeThread?.ctxPercent ?? null} now={now} width={56} gauge="tp" />;
 
   if (mode !== 'pool') {
     return (
@@ -100,7 +100,13 @@ export const StatusLine = memo(function StatusLine({ pool, accounts, activeThrea
           {windows.map((w) => (
             <span key={w.label} className="hc-statusline__segment-wrap" title={snapshot ? usageSourceTitle(snapshot) : undefined}>
               <Divider />
-              <UsageMeter label={w.label} percent={w.usedPercent} resetsAt={w.resetsAt} now={now} />
+              <UsageMeter
+                label={w.label}
+                percent={w.usedPercent}
+                resetsAt={w.resetsAt}
+                now={now}
+                {...(w.label === '5h' ? { gauge: 'hp' as const, width: 72 } : {})}
+              />
             </span>
           ))}
           <Divider />
@@ -122,7 +128,7 @@ export const StatusLine = memo(function StatusLine({ pool, accounts, activeThrea
       >
         {modelPill}
         <Divider />
-        <UsageMeter label="5h" percent={summary.avg.fiveHour} resetsAt={summary.earliestReset.fiveHour} now={now} />
+        <UsageMeter label="5h" percent={summary.avg.fiveHour} resetsAt={summary.earliestReset.fiveHour} now={now} width={72} gauge="hp" />
         <Divider />
         <UsageMeter label="wk" percent={summary.avg.sevenDay} resetsAt={summary.earliestReset.sevenDay} now={now} />
         <Divider />

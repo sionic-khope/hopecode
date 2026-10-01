@@ -1,5 +1,6 @@
-/* Statusline: a thin flat bar under the panes; segments are split by short hairlines. Container styling lives on .app__status in
-   App.css; this file owns the segments, meters and the popover trigger. */
+/* Statusline: the battle HUD under the panes -- the model in a framed box, HP (5h window) and TP (context) gauges as
+   framed pixel bars, segments split by short 2px lines. Container styling lives on .app__status in App.css; this file
+   owns the segments, meters and the popover trigger. */
 
 .hc-statusline__trigger {
   all: unset;
@@ -23,9 +24,9 @@
 
 .hc-statusline__divider {
   flex: none;
-  width: 1px;
-  height: 12px;
-  background: var(--separator-strong);
+  width: 2px;
+  height: 14px;
+  background: var(--separator);
 }
 
 .hc-statusline__segment {
@@ -53,22 +54,22 @@
 }
 
 .hc-statusline__model {
-  height: 20px;
-  padding: 0 9px;
+  height: 22px;
+  padding: 0 8px;
   background: var(--bg-card);
-  box-shadow: inset 0 0 0 1px var(--separator-strong);
-  color: rgba(23, 23, 26, 0.72);
-  font-family: var(--font-mono);
-  font-weight: var(--weight-medium);
+  box-shadow: inset 0 0 0 2px var(--separator);
+  color: var(--label);
+  font-family: var(--font-ui);
+  font-size: var(--text-status);
+  font-weight: var(--weight-regular);
 }
 
 .hc-statusline__avail {
   margin-left: auto;
 }
 .hc-statusline__dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
+  width: 8px;
+  height: 8px;
   flex: none;
   transition: background-color var(--motion-2) var(--ease-soft);
 }
@@ -82,15 +83,17 @@
   background: var(--crit);
 }
 
-/* ---------- Usage meter (capsule) ---------- */
+/* ---------- Usage meter (framed pixel bar) ---------- */
 .hc-meter__label {
   color: var(--label-tertiary);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-regular);
 }
 .hc-meter__track {
-  height: 4px;
+  box-sizing: border-box;
+  height: 10px;
   border-radius: var(--radius-capsule);
   background: var(--meter-track);
+  box-shadow: 0 0 0 2px var(--separator-strong);
   overflow: hidden;
   flex: none;
 }
@@ -99,8 +102,41 @@
   height: 100%;
   border-radius: var(--radius-capsule);
   transition:
-    width var(--motion-3) var(--ease-soft),
+    width var(--motion-3) steps(6, end),
     background-color var(--motion-2) var(--ease-soft);
+}
+/* HP / TP gauges: the tag and the label read as one bold yellow word ("HP 5H", "TP CTX"); a white-framed bar. */
+.hc-meter__gauge {
+  color: var(--label-selected);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tag);
+}
+.hc-meter--hp .hc-meter__label,
+.hc-meter--tp .hc-meter__label {
+  margin-left: -2px;
+  color: var(--label-selected);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tag);
+  text-transform: uppercase;
+}
+.hc-meter--hp .hc-meter__track,
+.hc-meter--tp .hc-meter__track {
+  height: 12px;
+  box-shadow: 0 0 0 2px var(--frame);
+}
+.hc-meter--hp .hc-meter__track {
+  background: var(--hp-track);
+}
+.hc-meter--hp .hc-meter__fill--ok,
+.hc-meter--hp .hc-meter__fill--warn {
+  background: var(--select);
+}
+.hc-meter--tp .hc-meter__track {
+  background: var(--tp-track);
+}
+.hc-meter--tp .hc-meter__fill--ok,
+.hc-meter--tp .hc-meter__fill--warn {
+  background: var(--tp-fill);
 }
 .hc-meter__fill--ok {
   background: var(--ok);
@@ -114,7 +150,7 @@
 .hc-meter__percent {
   color: var(--label);
   font-variant-numeric: tabular-nums;
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-regular);
 }
 .hc-meter__percent--crit {
   color: var(--crit-text);
@@ -124,11 +160,11 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Numbers in JetBrains Mono: fixed-width digits keep the capsules from jittering as values tick. */
+/* Numbers in the pixel face with tabular digits (Galmuri's digits share one advance), so values never jitter. */
 .hc-statusline__value,
 .hc-meter__percent,
 .hc-meter__reset {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: var(--text-xs);
 }
 

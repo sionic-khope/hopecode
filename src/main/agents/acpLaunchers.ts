@@ -2,6 +2,8 @@
 // engine (`CODEX_PATH`), configured through env (`CODEX_CONFIG`, `INITIAL_AGENT_MODE`); Hermes = the detected
 // `hermes acp`. argv arrays only (no shell); the env starts from the login shell and never carries an injected key or
 // token. The env is rebuilt on every resolve (each spawn / respawn).
+// The Codex adapter process runs in a fixed private directory (`processCwd`), never in the project: the session's
+// working directory reaches it only through ACP `session/new` / `session/load`.
 import type { AcpAgentKind } from '../../core/acpTypes';
 import { buildAcpEnv } from '../../core/acpEnv';
 import { codexLaunchEnv } from '../../core/agentDefaults';
@@ -10,19 +12,24 @@ import type { AcpLauncher } from '../contracts';
 import type { AgentBinaries } from './agentBinaries';
 
 export interface AcpLaunchersDeps {
-  binaries: Pick<AgentBinaries, 'resolveCodexAcp' | 'codexEngine' | 'resolveHermes'>;
+  binaries: Pick<AgentBinaries, 'resolveCodexAcp' | 'resolveCodex' | 'verifyCodexEngine' | 'resolveHermes'>;
   /** ShellEnv.baseEnv (login shell). */
   baseEnv: () => Record<string, string>;
+  /** Working directory of the Codex adapter process (created 0700 by the caller, e.g. `~/.hopecode/run/codex-acp`). */
+  codexProcessCwd: () => string;
 }
 
 export function createAcpLaunchers(deps: AcpLaunchersDeps): Record<AcpAgentKind, AcpLauncher> {
   return {
     codex: {
-      resolve(_cwd, opts) {
+      async resolve(_cwd, opts) {
         const command = deps.binaries.resolveCodexAcp();
-        // The engine comes from the (async) local-auth detection; no engine yet = not installed.
-        const engine = deps.binaries.codexEngine();
-        if (!command || !engine) return { ok: false, reason: 'not-installed' };
+        if (!command) return { ok: false, reason: 'not-installed' };
+        // Waits for a detection in progress (startup, recheck, settings change); never a stale engine.
+        const engine = await deps.binaries.resolveCodex();
+        // The file is checked again right before the spawn; CODEX_PATH gets its realpath.
+        const enginePath = engine ? deps.binaries.verifyCodexEngine(engine.path) : null;
+        if (!enginePath) return { ok: false, reason: 'not-installed' };
         const wanted = codexLaunchEnv({ model: opts.model ?? null, effort: (opts.effort ?? null) as EffortLevel | null, permissionMode: opts.permissionMode });
         // A stored model / effort that fails validation is never passed on: Codex then runs with its own default.
         const launch = wanted.ok ? wanted : codexLaunchEnv({ model: null, effort: null, permissionMode: opts.permissionMode });
@@ -30,10 +37,10 @@ export function createAcpLaunchers(deps: AcpLaunchersDeps): Record<AcpAgentKind,
         const env = {
           ...buildAcpEnv(deps.baseEnv(), { agent: 'codex', ...(opts.gitCeiling !== undefined ? { gitCeiling: opts.gitCeiling } : {}) }),
           // Always set (never inherited from the login shell): the shell cannot pick the adapter's `agent` default.
-          CODEX_PATH: engine.path,
+          CODEX_PATH: enginePath,
           ...launch.env,
         };
-        return { ok: true, spec: { command, args: [], env } };
+        return { ok: true, spec: { command, args: [], env, cwd: deps.codexProcessCwd() } };
       },
     },
     hermes: {

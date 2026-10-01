@@ -17,6 +17,22 @@ A macOS desktop harness for [Claude Code](https://docs.anthropic.com/en/docs/cla
 - **Codex threads** — run through the installed Codex, not a bundled one. Hopecode looks for `codex` in this order: Settings > Codex 실행 파일 경로 (optional override), the ChatGPT app (`/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex`, also `~/Applications`), the login shell's `PATH`, then `/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin`. It keeps the highest `codex-cli` version that is **0.150.0 or newer**. If none is found, Codex shows as not installed: install the ChatGPT app or the Codex CLI. The Accounts page shows the engine path and version. Codex sign-in comes from Codex itself (`codex login` or the ChatGPT app, `~/.codex`).
   Hopecode bundles the [`@agentclientprotocol/codex-acp`](https://www.npmjs.com/package/@agentclientprotocol/codex-acp) adapter as one native binary. It passes `CODEX_PATH`, `CODEX_CONFIG` (model / reasoning effort) and `INITIAL_AGENT_MODE` through the environment. Permission chips map to modes as follows: 기본 / 편집 자동 승인 → `workspace-write`, 계획 → `read-only`, 전체 액세스 (after a confirmation) → `agent-full-access`. The adapter's default `agent` mode (Auto review: an automatic reviewer approves requests) is never used, and a switch to it is reverted.
 
+## Theme
+
+Hopecode uses a dark pixel RPG theme. The original assets are bundled: Galmuri11 / Galmuri14 (UI and conversation), Silkscreen (wordmark), JetBrains Mono (code), a pixel-heart mark and cursor. All fonts are SIL OFL 1.1; the license texts ship as `Contents/Resources/font-licenses`.
+
+To use your own assets, put files in the `theme/` folder of the app data dir (`~/.hopecode/theme`) and restart the app. Each slot that holds a file replaces the bundled one; empty slots keep the original.
+
+| File | Replaces |
+| --- | --- |
+| `fonts/ui.woff2` (or `.woff`, `.otf`, `.ttf`) | the UI, conversation and title font |
+| `fonts/mono.woff2` (or `.woff`, `.otf`, `.ttf`) | code, diffs and the terminal |
+| `sprites/heart.png` | the heart cursor on selected rows and the send button |
+| `sprites/logo.png` | the brand mark (sidebar, new chat screen) |
+| `palette.json` | design tokens, e.g. `{ "--accent": "#9B4DFF", "--select": "#FFE14D" }` (colors only) |
+
+The app reads these files through the `hopecode-theme://` protocol. It serves only image and font files inside the folder, and it does not follow paths or symlinks that lead out of the folder. Hopecode does not download assets. Add only files you have the right to use.
+
 ## Development
 
 ```bash

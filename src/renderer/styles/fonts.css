@@ -1,40 +1,35 @@
 /* Bundled OFL 1.1 fonts (license texts in ../assets/fonts/licenses, shipped as Resources/font-licenses).
    Loaded from the app package, so the CSP's font-src 'self' covers them -- no CDN.
-   - IBM Plex Sans KR: IBM's official web woff2 files (@ibm/plex-sans-kr 1.1.0), unmodified.
-   - Hahmlet: variable wght, woff2 converted from google/fonts and subset to Latin + Hangul + common symbols.
-   - JetBrains Mono: variable wght, woff2 converted from google/fonts (full glyph set). */
+   - Galmuri11 / Galmuri11 Bold / Galmuri14 (quiple/galmuri): Korean pixel faces, unmodified woff2. Galmuri11 is
+     drawn for 12px (UI), Galmuri14 for 15px (conversation body); other sizes blur the pixel grid.
+   - Silkscreen (googlefonts/silkscreen): Latin pixel caps for the HOPECODE wordmark, unmodified ttf.
+   - JetBrains Mono: variable wght, woff2 converted from google/fonts (full glyph set). Code, diffs, terminal.
+   A local overlay (~/.hopecode/theme/fonts/ui.*, mono.*) is registered at runtime by theme/themeOverlay.ts. */
 @font-face {
-  font-family: 'IBM Plex Sans KR';
-  src: url('../assets/fonts/IBMPlexSansKR-Regular.woff2') format('woff2');
+  font-family: 'Galmuri11';
+  src: url('../assets/fonts/Galmuri11.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
   font-display: block;
 }
 @font-face {
-  font-family: 'IBM Plex Sans KR';
-  src: url('../assets/fonts/IBMPlexSansKR-Medium.woff2') format('woff2');
-  font-weight: 500;
-  font-style: normal;
-  font-display: block;
-}
-@font-face {
-  font-family: 'IBM Plex Sans KR';
-  src: url('../assets/fonts/IBMPlexSansKR-SemiBold.woff2') format('woff2');
-  font-weight: 600;
-  font-style: normal;
-  font-display: block;
-}
-@font-face {
-  font-family: 'IBM Plex Sans KR';
-  src: url('../assets/fonts/IBMPlexSansKR-Bold.woff2') format('woff2');
+  font-family: 'Galmuri11';
+  src: url('../assets/fonts/Galmuri11-Bold.woff2') format('woff2');
   font-weight: 700;
   font-style: normal;
   font-display: block;
 }
 @font-face {
-  font-family: 'Hahmlet';
-  src: url('../assets/fonts/Hahmlet-Variable.woff2') format('woff2');
-  font-weight: 100 900;
+  font-family: 'Galmuri14';
+  src: url('../assets/fonts/Galmuri14.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Silkscreen';
+  src: url('../assets/fonts/Silkscreen-Regular.ttf') format('truetype');
+  font-weight: 400;
   font-style: normal;
   font-display: block;
 }

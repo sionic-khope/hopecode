@@ -181,26 +181,43 @@ export function MessageList({
   );
 }
 
-/** Agent column: avatar gutter (filled on the first item of a run) + content. */
-/** Short speaker label shown beside the avatar on the first item of an agent run. */
+/** Short speaker label on the first item of an agent run (CSS renders it as the "* CLAUDE" name tag). */
 const AGENT_SHORT_NAME: Record<AgentKind, string> = { 'claude-code': 'Claude', codex: 'Codex', hermes: 'Hermes' };
 
-function AgentRow({ agent, leadsRun, children }: { agent: AgentKind; leadsRun: boolean; children: ReactNode }) {
+function AgentNameTag({ agent }: { agent: AgentKind }) {
+  return (
+    <span className="hc-agent-name" data-agent={agent}>
+      {AGENT_SHORT_NAME[agent]}
+    </span>
+  );
+}
+
+/**
+ * Agent column: portrait gutter (filled on the first item of a run) + content. The name tag sits on top of the run's
+ * first card, or inside the dialogue box when the run opens with text (`nameInBox`, the box renders it).
+ */
+function AgentRow({
+  agent,
+  leadsRun,
+  nameInBox = false,
+  children,
+}: {
+  agent: AgentKind;
+  leadsRun: boolean;
+  nameInBox?: boolean;
+  children: ReactNode;
+}) {
   return (
     <div className={`hc-agent-row hc-msg-enter${leadsRun ? ' hc-agent-row--lead' : ''}`}>
       <span className="hc-agent-row__avatar">
         {leadsRun ? (
           <span className="hc-agent-avatar" title={AGENTS[agent].name} aria-label={AGENTS[agent].name} role="img">
-            <AgentIcon kind={agent} size={15} />
+            <AgentIcon kind={agent} size={22} />
           </span>
         ) : null}
       </span>
       <div className="hc-agent-row__body">
-        {leadsRun ? (
-          <span className="hc-agent-name" data-agent={agent}>
-            {AGENT_SHORT_NAME[agent]}
-          </span>
-        ) : null}
+        {leadsRun && !nameInBox ? <AgentNameTag agent={agent} /> : null}
         {children}
       </div>
     </div>
@@ -256,8 +273,12 @@ const MessageItem = memo(function MessageItem({
       const text = split ? split.rest : item.text;
       const answer =
         text === '' ? null : (
-          <AgentRow agent={agent} leadsRun={leadsRun}>
-            <AssistantText text={text} streaming={streaming} />
+          <AgentRow agent={agent} leadsRun={leadsRun} nameInBox>
+            {/* Dialogue box: white pixel frame, the speaker's name tag on its first line. */}
+            <div className={`hc-say${leadsRun ? ' hc-say--lead' : ''}`}>
+              {leadsRun ? <AgentNameTag agent={agent} /> : null}
+              <AssistantText text={text} streaming={streaming} />
+            </div>
             {streaming ? null : (
               <div className="hc-msg-actions hc-msg-actions--agent">
                 <CopyButton text={text} label="답변 복사" className="hc-msg-action" />

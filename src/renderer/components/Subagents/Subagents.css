@@ -1,4 +1,4 @@
-/* Subagent routing: pixel characters, subagent cards, routing summary line. */
+/* Subagent routing: pixel characters, subagent cards in 2px frames, and the PARTY line that lines the characters up. */
 
 .hc-sprite {
   position: relative;
@@ -38,8 +38,8 @@
   width: 12px;
   height: 12px;
   border-radius: var(--radius-capsule);
-  color: var(--label-on-accent);
-  box-shadow: 0 0 0 1.5px var(--bg-card);
+  color: var(--label-on-select);
+  box-shadow: 0 0 0 2px var(--bg-card);
 }
 .hc-sprite__badge--done {
   background: var(--ok);
@@ -52,12 +52,13 @@
 .hc-subagent {
   border-radius: var(--radius-card);
   background: var(--bg-card);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-card-quiet);
   overflow: hidden;
   transition: box-shadow var(--motion-2) var(--ease-soft);
 }
-.hc-subagent:hover {
-  box-shadow: var(--shadow-card-hover);
+.hc-subagent:hover,
+.hc-subagent--open {
+  box-shadow: var(--shadow-card);
 }
 .hc-subagent__header {
   display: flex;
@@ -77,12 +78,12 @@
 }
 .hc-subagent__header:focus-visible {
   outline: none;
-  box-shadow: inset 0 0 0 2px var(--accent-ring);
+  box-shadow: inset 0 0 0 2px var(--select);
   border-radius: var(--radius-card);
 }
 .hc-subagent__type {
   flex: none;
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-bold);
 }
 .hc-subagent__desc {
   min-width: 0;
@@ -98,20 +99,18 @@
   flex: none;
   padding: 0 var(--space-2);
   border-radius: var(--radius-capsule);
+  box-shadow: inset 0 0 0 2px currentColor;
   font-size: var(--text-xs);
   line-height: var(--pill-h);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-bold);
 }
 .hc-subagent__state--running {
-  background: var(--run-bg);
   color: var(--run-text);
 }
 .hc-subagent__state--done {
-  background: var(--ok-bg);
   color: var(--ok-text);
 }
 .hc-subagent__state--failed {
-  background: var(--crit-bg);
   color: var(--crit-text);
 }
 .hc-subagent__meta {
@@ -135,8 +134,8 @@
   gap: var(--space-2);
   margin-left: 22px;
   padding: var(--space-2) var(--space-3) var(--space-3) var(--space-3);
-  border-top: 1px solid var(--separator);
-  border-left: 2px solid var(--accent-soft);
+  border-top: 2px solid var(--separator);
+  border-left: 2px solid var(--accent);
 }
 .hc-subagent__child {
   min-width: 0;
@@ -150,15 +149,15 @@
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-control);
   background: var(--bg-card-muted);
-  box-shadow: inset 0 0 0 1px var(--separator);
+  box-shadow: inset 0 0 0 2px var(--separator);
 }
 .hc-subagent__report-label {
   display: block;
   margin-bottom: 2px;
   color: var(--label-tertiary);
   font-size: var(--text-2xs);
-  font-weight: var(--weight-semibold);
-  letter-spacing: 0.02em;
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tag);
 }
 .hc-subagent__report-text {
   margin: 0;
@@ -168,26 +167,37 @@
   white-space: pre-wrap;
 }
 
-/* Routing summary line */
+/* PARTY line: the turn's subagents lined up like an RPG party, each character in its own small frame. */
 .hc-subagent-routing {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  min-height: 32px;
-  padding: var(--space-1) var(--space-3);
+  gap: var(--space-3);
+  min-height: 48px;
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-capsule);
-  background: var(--accent-tint);
-  box-shadow: inset 0 0 0 1px var(--accent-border);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-card);
   color: var(--label-secondary);
   font-size: var(--text-sm);
 }
+.hc-subagent-routing__party {
+  flex: none;
+  color: var(--label-selected);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tag);
+}
 .hc-subagent-routing__sprites {
   display: inline-flex;
-  gap: 2px;
+  gap: 6px;
+}
+.hc-subagent-routing__sprites > .hc-sprite {
+  box-sizing: content-box;
+  padding: 4px;
+  box-shadow: inset 0 0 0 2px var(--separator);
 }
 .hc-subagent-routing__label {
   color: var(--label);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-regular);
 }
 .hc-subagent-routing__types {
   min-width: 0;

@@ -19,7 +19,7 @@ export function isHeadlessE2E(): boolean {
   return devEnv(ENV_E2E) === '1';
 }
 
-/** Main window (plan 5.1): hiddenInset title bar, sidebar vibrancy, sandboxed renderer. */
+/** Main window (plan 5.1): hiddenInset title bar on an opaque black window, sandboxed renderer. */
 export function createMainWindow(): BrowserWindow {
   const cfg = appUrlConfig();
   const headless = isHeadlessE2E();
@@ -34,9 +34,10 @@ export function createMainWindow(): BrowserWindow {
     ...(headless ? { resizable: false } : {}),
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 18, y: 18 },
-    vibrancy: 'sidebar',
-    visualEffectState: 'followWindow',
-    backgroundColor: '#00000000',
+    // Opaque black world (renderer tokens --bg-canvas): no vibrancy, so the sidebar never tints with the desktop and
+    // nothing light flashes before the first paint. The dark native theme (theme/themeProtocol.ts) keeps the traffic
+    // lights in their dark variant.
+    backgroundColor: '#000000',
     webPreferences: {
       preload: join(here, '../preload/index.cjs'),
       contextIsolation: true,

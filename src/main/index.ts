@@ -3,9 +3,9 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { readFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, powerMonitor, shell, clipboard, ClipboardItem, nativeImage } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, powerMonitor, shell, clipboard, ClipboardItem, nativeImage } from 'electron';
 import {
   CLIENT_APP_NAME,
   ENV_FIXTURE_PROJECT,
@@ -26,7 +26,7 @@ import { createSharedConfig, probeEnvInject } from './accounts/poolWiring';
 import { buildAcpEnv } from '../core/acpEnv';
 import { decodeJwtClaims } from '../core/jwtClaims';
 import { createAcpLaunchers } from './agents/acpLaunchers';
-import { checkCodexEngine, createAgentBinaries, type AgentBinariesDeps } from './agents/agentBinaries';
+import { createAgentBinaries, type AgentBinariesDeps } from './agents/agentBinaries';
 import { codexAcpSmoke } from './agents/codexSmoke';
 import { detectClaude } from './agents/localAuth/claudeDetector';
 import { detectCodex } from './agents/localAuth/codexDetector';
@@ -68,6 +68,7 @@ import { createShellEnv } from './shellEnv';
 import { createUsageClient } from './usage/usageClient';
 import { createUsagePoller } from './usage/usagePoller';
 import { appUrlConfig, createMainWindow, isHeadlessE2E } from './window';
+import { setupTheme, themeOverlay } from './theme/themeProtocol';
 import { createWorktreeManager } from './worktree/worktreeManager';
 import { createFixtureClock } from './fixtures/fixtureClock';
 import { createFixturePrSource } from './fixtures/fixturePrs';
@@ -350,6 +351,7 @@ async function startServices(): Promise<Services> {
               ...defaultDetectorDeps(),
               codexAcpPath: () => agentBinaries.resolveCodexAcp(),
               codexEngine: () => agentBinaries.resolveCodex(),
+              codexEngineError: () => agentBinaries.codexEngineError(),
               env: () => shellEnv.baseEnv(),
               decodeJwtClaims,
             }),
@@ -407,7 +409,17 @@ async function startServices(): Promise<Services> {
           stateDir: join(hopecodeHome(), 'fake-acp'),
         }),
       }
-    : createAcpLaunchers({ binaries: agentBinaries, baseEnv: () => shellEnv.baseEnv() });
+    : createAcpLaunchers({
+        binaries: agentBinaries,
+        baseEnv: () => shellEnv.baseEnv(),
+        // Never the project directory: a bun-compiled adapter must not see a repository's bunfig.toml / .env.
+        codexProcessCwd: () => {
+          const dir = join(hopecodeHome(), 'run', 'codex-acp');
+          mkdirSync(dir, { recursive: true, mode: 0o700 });
+          chmodSync(dir, 0o700);
+          return dir;
+        },
+      });
 
   const ptyManager = createPtyManager({ shellEnv, broadcaster });
   const worktreeManager = createWorktreeManager({ env: () => shellEnv.childEnv({}) });
@@ -523,6 +535,7 @@ async function startServices(): Promise<Services> {
     broadcaster,
     appVersion: app.getVersion(),
     isTrustedSender: (url) => isAppUrl(url, urlConfig),
+    themeOverlay,
     syncTranscript,
     gitService,
     editorLauncher,
@@ -583,7 +596,7 @@ async function startServices(): Promise<Services> {
     },
     // Settings > Codex 실행 파일 경로: only a runnable `codex-cli` at or above the minimum version is stored.
     checkCodexPath: async (path) => {
-      const checked = await checkCodexEngine(path);
+      const checked = await agentBinaries.checkCodexPath(path);
       return checked.ok ? null : checked.error;
     },
   });
@@ -714,7 +727,8 @@ if (smoke) {
 } else if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  nativeTheme.themeSource = 'light';
+  // Dark native theme + the hopecode-theme:// scheme (registered before ready, served once ready).
+  setupTheme();
   if (headless) hideFromDock();
 
   let services: Services | null = null;

@@ -1,7 +1,7 @@
 import { memo, useEffect, useImperativeHandle, useRef, useState, type KeyboardEvent, type ReactNode, type Ref } from 'react';
 import { Menu, type MenuSection } from '../common';
 import { COMPOSER_MENU_WIDTH } from './ComposerControls';
-import { ArrowUpIcon, FolderOpenIcon, PaperclipIcon, PlusIcon, SpinnerIcon, StopIcon } from './icons';
+import { FolderOpenIcon, PaperclipIcon, PlusIcon, SpinnerIcon, StopIcon } from './icons';
 import { isSubmitKey } from './composerKeys';
 import type { ChatImage } from '../../../shared/types';
 import { ComposerImageTray, useComposerImages } from '../Images/ComposerImages';
@@ -245,7 +245,7 @@ export const Composer = memo(function Composer({
               disabled={!canSend}
               onClick={submit}
             >
-              {busy ? <SpinnerIcon width={14} height={14} /> : <ArrowUpIcon width={16} height={16} />}
+              {busy ? <SpinnerIcon width={14} height={14} /> : <span className="hc-send__heart" aria-hidden />}
             </button>
           )}
         </div>

@@ -87,6 +87,11 @@ describe('codex detector', () => {
     expect(r.detail).toContain('ChatGPT 앱 또는 Codex CLI');
     expect(r.detail).toContain('0.150.0');
   });
+  it('an unusable Settings override -> not-installed with the override reason (no auto-detected engine)', async () => {
+    const r = await detectCodex({ ...mk({}, {}, '/bin/codex-acp', claims, null), codexEngineError: () => '실행 가능한 파일이 아닙니다' });
+    expect(r).toMatchObject({ state: 'not-installed', enginePath: null });
+    expect(r.detail).toContain('설정의 Codex 실행 파일 경로를 사용할 수 없습니다: 실행 가능한 파일이 아닙니다');
+  });
   it('respects CODEX_HOME', async () => {
     const r = await detectCodex(
       mk({ '/c/home/auth.json': auth({ tokens: { id_token: SECRET_ID } }) }, { CODEX_HOME: '/c/home' }),

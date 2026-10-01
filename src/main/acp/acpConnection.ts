@@ -89,6 +89,7 @@ export type KillGroupFn = (pid: number, signal: NodeJS.Signals) => boolean;
 
 export interface AcpConnectionOptions {
   spec: AcpLaunchSpec;
+  /** Process working directory when `spec.cwd` is not set. */
   cwd: string;
   handlers: AcpConnectionHandlers;
   appVersion: string;
@@ -148,7 +149,7 @@ export class AcpConnection {
     let child: ChildProcess;
     try {
       child = spawnFn(opts.spec.command, opts.spec.args, {
-        cwd: opts.cwd,
+        cwd: opts.spec.cwd ?? opts.cwd,
         env: opts.spec.env,
         stdio: ['pipe', 'pipe', 'pipe'],
         detached: true,

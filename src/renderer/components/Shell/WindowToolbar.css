@@ -5,7 +5,7 @@
   gap: 2px;
 }
 .hc-wtb__sep {
-  width: 1px;
+  width: 2px;
   height: 16px;
   margin: 0 4px;
   background: var(--separator);
@@ -26,7 +26,7 @@
   animation: hc-wtb-flash-in var(--motion-2) var(--ease-soft);
 }
 .hc-wtb__flash--ok {
-  color: var(--accent);
+  color: var(--label-selected);
   background: var(--accent-soft);
 }
 .hc-wtb__flash--error {

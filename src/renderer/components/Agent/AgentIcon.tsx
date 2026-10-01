@@ -16,6 +16,6 @@ export function agentLogoUrl(kind: AgentKind): string | null {
 /** Agent mark: the official logo when bundled, otherwise the neutral prompt glyph. */
 export function AgentIcon({ kind, size = 16, className }: { kind: AgentKind; size?: number; className?: string }) {
   const url = agentLogoUrl(kind);
-  if (url) return <img className={className} src={url} width={size} height={size} alt="" draggable={false} />;
+  if (url) return <img className={className} src={url} width={size} height={size} alt="" draggable={false} data-agent-logo={kind} />;
   return <GlyphAgent className={className} width={size} height={size} />;
 }

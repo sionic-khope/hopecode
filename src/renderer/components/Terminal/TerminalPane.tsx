@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef } from 'react';
 import '@xterm/xterm/css/xterm.css';
 import { getOrCreateTerminalEntry } from './terminalRegistry';
-import { TERMINAL_FONT_FAMILY, TERMINAL_FONT_SIZE, TERMINAL_LINE_HEIGHT, resolveTerminalTheme } from './terminalTheme';
+import { TERMINAL_FONT_SIZE, TERMINAL_LINE_HEIGHT, resolveTerminalFontFamily, resolveTerminalTheme } from './terminalTheme';
 import './Terminal.css';
 
 export interface TerminalPaneProps {
@@ -46,7 +46,7 @@ export function TerminalPane({ sessionId, onData, subscribeOutput, getInitialCon
     if (!wrapper) return undefined;
 
     const entry = getOrCreateTerminalEntry(sessionId, {
-      fontFamily: TERMINAL_FONT_FAMILY,
+      fontFamily: resolveTerminalFontFamily(),
       fontSize: TERMINAL_FONT_SIZE,
       lineHeight: TERMINAL_LINE_HEIGHT,
       theme: resolveTerminalTheme(),

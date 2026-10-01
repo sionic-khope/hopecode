@@ -1,4 +1,4 @@
-/* Shared controls. Uses tokens.css only. */
+/* Shared controls: square pixel buttons with a hard drop, framed menus with the heart cursor. Uses tokens.css only. */
 
 /* ---------- Button ---------- */
 .hc-btn {
@@ -23,7 +23,7 @@
     opacity var(--motion-1) var(--ease-soft);
 }
 .hc-btn:active:not(:disabled) {
-  transform: translateY(0.5px);
+  transform: translate(1px, 1px);
 }
 .hc-btn--sm {
   height: var(--control-h-sm);
@@ -36,26 +36,30 @@
   padding: 0 var(--space-4);
   border-radius: var(--radius-control);
 }
+/* Primary: a solid violet block, darker bevel on the bottom-right and a hard violet drop; pressing sinks it. */
 .hc-btn--primary {
   background: var(--accent);
   color: var(--label-on-accent);
-  font-weight: var(--weight-semibold);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 1px 2px rgba(0, 83, 253, 0.25);
+  font-weight: var(--weight-bold);
+  box-shadow: var(--shadow-press-inset), var(--shadow-press);
 }
 .hc-btn--primary:hover:not(:disabled) {
   background: var(--accent-hover);
 }
 .hc-btn--primary:active:not(:disabled) {
   background: var(--accent-pressed);
+  box-shadow: none;
+  transform: translate(3px, 3px);
 }
 .hc-btn--secondary {
   background: var(--bg-input);
   color: var(--label);
-  box-shadow: inset 0 0 0 1px var(--separator-strong);
+  box-shadow: inset 0 0 0 2px var(--separator-strong);
 }
 .hc-btn--secondary:hover:not(:disabled) {
   background: var(--bg-card);
-  box-shadow: inset 0 0 0 1px var(--accent-border);
+  color: var(--label-selected);
+  box-shadow: inset 0 0 0 2px var(--frame);
 }
 .hc-btn--secondary:active:not(:disabled) {
   background: var(--bg-control-pressed);
@@ -73,12 +77,12 @@
 }
 .hc-btn--plain[aria-pressed='true'] {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--label-selected);
 }
 .hc-btn--destructive {
   background: var(--bg-input);
   color: var(--crit-text);
-  box-shadow: inset 0 0 0 1px rgba(200, 55, 45, 0.35);
+  box-shadow: inset 0 0 0 2px var(--crit-border);
 }
 .hc-btn--destructive:hover:not(:disabled) {
   background: var(--crit-bg);
@@ -99,6 +103,9 @@
 .hc-btn:focus-visible {
   box-shadow: var(--focus-ring);
 }
+.hc-btn--primary:focus-visible {
+  box-shadow: var(--shadow-press-inset), var(--focus-ring);
+}
 
 /* ---------- Pill ---------- */
 .hc-pill {
@@ -110,7 +117,7 @@
   border-radius: var(--radius-capsule);
   font-size: var(--text-xs);
   line-height: var(--lh-xs);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-bold);
   white-space: nowrap;
   background: var(--neutral-bg);
   color: var(--label-secondary);
@@ -138,7 +145,6 @@
 .hc-pill__dot {
   width: 6px;
   height: 6px;
-  border-radius: 50%;
   flex: none;
   background: currentColor;
 }
@@ -152,8 +158,8 @@
     transform: scale(1);
   }
   50% {
-    opacity: 0.45;
-    transform: scale(0.75);
+    opacity: 0.25;
+    transform: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -170,11 +176,11 @@
   min-width: 22px;
   height: 22px;
   padding: 0 6px;
-  border-radius: 4px;
+  border-radius: 0;
   background: transparent;
-  box-shadow: inset 0 0 0 1px var(--separator-strong);
+  box-shadow: inset 0 0 0 2px var(--separator-strong);
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--text-2xs);
   font-weight: var(--weight-medium);
   color: var(--label-secondary);
   font-variant-numeric: tabular-nums;
@@ -190,12 +196,14 @@
   padding: 0;
   border: none;
   border-radius: var(--radius-capsule);
-  background: var(--separator-strong);
+  background: var(--bg-input);
+  box-shadow: inset 0 0 0 2px var(--separator-strong);
   transition: background-color var(--motion-2) var(--ease-soft);
   cursor: default;
 }
 .hc-switch[aria-checked='true'] {
   background: var(--accent);
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 .hc-switch__thumb {
   position: absolute;
@@ -203,13 +211,12 @@
   left: 2px;
   width: 12px;
   height: 12px;
-  border-radius: 50%;
-  background: #ffffff;
-  box-shadow: 0 1px 3px rgba(12, 30, 80, 0.25);
+  background: var(--label-secondary);
   transition: transform var(--motion-2) var(--ease-soft);
 }
 .hc-switch[aria-checked='true'] .hc-switch__thumb {
   transform: translateX(12px);
+  background: var(--white);
 }
 .hc-switch--md {
   width: 40px;
@@ -227,6 +234,9 @@
 .hc-switch:disabled {
   opacity: 0.4;
 }
+.hc-switch:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--separator-strong), var(--focus-ring);
+}
 
 /* ---------- Segmented ---------- */
 .hc-seg {
@@ -236,12 +246,12 @@
   height: var(--seg-h);
   padding: 2px;
   border-radius: var(--radius-control);
-  background: var(--bg-control);
-  box-shadow: inset 0 0 0 1px var(--separator);
+  background: var(--bg-input);
+  box-shadow: inset 0 0 0 2px var(--separator);
 }
 .hc-seg--sm {
   height: var(--seg-h-sm);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
 .hc-seg__item {
   display: inline-flex;
@@ -251,7 +261,7 @@
   min-width: 36px;
   padding: 0 var(--space-3);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--label-secondary);
   font-size: var(--text-sm);
@@ -265,17 +275,17 @@
     color var(--motion-1) var(--ease-soft);
 }
 .hc-seg--sm .hc-seg__item {
-  border-radius: 5px;
+  border-radius: var(--radius-control);
   padding: 0 var(--space-2);
 }
 .hc-seg__item:hover:not([aria-checked='true']):not(:disabled) {
   color: var(--label);
 }
 .hc-seg__item[aria-checked='true'] {
-  background: var(--bg-card);
-  color: var(--accent);
-  font-weight: var(--weight-semibold);
-  box-shadow: 0 0 0 1px var(--accent-border), 0 1px 2px rgba(12, 30, 80, 0.06);
+  background: var(--accent-soft);
+  color: var(--label-selected);
+  font-weight: var(--weight-bold);
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 .hc-seg__item:disabled {
   opacity: 0.4;
@@ -289,7 +299,8 @@
 }
 .hc-seg__item--danger[aria-checked='true'] {
   background: var(--warn);
-  color: var(--label-on-accent);
+  color: var(--label-on-select);
+  box-shadow: none;
 }
 
 /* ---------- Popover ---------- */
@@ -324,7 +335,7 @@
 .hc-mnu {
   display: flex;
   flex-direction: column;
-  padding: 6px;
+  padding: 8px;
   outline: none;
 }
 .hc-mnu__header {
@@ -334,11 +345,13 @@
   padding: 6px 10px 4px;
   font-size: var(--text-xs);
   line-height: var(--lh-xs);
-  font-weight: var(--weight-semibold);
-  color: var(--label-secondary);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tag);
+  text-transform: uppercase;
+  color: var(--label-tertiary);
 }
 .hc-mnu__sep {
-  height: 1px;
+  height: 2px;
   margin: 5px 8px;
   background: var(--separator);
 }
@@ -349,28 +362,39 @@
   align-items: center;
   gap: 10px;
   width: 100%;
+  position: relative;
   min-height: 32px;
-  padding: 6px 10px;
+  padding: 6px 10px 6px var(--heart-gutter);
   border-radius: var(--radius-menu-item);
   color: var(--label);
   font-size: var(--text-md);
   line-height: var(--lh-md);
   cursor: default;
-  transition: background-color var(--motion-1) var(--ease-soft);
+  transition: color var(--motion-1) steps(1, end);
 }
+/* The heart follows the pointer / keyboard; with neither on the menu it rests on the checked item. */
 .hc-mnu__item:hover:not(:disabled),
 .hc-mnu__item:focus-visible {
-  background: var(--bg-menu-hover);
+  color: var(--label-selected);
+}
+.hc-mnu__item:hover:not(:disabled)::before,
+.hc-mnu__item:focus-visible::before,
+.hc-mnu:not(:has(.hc-mnu__item:hover, .hc-mnu__item:focus-visible)) .hc-mnu__item[aria-checked='true']::before {
+  opacity: 1;
+}
+.hc-mnu__item:hover:not(:disabled) .hc-mnu__icon,
+.hc-mnu__item:focus-visible .hc-mnu__icon {
+  color: var(--label-selected);
 }
 .hc-mnu__item:focus-visible {
-  box-shadow: inset 0 0 0 1.5px var(--accent-ring);
+  box-shadow: none;
 }
 .hc-mnu__item[aria-checked='true'] {
-  color: var(--accent);
-  font-weight: var(--weight-medium);
+  color: var(--label-selected);
+  font-weight: var(--weight-regular);
 }
 .hc-mnu__item[aria-checked='true'] .hc-mnu__icon {
-  color: var(--accent);
+  color: var(--label-selected);
 }
 .hc-mnu__item:disabled {
   color: var(--label-tertiary);
@@ -427,7 +451,7 @@
   flex: none;
   display: flex;
   width: 14px;
-  color: var(--accent);
+  color: var(--label-selected);
 }
 
 /* ---------- Modal ---------- */
@@ -440,7 +464,6 @@
   justify-content: center;
   padding: var(--space-6);
   background: var(--bg-backdrop);
-  backdrop-filter: blur(2px);
   animation: hc-fade-in var(--motion-2) var(--ease-soft);
 }
 @keyframes hc-fade-in {
@@ -485,9 +508,9 @@
   justify-content: center;
   width: 36px;
   height: 36px;
-  border-radius: 50%;
   background: var(--accent-soft);
-  color: var(--accent);
+  box-shadow: inset 0 0 0 2px var(--accent);
+  color: var(--label);
 }
 .hc-modal__heading {
   flex: 1;
@@ -499,7 +522,7 @@
   font-family: var(--font-display);
   font-size: var(--text-xl);
   line-height: var(--lh-xl);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-bold);
   letter-spacing: var(--tracking-title);
 }
 .hc-modal__subtitle {
@@ -516,7 +539,7 @@
   justify-content: center;
   width: 26px;
   height: 26px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   color: var(--label-tertiary);
   transition:
     background-color var(--motion-1) var(--ease-soft),
@@ -545,7 +568,7 @@
   justify-content: flex-end;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-6) 18px;
-  border-top: 1px solid var(--separator);
+  border-top: 2px solid var(--separator);
 }
 
 /* Key/value rows inside modals and cards (앱 정보, confirm details). */
@@ -557,7 +580,7 @@
   padding: var(--space-4);
   border-radius: var(--radius-card);
   background: var(--bg-card-muted);
-  box-shadow: inset 0 0 0 1px var(--separator);
+  box-shadow: inset 0 0 0 2px var(--separator);
 }
 .hc-kv dt {
   color: var(--label-secondary);
@@ -580,9 +603,11 @@
   height: 22px;
   padding: 0 9px 0 8px;
   border-radius: var(--radius-capsule);
+  background: transparent;
+  box-shadow: inset 0 0 0 2px currentColor;
   font-size: var(--text-2xs);
   line-height: var(--lh-2xs);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-bold);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
   transition:
@@ -592,40 +617,35 @@
 .hc-status__dot {
   width: 6px;
   height: 6px;
-  border-radius: 50%;
   flex: none;
   background: currentColor;
 }
 .hc-status--running {
-  background: var(--run-bg);
   color: var(--run-text);
 }
 .hc-status--running .hc-status__dot {
   animation: hc-pulse 1.4s var(--ease-soft) infinite;
 }
-/* Running pill (sidebar row, chat header): a soft halo breathes around the capsule. */
+/* Running pill (sidebar row, chat header): the frame steps between violet and its wash, like a menu blink. */
 .hc-status--running {
-  animation: hc-status-halo 2.4s ease-in-out infinite;
+  animation: hc-status-halo 1.2s steps(1, end) infinite;
 }
 @keyframes hc-status-halo {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(0, 83, 253, 0);
+    background: transparent;
   }
   50% {
-    box-shadow: 0 0 0 3px var(--accent-subtle);
+    background: var(--accent-soft);
   }
 }
 .hc-status--waiting {
-  background: var(--wait-bg);
   color: var(--warn-text);
 }
 .hc-status--done {
-  background: var(--ok-bg);
   color: var(--ok-text);
 }
 .hc-status--error {
-  background: var(--crit-bg);
   color: var(--crit-text);
 }
 @media (prefers-reduced-motion: reduce) {

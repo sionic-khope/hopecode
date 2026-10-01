@@ -16,10 +16,14 @@ export interface UsageMeterProps {
   width?: number;
   /** Data older than the staleness window (shows `*` + tooltip). */
   stale?: boolean;
+  /** RPG gauge in the statusline: `hp` (5h window, yellow on dark red) or `tp` (context, orange). Prefixes the tag. */
+  gauge?: 'hp' | 'tp';
 }
 
+const GAUGE_TAG: Record<NonNullable<UsageMeterProps['gauge']>, string> = { hp: 'HP', tp: 'TP' };
+
 /** Capsule progress meter used by the statusline and the accounts popover (plan 6). */
-export function UsageMeter({ label, percent, resetsAt, now, width = 44, stale = false }: UsageMeterProps) {
+export function UsageMeter({ label, percent, resetsAt, now, width = 44, stale = false, gauge }: UsageMeterProps) {
   let level: 'ok' | 'warn' | 'crit' = 'ok';
   let fill = 0;
   let percentText = '–';
@@ -48,7 +52,15 @@ export function UsageMeter({ label, percent, resetsAt, now, width = 44, stale = 
   }
 
   return (
-    <span className="hc-statusline__segment hc-meter" title={stale ? 'Not updated for 15+ minutes' : undefined}>
+    <span
+      className={`hc-statusline__segment hc-meter${gauge ? ` hc-meter--${gauge}` : ''}`}
+      title={stale ? 'Not updated for 15+ minutes' : undefined}
+    >
+      {gauge ? (
+        <span className="hc-meter__gauge" aria-hidden>
+          {GAUGE_TAG[gauge]}
+        </span>
+      ) : null}
       <span className="hc-meter__label">{label}</span>
       <span className="hc-meter__track" style={{ width }}>
         <span className={`hc-meter__fill hc-meter__fill--${level}`} style={{ width: `${Math.round(fill * 100)}%` }} />

@@ -17,8 +17,8 @@ body,
 
 html,
 body {
-  /* transparent so the window vibrancy shows through the sidebar */
-  background: transparent;
+  /* Opaque black world: the window's own backgroundColor is black too, so nothing flashes on load or resize. */
+  background: var(--bg-canvas);
   overflow: hidden;
 }
 
@@ -28,7 +28,8 @@ body {
   line-height: var(--lh-md);
   letter-spacing: var(--tracking-ui);
   color: var(--label);
-  -webkit-font-smoothing: antialiased;
+  /* Pixel faces: no smoothing keeps Galmuri / Silkscreen on their grid. Code and the terminal re-enable it. */
+  -webkit-font-smoothing: var(--font-smoothing-pixel);
   font-optical-sizing: auto;
   -webkit-user-select: none;
   user-select: none;
@@ -43,6 +44,7 @@ samp {
   font-size: var(--mono-sm);
   line-height: var(--lh-mono-sm);
   letter-spacing: 0;
+  -webkit-font-smoothing: antialiased;
 }
 
 button,
@@ -71,7 +73,43 @@ textarea,
 }
 
 ::selection {
-  background: rgba(0, 83, 253, 0.25);
+  background: var(--selection-text);
+}
+
+/* Logos drawn in currentColor (Hermes) are black inside an <img>; on the black world they print white. */
+img[data-agent-logo='hermes'] {
+  filter: invert(1);
+}
+
+/* Pixel art (sprites, the brand mark, overlay images) never gets smoothed when scaled. */
+.hc-pixelated {
+  image-rendering: pixelated;
+  shape-rendering: crispEdges;
+}
+
+/* The heart cursor (an RPG menu's "soul") beside the selected / hovered row of a list. One definition for every list
+   that carries it; each component's CSS only switches it on (opacity: 1) for its own selected / hovered state and
+   leaves a --heart-gutter of left padding. Overlay: ~/.hopecode/theme/sprites/heart.png replaces --sprite-heart. */
+.hc-soul::before,
+.hc-nav::before,
+.hc-thread::before,
+.hc-mnu__item::before,
+.hc-palette__item::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  width: var(--heart-w);
+  height: var(--heart-h);
+  margin-top: calc(var(--heart-h) / -2);
+  background: var(--sprite-heart) no-repeat center / contain;
+  image-rendering: pixelated;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-1) steps(1, end);
+}
+.hc-soul--on::before {
+  opacity: 1;
 }
 
 .drag-region {
@@ -92,19 +130,19 @@ a {
   font-variant-numeric: tabular-nums;
 }
 
-/* Thin overlay-style scrollbars */
+/* Thin square scrollbars */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(23, 23, 26, 0.16);
-  border-radius: var(--radius-capsule);
+  background: var(--scrollbar-thumb);
+  border-radius: 0;
   border: 3px solid transparent;
   background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(23, 23, 26, 0.28);
+  background-color: var(--scrollbar-thumb-hover);
 }
 ::-webkit-scrollbar-track {
   background: transparent;

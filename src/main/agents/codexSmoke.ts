@@ -1,12 +1,17 @@
 // HOPECODE_SMOKE Codex check (packaged and dev): the bundled codex-acp adapter (`--version`), the installed Codex engine
-// and an offline `initialize` under a temporary HOME / CODEX_HOME (the user's ~/.codex is never read or written). No
-// session is opened, nothing is sent to a model. No Codex engine on this Mac -> a warning, not a failure.
+// and an offline `initialize` under a temporary HOME / CODEX_HOME. The adapter starts the real `codex app-server`, so
+// the temporary CODEX_HOME gets a config.toml forcing Codex's credential stores to `file` (inside that directory): the
+// user's ~/.codex is not used and the login Keychain entries are not consulted. No session is opened, nothing is sent
+// to a model. No Codex engine on this Mac -> a warning, not a failure.
 import { execFile } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AcpConnection, type AcpConnectionOptions } from '../acp/acpConnection';
 import type { AgentBinaries } from './agentBinaries';
+
+/** Codex config keys (codex-cli >= 0.150): keep CLI auth and MCP OAuth credentials in CODEX_HOME, not the Keychain. */
+export const SMOKE_CODEX_CONFIG_TOML = 'cli_auth_credentials_store = "file"\nmcp_oauth_credentials_store = "file"\n';
 
 /** `agentInfo.name` of @agentclientprotocol/codex-acp 2.x. */
 export const CODEX_ACP_AGENT_NAME = '@agentclientprotocol/codex-acp';
@@ -35,10 +40,11 @@ export async function codexAcpSmoke(deps: CodexSmokeDeps): Promise<boolean> {
   const home = mkdtempSync(join(tmpdir(), 'hopecode-smoke-codex-'));
   const codexHome = join(home, '.codex');
   mkdirSync(codexHome, { mode: 0o700 });
+  writeFileSync(join(codexHome, 'config.toml'), SMOKE_CODEX_CONFIG_TOML, { mode: 0o600 });
   const env = { PATH: '/usr/bin:/bin', HOME: home, CODEX_HOME: codexHome };
   try {
     const adapterVersion = await new Promise<string>((resolve, reject) => {
-      execFile(bin, ['--version'], { timeout: 15_000, env }, (err, stdout) => (err ? reject(err) : resolve(stdout.trim())));
+      execFile(bin, ['--version'], { timeout: 15_000, env, cwd: home }, (err, stdout) => (err ? reject(err) : resolve(stdout.trim())));
     });
     deps.log(`[smoke] codex-acp binary ok (${bin}) version: ${adapterVersion}`);
     const engine = await deps.binaries.resolveCodex();

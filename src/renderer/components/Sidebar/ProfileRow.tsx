@@ -56,7 +56,7 @@ export function Avatar({
     <span
       className="hc-avatar"
       aria-hidden
-      style={{ width: size, height: size, fontSize: Math.round(size * 0.4), ['--hc-avatar' as string]: account.color }}
+      style={{ width: size, height: size, fontSize: size >= 48 ? 24 : 12, ['--hc-avatar' as string]: account.color }}
     >
       {accountInitials(account, name)}
     </span>

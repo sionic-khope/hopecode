@@ -1,4 +1,4 @@
-/* 설정: a display-titled page of hairline section cards on the pale pane. */
+/* 설정: a pixel-titled page of framed section cards on the black pane. */
 .hc-settings {
   height: 100%;
   overflow-y: auto;
@@ -16,7 +16,7 @@
   gap: var(--space-2);
   margin: 0 calc(-1 * var(--space-8)) var(--space-6);
   padding: 22px var(--space-8) 16px;
-  border-bottom: 1px solid var(--separator);
+  border-bottom: 2px solid var(--separator);
   max-width: none;
 }
 .hc-settings__header > .hc-btn {
@@ -27,7 +27,7 @@
   font-family: var(--font-display);
   font-size: var(--text-2xl);
   line-height: var(--lh-2xl);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-bold);
   letter-spacing: var(--tracking-title);
 }
 .hc-settings__lede {
@@ -39,7 +39,7 @@
   margin-bottom: var(--space-4);
   padding: 10px 14px;
   border-radius: var(--radius-control);
-  box-shadow: inset 0 0 0 1px rgba(200, 55, 45, 0.2);
+  box-shadow: inset 0 0 0 2px var(--crit-border);
   background: var(--crit-bg);
   color: var(--crit-text);
   font-size: var(--text-sm);
@@ -82,7 +82,7 @@
   padding: 12px var(--space-4);
 }
 .hc-settings__row + .hc-settings__row {
-  border-top: 1px solid var(--separator);
+  border-top: 2px solid var(--separator);
 }
 .hc-settings__row-text {
   flex: 1;
@@ -135,7 +135,7 @@
   border: none;
   border-radius: var(--radius-control);
   background: var(--bg-input);
-  box-shadow: inset 0 0 0 1px var(--separator-strong);
+  box-shadow: inset 0 0 0 2px var(--separator-strong);
   font-family: inherit;
   font-size: var(--text-sm);
   line-height: var(--lh-sm);
@@ -145,7 +145,7 @@
 }
 .hc-settings__textarea:focus {
   outline: none;
-  box-shadow: inset 0 0 0 1px var(--accent), var(--focus-ring);
+  box-shadow: inset 0 0 0 2px var(--frame);
 }
 .hc-settings__textarea-footer {
   display: flex;
@@ -174,9 +174,9 @@
   height: var(--control-h-sm);
   padding: 0 8px;
   border: none;
-  border-radius: 8px;
-  background: var(--bg-card-muted);
-  box-shadow: inset 0 0 0 1px rgba(23, 23, 26, 0.1);
+  border-radius: var(--radius-control);
+  background: var(--bg-input);
+  box-shadow: inset 0 0 0 2px var(--separator-strong);
   font-size: var(--text-sm);
   font-variant-numeric: tabular-nums;
   text-align: right;
@@ -185,7 +185,7 @@
 }
 .hc-settings__number input:focus {
   outline: none;
-  box-shadow: inset 0 0 0 1px var(--accent), var(--focus-ring);
+  box-shadow: inset 0 0 0 2px var(--frame);
 }
 
 .hc-settings__text {
@@ -193,16 +193,16 @@
   height: var(--control-h-sm);
   padding: 0 10px;
   border: none;
-  border-radius: 8px;
-  background: var(--bg-card-muted);
-  box-shadow: inset 0 0 0 1px rgba(23, 23, 26, 0.1);
+  border-radius: var(--radius-control);
+  background: var(--bg-input);
+  box-shadow: inset 0 0 0 2px var(--separator-strong);
   font-size: var(--text-sm);
   color: var(--label);
   transition: box-shadow var(--motion-1) var(--ease-soft);
 }
 .hc-settings__text:focus {
   outline: none;
-  box-shadow: inset 0 0 0 1px var(--accent), var(--focus-ring);
+  box-shadow: inset 0 0 0 2px var(--frame);
 }
 
 /* Range slider with a filled track. */
@@ -215,7 +215,7 @@
   -webkit-appearance: none;
   appearance: none;
   width: 180px;
-  height: 4px;
+  height: 8px;
   border-radius: var(--radius-capsule);
   background: linear-gradient(to right, var(--accent) 0 var(--hc-range, 0%), var(--meter-track) var(--hc-range, 0%) 100%);
   outline: none;
@@ -224,16 +224,16 @@
   -webkit-appearance: none;
   width: 18px;
   height: 18px;
-  border-radius: 50%;
-  background: #ffffff;
-  box-shadow: 0 0 0 1px rgba(23, 23, 26, 0.12), 0 2px 5px rgba(23, 23, 26, 0.2);
+  border-radius: 0;
+  background: var(--white);
+  box-shadow: 3px 3px 0 0 var(--drop);
   transition: transform var(--motion-1) var(--ease-soft);
 }
 .hc-settings__range input[type='range']:active::-webkit-slider-thumb {
   transform: scale(1.12);
 }
 .hc-settings__range input[type='range']:focus-visible::-webkit-slider-thumb {
-  box-shadow: 0 0 0 1px var(--accent), var(--focus-ring);
+  box-shadow: 0 0 0 2px var(--frame);
 }
 .hc-settings__range-value {
   min-width: 60px;
@@ -309,7 +309,7 @@
   padding: 0 10px 0 12px;
   border-radius: var(--radius-control);
   background: var(--bg-input);
-  box-shadow: inset 0 0 0 1px var(--separator-strong);
+  box-shadow: inset 0 0 0 2px var(--separator-strong);
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
   color: var(--label);
@@ -319,13 +319,13 @@
 }
 .hc-select:hover {
   background: var(--bg-card);
-  box-shadow: inset 0 0 0 1px var(--accent-border);
+  box-shadow: inset 0 0 0 2px var(--accent-border);
 }
 .hc-select:active {
-  transform: translateY(0.5px);
+  transform: translate(1px, 1px);
 }
 .hc-select:focus-visible {
-  box-shadow: inset 0 0 0 1px var(--accent), var(--field-ring);
+  box-shadow: inset 0 0 0 2px var(--frame);
 }
 .hc-select__value {
   min-width: 0;
@@ -341,10 +341,10 @@
 /* Filled destructive confirm (modal primary). */
 .hc-btn--danger-fill {
   background: var(--crit);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 1px 2px rgba(200, 55, 45, 0.3);
+  box-shadow: inset -3px -3px 0 0 var(--crit-bg), var(--shadow-press);
 }
 .hc-btn--danger-fill:hover:not(:disabled) {
-  background: #d63f3a;
+  background: var(--crit-text);
 }
 .hc-btn--danger-fill:active:not(:disabled) {
   background: var(--crit-text);
@@ -362,10 +362,10 @@
   color: var(--label-secondary);
 }
 .hc-settings__group:not(:first-child) {
-  border-top: 1px solid var(--separator);
+  border-top: 2px solid var(--separator);
 }
 .hc-settings__group + .hc-settings__row {
-  border-top: 1px solid var(--separator);
+  border-top: 2px solid var(--separator);
 }
 /* A value the app does not choose (Hermes' system default). */
 .hc-settings__fixed {
@@ -374,7 +374,7 @@
   height: 28px;
   padding: 0 12px;
   border-radius: var(--radius-capsule);
-  box-shadow: inset 0 0 0 1px var(--separator);
+  box-shadow: inset 0 0 0 2px var(--separator);
   font-size: var(--text-sm);
   color: var(--label-secondary);
 }

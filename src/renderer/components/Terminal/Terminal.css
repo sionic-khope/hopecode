@@ -10,6 +10,8 @@
   background: var(--bg-terminal);
   padding: var(--space-3) 4px 4px var(--space-4);
   overflow: hidden;
+  /* JetBrains Mono is an outline face: smooth it (the pixel UI around it renders unsmoothed). */
+  -webkit-font-smoothing: antialiased;
 }
 
 /* xterm's own root element, appended by TerminalPane via terminalRegistry. */
@@ -17,8 +19,8 @@
   height: 100%;
 }
 .hc-terminal .xterm .xterm-viewport {
-  /* xterm's stylesheet paints the viewport #000; the grid rarely fills the pane exactly, so the leftover
-     strip under the last row would show as a black bar on this light theme. */
+  /* xterm's stylesheet paints the viewport #000; follow the token instead so a palette.json overlay that changes
+     --bg-terminal leaves no strip under the last row. */
   background-color: var(--bg-terminal);
   /* Match the app's thin overlay scrollbar treatment (global.css) instead of xterm's default. */
   scrollbar-width: thin;

@@ -42,7 +42,7 @@
   max-width: none;
   margin: 0 calc(-1 * var(--space-8)) var(--space-5);
   padding: 22px var(--space-8) 16px;
-  border-bottom: 1px solid var(--separator);
+  border-bottom: 2px solid var(--separator);
 }
 .hc-accounts-page__title-row {
   display: flex;
@@ -153,9 +153,9 @@
 .hc-acct-row__swatch {
   width: 20px;
   height: 20px;
-  border-radius: 50%;
+  border-radius: 0;
   border: none;
-  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.12);
+  box-shadow: inset 0 0 0 2px var(--line);
   cursor: default;
 }
 .hc-acct-row__palette {
@@ -168,22 +168,21 @@
   gap: 6px;
   padding: var(--space-2);
   border-radius: var(--radius-popover);
-  background: rgba(255, 255, 255, 0.96);
-  backdrop-filter: saturate(180%) blur(20px);
+  background: var(--bg-elevated);
   box-shadow: var(--shadow-popover);
 }
 .hc-acct-row__palette-swatch {
   width: 18px;
   height: 18px;
-  border-radius: 50%;
+  border-radius: 0;
   border: none;
-  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.12);
+  box-shadow: inset 0 0 0 2px var(--line);
   cursor: default;
 }
 .hc-acct-row__palette-swatch[aria-selected='true'] {
   box-shadow:
     0 0 0 2px var(--bg-elevated),
-    0 0 0 3.5px var(--accent);
+    0 0 0 4px var(--select);
 }
 
 .hc-acct-row__identity {
@@ -199,7 +198,7 @@
   font-size: var(--text-md);
   font-weight: var(--weight-medium);
   color: var(--label);
-  border-radius: 4px;
+  border-radius: 0;
   padding: 1px 3px;
   margin-left: -3px;
   cursor: default;
@@ -216,7 +215,7 @@
   padding: 1px 5px;
   margin-left: -6px;
   border: none;
-  border-radius: 4px;
+  border-radius: 0;
   background: var(--bg-control);
   font: inherit;
   font-weight: var(--weight-medium);
@@ -279,14 +278,14 @@
   background: var(--bg-code);
   color: var(--label);
   padding: 1px 5px;
-  border-radius: 4px;
+  border-radius: 0;
 }
 
 /* ---------- Usage chart ---------- */
 .hc-chart {
   margin-top: var(--space-3);
   padding-top: var(--space-2);
-  border-top: 1px solid var(--separator);
+  border-top: 2px solid var(--separator);
 }
 .hc-chart__head {
   display: flex;
@@ -308,7 +307,7 @@
 .hc-chart__legend-dot {
   width: 6px;
   height: 6px;
-  border-radius: 50%;
+  border-radius: 0;
   flex: none;
 }
 .hc-chart__legend-value {
@@ -385,7 +384,6 @@
   align-items: center;
   justify-content: center;
   background: var(--bg-backdrop);
-  backdrop-filter: blur(2px);
   animation: hc-dialog-fade-in var(--motion-2) var(--ease-soft);
 }
 @keyframes hc-dialog-fade-in {
@@ -481,15 +479,15 @@
 .hc-dialog__palette-swatch {
   width: 22px;
   height: 22px;
-  border-radius: 50%;
+  border-radius: 0;
   border: none;
-  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.12);
+  box-shadow: inset 0 0 0 2px var(--line);
   cursor: default;
 }
 .hc-dialog__palette-swatch--selected {
   box-shadow:
     0 0 0 2px var(--bg-elevated),
-    0 0 0 3.5px var(--accent);
+    0 0 0 4px var(--select);
 }
 
 .hc-dialog__notice {
@@ -502,7 +500,7 @@
   height: 120px;
   overflow-y: auto;
   padding: var(--space-2) var(--space-3);
-  border-radius: 6px;
+  border-radius: 0;
   background: var(--bg-code);
   color: var(--label);
   font-family: var(--font-mono);
@@ -538,7 +536,7 @@
 .hc-dialog__swatch {
   width: 22px;
   height: 22px;
-  border-radius: 50%;
+  border-radius: 0;
   flex: none;
 }
 .hc-dialog__result-alias {
@@ -554,7 +552,7 @@
   justify-content: flex-end;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
-  border-top: 1px solid var(--separator);
+  border-top: 2px solid var(--separator);
 }
 
 /* ---------- Agent sections + "이 Mac에서 감지됨" ---------- */

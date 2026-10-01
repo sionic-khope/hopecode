@@ -39,6 +39,25 @@ describe('buildAcpEnv', () => {
     expect(env.HERMES_ACCEPT_HOOKS).toBe('1');
   });
 
+  it('drops BUN_* for every agent and the codex-acp startup env for codex', () => {
+    const adapterEnv = {
+      CODEX_PATH: '/evil/codex',
+      CODEX_CONFIG: '{"model":"x"}',
+      INITIAL_AGENT_MODE: 'full-access',
+      APP_SERVER_LOGS: '/tmp/logs',
+      DEFAULT_AUTH_REQUEST: '{}',
+      MODEL_PROVIDER: 'evil',
+      DISABLE_MCP_CONFIG_FILTERING: 'true',
+    };
+    const base = { ...BASE, BUN_OPTIONS: '--preload /evil.js', BUN_INSPECT: 'ws://x', BUN_CONFIG_REGISTRY: 'r', ...adapterEnv };
+    const codex = buildAcpEnv(base, { agent: 'codex' });
+    for (const k of ['BUN_OPTIONS', 'BUN_INSPECT', 'BUN_CONFIG_REGISTRY', ...Object.keys(adapterEnv)]) expect(codex).not.toHaveProperty(k);
+    expect(codex.CODEX_HOME).toBe('/codex');
+    const hermes = buildAcpEnv(base, { agent: 'hermes' });
+    expect(hermes).not.toHaveProperty('BUN_OPTIONS');
+    expect(hermes.MODEL_PROVIDER).toBe('evil');
+  });
+
   it('hermes keeps provider keys but drops HERMES_ACCEPT_HOOKS', () => {
     const env = buildAcpEnv(BASE, { agent: 'hermes' });
     expect(env.ANTHROPIC_API_KEY).toBe('k');

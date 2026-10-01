@@ -39,14 +39,14 @@ test('3-pane layout, ⌘J toggles the terminal pane', async () => {
   await expect(app).toHaveClass(/app--terminal-closed/);
 });
 
-test('IBM Plex Sans KR UI font (statusline included), Hahmlet display and JetBrains Mono, loaded from the bundle', async () => {
+test('Galmuri11 UI font (statusline included), Galmuri14 chat, Silkscreen wordmark and JetBrains Mono, loaded from the bundle', async () => {
   const { page } = run;
   const bodyFont = await page.evaluate(() => getComputedStyle(document.body).fontFamily);
-  expect(bodyFont).toMatch(/^"?IBM Plex Sans KR"?,/);
+  expect(bodyFont).toMatch(/^"?Galmuri11"?,/);
   expect(bodyFont).toContain('Apple SD Gothic Neo');
   const statusFont = await page.getByTestId('statusline').evaluate((el) => getComputedStyle(el).fontFamily);
-  expect(statusFont).toMatch(/^"?IBM Plex Sans KR"?,/);
-  // Type ramp: 14px conversation body is --text-chat, statusline 11px capsules, 13px controls.
+  expect(statusFont).toMatch(/^"?Galmuri11"?,/);
+  // Type ramp on the pixel faces' design sizes: 15px conversation body (Galmuri14), 12px statusline and controls.
   const sizes = await page.evaluate(() => {
     const root = getComputedStyle(document.documentElement);
     return {
@@ -55,15 +55,15 @@ test('IBM Plex Sans KR UI font (statusline included), Hahmlet display and JetBra
       sidebar: root.getPropertyValue('--text-md').trim(),
     };
   });
-  expect(sizes).toEqual({ chat: '14px', status: '11px', sidebar: '13px' });
-  expect(await page.getByTestId('statusline').evaluate((el) => getComputedStyle(el).fontSize)).toBe('11px');
+  expect(sizes).toEqual({ chat: '15px', status: '12px', sidebar: '12px' });
+  expect(await page.getByTestId('statusline').evaluate((el) => getComputedStyle(el).fontSize)).toBe('12px');
   // The @font-face files actually resolved under the CSP (font-src 'self'), not a silent fallback.
   await expect
     .poll(() =>
       page.evaluate(async () => {
         await document.fonts.ready;
         const loaded = [...document.fonts].filter((f) => f.status === 'loaded').map((f) => f.family.replace(/"/g, ''));
-        return ['IBM Plex Sans KR', 'Hahmlet', 'JetBrains Mono'].every((family) => loaded.includes(family));
+        return ['Galmuri11', 'Galmuri14', 'Silkscreen', 'JetBrains Mono'].every((family) => loaded.includes(family));
       }),
     )
     .toBe(true);

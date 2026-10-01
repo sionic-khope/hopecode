@@ -13,8 +13,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 36px;
-  padding: 0 var(--space-2) 0 12px;
+  height: 48px;
+  padding: 0 var(--space-2) 0 14px;
 }
 .hc-sidebar__brand {
   display: flex;
@@ -22,22 +22,25 @@
   gap: 9px;
   min-width: 0;
 }
-.hc-sidebar__brand svg {
+.hc-sidebar__brand svg,
+.hc-sidebar__brand img {
   flex: none;
   filter: none;
 }
+/* HOPECODE in Silkscreen caps: HOPE in white, CODE in the selection yellow. The text stays "Hopecode". */
 .hc-sidebar__wordmark {
-  font-family: var(--font-display);
-  font-size: 17px;
-  line-height: 22px;
-  font-weight: var(--weight-semibold);
-  letter-spacing: -0.015em;
+  font-family: var(--font-pixel);
+  font-size: 16px;
+  line-height: 16px;
+  font-weight: var(--weight-regular);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--label);
   white-space: nowrap;
 }
 .hc-sidebar__wordmark-code {
   font-weight: var(--weight-regular);
-  color: var(--label-secondary);
+  color: var(--select);
 }
 .hc-sidebar__icon-btn {
   all: unset;
@@ -77,8 +80,9 @@
   align-items: center;
   gap: 10px;
   width: 100%;
+  position: relative;
   height: var(--row-h);
-  padding: 0 10px;
+  padding: 0 10px 0 var(--heart-gutter);
   border-radius: var(--radius-row);
   color: var(--label);
   font-size: var(--text-nav);
@@ -93,7 +97,7 @@
   background: var(--bg-sidebar-hover);
 }
 .hc-nav:active {
-  transform: translateY(0.5px);
+  transform: translate(1px, 1px);
 }
 .hc-nav {
   transition:
@@ -101,13 +105,15 @@
     color var(--motion-1) var(--ease-soft),
     transform var(--motion-1) var(--ease-soft);
 }
+/* Selected page: yellow text and the heart cursor, no fill (the fill belongs to the selected thread). */
 .hc-nav--active {
-  background: var(--bg-sidebar-sel);
-  color: var(--label);
-  font-weight: var(--weight-semibold);
+  color: var(--label-selected);
+}
+.hc-nav--active::before {
+  opacity: 1;
 }
 .hc-nav--active svg {
-  color: var(--accent);
+  color: var(--label-selected);
 }
 .hc-nav:focus-visible {
   box-shadow: var(--focus-ring);
@@ -157,7 +163,7 @@
   border-radius: var(--radius-row);
   outline: none;
   background: var(--bg-input);
-  box-shadow: inset 0 0 0 1px var(--separator-strong);
+  box-shadow: inset 0 0 0 2px var(--separator-strong);
   font-size: var(--text-md);
   color: var(--label);
   transition: box-shadow var(--dur-fast) var(--ease-out);
@@ -166,7 +172,7 @@
   display: none;
 }
 .hc-sidebar__search-input:focus {
-  box-shadow: inset 0 0 0 1px var(--accent), var(--field-ring);
+  box-shadow: inset 0 0 0 2px var(--frame);
 }
 .hc-sidebar__search-input::placeholder {
   color: var(--label-tertiary);
@@ -180,7 +186,6 @@
   justify-content: center;
   width: 22px;
   height: 22px;
-  border-radius: 50%;
   color: var(--label-tertiary);
 }
 .hc-sidebar__search-clear:hover {
@@ -244,13 +249,13 @@
   height: 100%;
 }
 .hc-section__toggle:focus-visible {
-  border-radius: 6px;
+  border-radius: 0;
   box-shadow: var(--focus-ring);
 }
 .hc-section__title {
   font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
-  color: var(--label-secondary);
+  font-weight: var(--weight-regular);
+  color: var(--label-tertiary);
 }
 .hc-section__count {
   font-family: var(--font-mono);
@@ -274,7 +279,7 @@
   justify-content: center;
   width: 24px;
   height: 24px;
-  border-radius: 6px;
+  border-radius: 0;
   color: var(--label-tertiary);
   opacity: 0;
   transition:
@@ -325,7 +330,7 @@
   flex: 1;
   min-width: 0;
   height: var(--row-h);
-  padding: 0 10px;
+  padding: 0 10px 0 var(--heart-gutter);
   border-radius: var(--radius-row);
   color: var(--label);
   font-size: var(--text-nav);
@@ -383,7 +388,7 @@
   flex: none;
   width: 26px;
   height: 26px;
-  border-radius: 7px;
+  border-radius: 0;
   color: var(--label-tertiary);
   transition:
     opacity var(--dur-fast) var(--ease-out),
@@ -422,7 +427,7 @@
   gap: 1px;
 }
 .hc-project__empty {
-  padding: 6px 10px 6px 37px;
+  padding: 6px 10px 6px calc(var(--heart-gutter) + 27px);
   font-size: var(--text-sm);
   color: var(--label-tertiary);
 }
@@ -440,7 +445,7 @@
   gap: 10px;
   width: 100%;
   height: var(--row-h);
-  padding: 0 10px;
+  padding: 0 10px 0 var(--heart-gutter);
   border-radius: var(--radius-row);
   color: var(--label);
   font-size: var(--text-nav);
@@ -472,29 +477,25 @@
 .hc-thread-wrap:hover .hc-thread {
   background: var(--bg-sidebar-hover);
 }
+/* Selected thread: a violet-framed wash, yellow text and the heart cursor in the gutter. */
 .hc-thread--selected,
 .hc-thread-wrap:hover .hc-thread--selected {
   background: var(--bg-sidebar-sel);
-  color: var(--label);
-  font-weight: var(--weight-semibold);
+  box-shadow: inset 0 0 0 2px var(--accent);
+  color: var(--label-selected);
 }
-/* Selected thread: a 2px primary bar on the leading edge. */
 .hc-thread--selected::before {
-  content: '';
-  position: absolute;
-  top: 7px;
-  bottom: 7px;
-  left: 0;
-  width: 2px;
-  border-radius: 2px;
-  background: var(--accent);
+  opacity: 1;
 }
 .hc-thread--selected .hc-thread__glyph {
-  color: var(--accent);
+  color: var(--label-selected);
 }
 .hc-thread--selected .hc-thread__time {
-  color: var(--accent);
+  color: var(--label-selected);
   font-weight: var(--weight-regular);
+}
+.hc-thread--selected:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent), var(--focus-ring);
 }
 .hc-thread:focus-visible {
   box-shadow: var(--focus-ring);
@@ -521,7 +522,6 @@
 .hc-thread__status--error {
   width: 6px;
   height: 6px;
-  border-radius: 50%;
   background: var(--crit);
 }
 .hc-thread__time {
@@ -534,10 +534,8 @@
   flex: none;
 }
 .hc-thread__account {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+  width: 8px;
+  height: 8px;
 }
 .hc-sb-spin {
   animation: hc-sb-spin 0.9s linear infinite;
@@ -582,7 +580,7 @@
   justify-content: center;
   width: 26px;
   height: 26px;
-  border-radius: 7px;
+  border-radius: 0;
   color: var(--label-tertiary);
   transition:
     background-color var(--dur-fast) var(--ease-out),
@@ -606,14 +604,14 @@
   border: none;
   border-radius: var(--radius-row);
   background: var(--bg-elevated);
-  box-shadow: var(--focus-ring);
+  box-shadow: inset 0 0 0 2px var(--select);
   color: var(--label);
   font: inherit;
   font-size: var(--text-nav);
   outline: none;
 }
 .hc-thread__rename {
-  padding-left: 37px;
+  padding-left: calc(var(--heart-gutter) + 27px);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -653,8 +651,7 @@
 /* ---------- Profile footer ---------- */
 .hc-profile {
   flex: none;
-  padding: var(--space-2);
-  border-top: 1px solid var(--separator);
+  padding: var(--space-2) var(--space-3) var(--space-3);
 }
 .hc-profile__row {
   all: unset;
@@ -663,9 +660,10 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  min-height: 46px;
-  padding: 6px 8px;
+  min-height: 50px;
+  padding: 8px 10px;
   border-radius: var(--radius-control);
+  box-shadow: inset 0 0 0 2px var(--frame);
   transition:
     background-color var(--motion-1) var(--ease-soft),
     transform var(--motion-1) var(--ease-soft);
@@ -675,10 +673,10 @@
   background: var(--bg-sidebar-hover);
 }
 .hc-profile__row:active {
-  transform: translateY(0.5px);
+  transform: translate(1px, 1px);
 }
 .hc-profile__row:focus-visible {
-  box-shadow: var(--focus-ring);
+  box-shadow: inset 0 0 0 2px var(--frame), var(--focus-ring);
 }
 .hc-profile__text {
   flex: 1;
@@ -693,7 +691,7 @@
   white-space: nowrap;
   font-size: var(--text-lg);
   line-height: var(--lh-md);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-bold);
   color: var(--label);
 }
 .hc-profile__sub {
@@ -709,13 +707,14 @@
   display: inline-flex;
   align-items: center;
   height: 18px;
-  padding: 0 7px;
+  padding: 0 5px;
   border-radius: var(--radius-capsule);
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--select);
+  color: var(--label-on-select);
   font-size: var(--text-2xs);
-  font-weight: var(--weight-semibold);
-  letter-spacing: 0.01em;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 .hc-profile__add-icon {
   flex: none;
@@ -724,24 +723,21 @@
   justify-content: center;
   width: 28px;
   height: 28px;
-  border-radius: 50%;
   background: var(--accent-soft);
-  color: var(--accent);
+  box-shadow: inset 0 0 0 2px var(--accent);
+  color: var(--label);
 }
 
-/* Account avatar: initials on the account color (a soft gradient keeps light colors legible). */
+/* Account avatar: initials on the account color, a square pixel tile. */
 .hc-avatar {
   flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
   background: var(--hc-avatar, var(--accent));
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
   color: var(--label-on-accent);
-  font-weight: var(--weight-semibold);
-  letter-spacing: -0.02em;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.12);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0;
   -webkit-user-select: none;
   user-select: none;
 }
@@ -762,7 +758,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: var(--text-md);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-bold);
   color: var(--label);
 }
 .hc-profile-menu__meta {

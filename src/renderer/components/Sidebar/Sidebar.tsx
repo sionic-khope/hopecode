@@ -112,7 +112,7 @@ export const Sidebar = memo(function Sidebar({
     <div className="hc-sidebar">
       <div className="hc-sidebar__header">
         <div className="hc-sidebar__brand" data-testid="brand">
-          <BrandMark size={20} />
+          <BrandMark size={32} />
           <span className="hc-sidebar__wordmark">
             Hope<span className="hc-sidebar__wordmark-code">code</span>
           </span>

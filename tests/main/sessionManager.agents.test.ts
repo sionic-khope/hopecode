@@ -138,11 +138,19 @@ describe('SessionManager ACP runners (fixture agent)', () => {
 
 describe('createAcpLaunchers (real agents)', () => {
   const ENGINE = { path: '/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex', version: '0.159.2' };
-  const binaries = (codex: string | null, hermes: string | null, engine: typeof ENGINE | null = ENGINE) => ({
+  const RUN_DIR = '/h/.hopecode/run/codex-acp';
+  const binaries = (
+    codex: string | null,
+    hermes: string | null,
+    engine: typeof ENGINE | null = ENGINE,
+    verify: (path: string) => string | null = (path) => path,
+  ) => ({
     resolveCodexAcp: () => codex,
-    codexEngine: () => engine,
+    resolveCodex: async () => engine,
+    verifyCodexEngine: verify,
     resolveHermes: () => hermes,
   });
+  const launchers = (b: ReturnType<typeof binaries>) => createAcpLaunchers({ binaries: b, baseEnv, codexProcessCwd: () => RUN_DIR });
   const baseEnv = () => ({
     PATH: '/usr/bin',
     ANTHROPIC_API_KEY: 'x',
@@ -153,15 +161,19 @@ describe('createAcpLaunchers (real agents)', () => {
     INITIAL_AGENT_MODE: 'agent',
     CODEX_CONFIG: '{"approval_policy":"never"}',
     CODEX_PATH: '/evil/codex',
+    BUN_OPTIONS: '--preload /evil.js',
+    MODEL_PROVIDER: 'evil',
   });
 
-  it('codex: bundled adapter, env config (CODEX_PATH / CODEX_CONFIG / INITIAL_AGENT_MODE), no argv, scrubbed env', () => {
-    const l = createAcpLaunchers({ binaries: binaries('/bin/codex-acp', null), baseEnv });
-    const res = l.codex.resolve('/w', { model: 'gpt-6.1-sol', effort: 'high', permissionMode: 'plan', gitCeiling: '/s' });
+  it('codex: bundled adapter in the private run dir, env config (CODEX_PATH / CODEX_CONFIG / INITIAL_AGENT_MODE), scrubbed env', async () => {
+    const l = launchers(binaries('/bin/codex-acp', null));
+    const res = await l.codex.resolve('/w', { model: 'gpt-6.1-sol', effort: 'high', permissionMode: 'plan', gitCeiling: '/s' });
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.spec.command).toBe('/bin/codex-acp');
     expect(res.spec.args).toEqual([]);
+    // Never the project / session directory: that only travels through ACP session/new.
+    expect(res.spec.cwd).toBe(RUN_DIR);
     expect(res.spec.env).toEqual({
       PATH: '/usr/bin',
       OPENAI_API_KEY: 'k',
@@ -173,39 +185,67 @@ describe('createAcpLaunchers (real agents)', () => {
     });
   });
 
-  it('codex: each permission chip maps to its mode; never the auto-review `agent`', () => {
-    const l = createAcpLaunchers({ binaries: binaries('/bin/codex-acp', null), baseEnv });
-    const modeOf = (permissionMode: 'default' | 'plan' | 'acceptEdits' | 'bypassPermissions') => {
-      const res = l.codex.resolve('/w', { permissionMode });
+  it('codex: each permission chip maps to its mode; never the auto-review `agent`', async () => {
+    const l = launchers(binaries('/bin/codex-acp', null));
+    const modeOf = async (permissionMode: 'default' | 'plan' | 'acceptEdits' | 'bypassPermissions') => {
+      const res = await l.codex.resolve('/w', { permissionMode });
       return res.ok ? res.spec.env['INITIAL_AGENT_MODE'] : null;
     };
-    expect(modeOf('default')).toBe('workspace-write');
-    expect(modeOf('plan')).toBe('read-only');
-    expect(modeOf('acceptEdits')).toBe('workspace-write');
-    expect(modeOf('bypassPermissions')).toBe('agent-full-access');
+    expect(await modeOf('default')).toBe('workspace-write');
+    expect(await modeOf('plan')).toBe('read-only');
+    expect(await modeOf('acceptEdits')).toBe('workspace-write');
+    expect(await modeOf('bypassPermissions')).toBe('agent-full-access');
   });
 
-  it('codex: an invalid stored model is dropped (agent default), never passed on', () => {
-    const l = createAcpLaunchers({ binaries: binaries('/bin/codex-acp', null), baseEnv });
-    const res = l.codex.resolve('/w', { model: 'a"b', effort: 'high', permissionMode: 'default' });
+  it('codex: an invalid stored model is dropped (agent default), never passed on', async () => {
+    const l = launchers(binaries('/bin/codex-acp', null));
+    const res = await l.codex.resolve('/w', { model: 'a"b', effort: 'high', permissionMode: 'default' });
     expect(res.ok && res.spec.env['CODEX_CONFIG']).toBe('{}');
   });
 
-  it('codex: no adapter or no detected engine -> not-installed', () => {
-    expect(createAcpLaunchers({ binaries: binaries(null, null), baseEnv }).codex.resolve('/w', { permissionMode: 'default' })).toEqual({
+  it('codex: the engine is re-verified before the spawn; CODEX_PATH gets the realpath', async () => {
+    const verified: string[] = [];
+    const real = await launchers(
+      binaries('/bin/codex-acp', null, ENGINE, (p) => {
+        verified.push(p);
+        return '/real/codex';
+      }),
+    ).codex.resolve('/w', { permissionMode: 'default' });
+    expect(verified).toEqual([ENGINE.path]);
+    expect(real.ok && real.spec.env['CODEX_PATH']).toBe('/real/codex');
+    // The file changed since detection (e.g. became world-writable): nothing is spawned.
+    expect(await launchers(binaries('/bin/codex-acp', null, ENGINE, () => null)).codex.resolve('/w', { permissionMode: 'default' })).toEqual({
       ok: false,
       reason: 'not-installed',
     });
-    expect(
-      createAcpLaunchers({ binaries: binaries('/bin/codex-acp', null, null), baseEnv }).codex.resolve('/w', { permissionMode: 'default' }),
-    ).toEqual({ ok: false, reason: 'not-installed' });
   });
 
-  it('hermes: `hermes acp`; not installed -> not-installed', () => {
-    const l = createAcpLaunchers({ binaries: binaries(null, '/u/hermes'), baseEnv });
-    const res = l.hermes.resolve('/w', { permissionMode: 'default' });
-    expect(res.ok && [res.spec.command, res.spec.args, res.spec.env['ANTHROPIC_API_KEY']]).toEqual(['/u/hermes', ['acp'], 'x']);
-    expect(l.codex.resolve('/w', { permissionMode: 'default' })).toEqual({ ok: false, reason: 'not-installed' });
+  it('codex: waits for an engine detection in progress', async () => {
+    let finish!: (e: typeof ENGINE) => void;
+    const pending = new Promise<typeof ENGINE>((r) => (finish = r));
+    const l = createAcpLaunchers({
+      binaries: { ...binaries('/bin/codex-acp', null), resolveCodex: () => pending },
+      baseEnv,
+      codexProcessCwd: () => RUN_DIR,
+    });
+    const res = l.codex.resolve('/w', { permissionMode: 'default' });
+    finish({ path: '/new/codex', version: '0.170.0' });
+    expect(((await res) as { ok: true; spec: { env: Record<string, string> } }).spec.env['CODEX_PATH']).toBe('/new/codex');
+  });
+
+  it('codex: no adapter or no detected engine -> not-installed', async () => {
+    expect(await launchers(binaries(null, null)).codex.resolve('/w', { permissionMode: 'default' })).toEqual({ ok: false, reason: 'not-installed' });
+    expect(await launchers(binaries('/bin/codex-acp', null, null)).codex.resolve('/w', { permissionMode: 'default' })).toEqual({
+      ok: false,
+      reason: 'not-installed',
+    });
+  });
+
+  it('hermes: `hermes acp`; not installed -> not-installed', async () => {
+    const l = launchers(binaries(null, '/u/hermes'));
+    const res = await l.hermes.resolve('/w', { permissionMode: 'default' });
+    expect(res.ok && [res.spec.command, res.spec.args, res.spec.env['ANTHROPIC_API_KEY'], res.spec.cwd]).toEqual(['/u/hermes', ['acp'], 'x', undefined]);
+    expect(await l.codex.resolve('/w', { permissionMode: 'default' })).toEqual({ ok: false, reason: 'not-installed' });
   });
 });
 

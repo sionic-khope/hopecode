@@ -4,7 +4,7 @@ import { chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { codexAcpSmoke, type CodexSmokeDeps } from '../../src/main/agents/codexSmoke';
+import { codexAcpSmoke, SMOKE_CODEX_CONFIG_TOML, type CodexSmokeDeps } from '../../src/main/agents/codexSmoke';
 import type { CodexEngine } from '../../src/main/agents/agentBinaries';
 
 const FAKE_AGENT = resolve(__dirname, '../fixtures/acp/fakeAcpAgent.mjs');
@@ -27,6 +27,8 @@ function adapter(profile: 'codex' | 'hermes' = 'codex'): { bin: string; envFile:
       '#!/bin/sh',
       'if [ "$1" = "--version" ]; then echo "@agentclientprotocol/codex-acp 0.0.0-fixture"; exit 0; fi',
       `env > '${envFile}'`,
+      `cat "$CODEX_HOME/config.toml" > '${envFile}.config'`,
+      `pwd -P > '${envFile}.cwd'`,
       `FAKE_ACP_PROFILE=${profile} exec '${process.execPath}' '${FAKE_AGENT}'`,
       '',
     ].join('\n'),
@@ -63,6 +65,11 @@ describe('codexAcpSmoke', () => {
     expect(env).toContain('INITIAL_AGENT_MODE=read-only');
     expect(env).toMatch(/^CODEX_HOME=.*hopecode-smoke-codex-.*\/\.codex$/m);
     expect(env).not.toMatch(/^HOME=\/Users\//m);
+    // Codex credential stores forced to `file` in the temp CODEX_HOME (no login Keychain lookups).
+    expect(readFileSync(`${envFile}.config`, 'utf8')).toBe(SMOKE_CODEX_CONFIG_TOML);
+    expect(SMOKE_CODEX_CONFIG_TOML).toContain('cli_auth_credentials_store = "file"');
+    expect(SMOKE_CODEX_CONFIG_TOML).toContain('mcp_oauth_credentials_store = "file"');
+    expect(readFileSync(`${envFile}.cwd`, 'utf8')).toContain('hopecode-smoke-codex-');
     // The temporary HOME is removed afterwards.
     expect(smokeHomes()).toEqual(before);
   });

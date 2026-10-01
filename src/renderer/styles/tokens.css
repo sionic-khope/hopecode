@@ -1,108 +1,163 @@
-/* Design tokens. Light only. See docs/design-notes.md for the language these values express.
-   Direction (v5): a calm, flat workspace. A pale blue-white pane (#F8FAFF) next to a slightly deeper blue-white
-   sidebar (#F3F7FF); content sits on white cards with a 1px hairline instead of shadows; one saturated blue
-   (#0053FD) for primary actions and selection, a soft blue wash (#E6EEFF) for selected rows and chips, and a
-   rare terracotta (#CF806D) for the agent's own marks. Titles use a Korean serif display face (Hahmlet),
-   everything else IBM Plex Sans KR, code JetBrains Mono. */
+/* Design tokens. Dark only. See docs/design-notes.md for the language these values express.
+   Direction (v12, "Dark World"): an RPG dialogue screen. Pure black panes (#000000) around a near-black conversation
+   well (#07050C); content sits in square boxes with a white pixel frame, never a soft shadow -- floating layers get a
+   hard purple drop (#4A1F94) instead of blur. One saturated violet (#9B4DFF) for primary actions, a yellow (#FFE14D)
+   for the selected row (with the red pixel-heart cursor, #FF2B45) and cyan (#4FE3F0) for inline code. Type is pixel:
+   Galmuri11 12px for UI, Galmuri14 15px for the conversation, Galmuri11 Bold for titles, Silkscreen for the
+   wordmark; code stays in JetBrains Mono. A local overlay (~/.hopecode/theme/palette.json) may override any value. */
 :root {
-  color-scheme: light;
+  color-scheme: dark;
 
-  /* Typography */
-  --font-ui: 'IBM Plex Sans KR', 'Apple SD Gothic Neo', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
-  --font-display: 'Hahmlet', 'IBM Plex Sans KR', 'Apple SD Gothic Neo', serif;
-  --font-mono: 'JetBrains Mono', 'IBM Plex Sans KR', ui-monospace, 'SF Mono', Menlo, monospace;
-  --text-2xs: 10.5px;  --lh-2xs: 14px;
-  --text-xs: 11px;     --lh-xs: 16px;
+  /* Typography (pixel faces render crisp only at their design sizes: Galmuri11 12px, Galmuri14 15px) */
+  --font-ui: 'Galmuri11', 'Apple SD Gothic Neo', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-chat: 'Galmuri14', 'Galmuri11', 'Apple SD Gothic Neo', sans-serif;
+  --font-display: 'Galmuri11', 'Apple SD Gothic Neo', sans-serif;
+  --font-pixel: 'Silkscreen', 'Galmuri11', monospace;
+  --font-mono: 'JetBrains Mono', 'Galmuri11', ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-smoothing-pixel: none;
+  --text-2xs: 12px;    --lh-2xs: 16px;
+  --text-xs: 12px;     --lh-xs: 16px;
   --text-sm: 12px;     --lh-sm: 18px;
-  --text-md: 13px;     --lh-md: 20px;   /* sidebar, controls, default body */
-  --text-chat: 14px;   --lh-chat: 23px; /* conversation body (Hangul needs the taller line) */
-  --text-nav: 13px;    --lh-nav: 20px;  /* sidebar nav + thread rows */
-  --text-lg: 14px;     --lh-lg: 21px;
-  --text-xl: 19px;     --lh-xl: 25px;   /* display: thread title, sheet titles */
+  --text-md: 12px;     --lh-md: 20px;   /* sidebar, controls, default body */
+  --text-chat: 15px;   --lh-chat: 25px; /* conversation body (Galmuri14) */
+  --text-nav: 12px;    --lh-nav: 20px;  /* sidebar nav + thread rows */
+  --text-lg: 12px;     --lh-lg: 20px;
+  --text-xl: 18px;     --lh-xl: 24px;   /* display: thread title, sheet titles */
   --text-2xl: 24px;    --lh-2xl: 32px;  /* display: greeting / page titles */
-  --text-status: 11px; --lh-status: 16px;
-  --mono-sm: 12.5px;   --lh-mono-sm: 19px; /* inline code, code blocks, diffs */
+  --text-status: 12px; --lh-status: 16px;
+  --mono-sm: 12.5px;   --lh-mono-sm: 20px; /* inline code, code blocks, diffs */
   --mono-term: 13px;   --lh-mono-term: 19px; /* xterm (mirrored in terminalTheme.ts) */
   --tracking-ui: 0;
-  --tracking-title: -0.01em;
+  --tracking-title: 0;
+  --tracking-tag: 0.1em;  /* "* CLAUDE", PARTY, HP / TP */
   --weight-regular: 400;
-  --weight-medium: 500;
-  --weight-semibold: 600;
+  --weight-medium: 400;
+  --weight-semibold: 700;
   --weight-bold: 700;
 
-  /* Accent: primary blue */
-  --accent: #0053fd;
-  --accent-hover: #0047d9;
-  --accent-pressed: #003dbd;
-  --accent-strong: #0047d9;
-  --accent-soft: #e6eeff;                 /* selected rows, chips, active toggles */
-  --accent-subtle: rgba(0, 83, 253, 0.12);
-  --accent-tint: rgba(0, 83, 253, 0.05);  /* hover wash */
-  --accent-tint-strong: #e6eeff;
-  --accent-ring: rgba(0, 83, 253, 0.35);
-  --accent-border: rgba(0, 83, 253, 0.25);
-  --accent-gradient: linear-gradient(180deg, #0053fd 0%, #0047d9 100%);
-  --focus-ring: 0 0 0 2px #f8faff, 0 0 0 4px #0053fd;
-  --field-ring: 0 0 0 3px rgba(0, 83, 253, 0.12);
+  /* Raw palette */
+  --black: #000000;
+  --white: #ffffff;
+  --violet: #9b4dff;
+  --violet-hover: #b077ff;
+  --violet-deep: #6a2bd9;
+  --violet-wash: #1f1238;
+  --violet-ink: #12091f;
+  --select: #ffe14d;       /* selected text / cursor (yellow) */
+  --soul: #ff2b45;         /* pixel heart */
+  --cyan: #4fe3f0;
+  --drop: #4a1f94;         /* hard pixel drop under floating boxes */
+  --hp-track: #6b0f1a;
+  --tp-fill: #ff9a3d;
+  --tp-track: #2a1a00;
 
-  /* Secondary accent: terracotta, used sparingly (agent caret, "you" badge, warnings' border) */
-  --terracotta: #cf806d;
-  --terracotta-tint: rgba(207, 128, 109, 0.12);
-  --terracotta-border: rgba(207, 128, 109, 0.45);
+  /* Pixel frames */
+  --frame: #ffffff;
+  --frame-w: 3px;          /* dialogue boxes, menus, dialogs */
+  --frame-w-sm: 2px;       /* cards, chips, buttons */
+  --line: rgba(255, 255, 255, 0.16);
+  --line-strong: rgba(255, 255, 255, 0.32);
+
+  /* Accent: primary violet */
+  --accent: var(--violet);
+  --accent-hover: var(--violet-hover);
+  --accent-pressed: var(--violet-deep);
+  --accent-strong: var(--violet-hover);
+  --accent-soft: var(--violet-wash);      /* selected rows, chips, active toggles */
+  --accent-subtle: rgba(155, 77, 255, 0.22);
+  --accent-tint: rgba(155, 77, 255, 0.1); /* hover wash */
+  --accent-tint-strong: var(--violet-wash);
+  --accent-ring: rgba(155, 77, 255, 0.7);
+  --accent-border: rgba(155, 77, 255, 0.6);
+  --accent-gradient: linear-gradient(180deg, var(--violet) 0%, var(--violet) 100%);
+  --accent-text: var(--violet-hover);     /* violet as text on black (AA) */
+  --focus-ring: 0 0 0 2px var(--black), 0 0 0 4px var(--select);
+  --field-ring: 0 0 0 2px var(--violet);
+
+  /* Secondary accent: the soul red, used for the agent caret, the heart and the "you" badge */
+  --terracotta: var(--soul);
+  --terracotta-tint: rgba(255, 43, 69, 0.14);
+  --terracotta-border: rgba(255, 43, 69, 0.55);
 
   /* Labels */
-  --label: #17171a;
-  --label-secondary: rgba(23, 23, 26, 0.56);
-  --label-tertiary: rgba(23, 23, 26, 0.38);
+  --label: #ffffff;
+  --label-secondary: #b8b0cc;
+  --label-tertiary: #6e6685;
   --label-on-accent: #ffffff;
-  --separator: rgba(23, 23, 26, 0.08);
-  --separator-strong: rgba(23, 23, 26, 0.14);
+  --label-on-select: #000000;
+  --label-selected: var(--select);
+  --separator: var(--line);
+  --separator-strong: var(--line-strong);
 
   /* Surfaces */
-  --bg-canvas: #f3f7ff;               /* window canvas (sidebar + statusline) */
-  --bg-window: #f8faff;               /* conversation pane */
-  --bg-pane-header: #ffffff;          /* white bar on top of a pane */
-  --bg-card: #ffffff;
-  --bg-card-muted: #f8faff;           /* pale field inside a card (settings rows, file list) */
-  --bg-sunken: #f3f7ff;
-  --bg-input: #fcfcfc;
-  --bubble: #f0f5ff;
-  --bg-sidebar: #f3f7ff;
-  --sidebar-edge: rgba(23, 23, 26, 0.08);
-  --bg-sidebar-hover: rgba(0, 83, 253, 0.05);
-  --bg-sidebar-sel-inactive: rgba(23, 23, 26, 0.05);
-  --bg-sidebar-sel: #e6eeff;
-  --bg-menu-hover: rgba(0, 83, 253, 0.06);
-  --bg-elevated: #ffffff;
-  --bg-control: rgba(23, 23, 26, 0.04);
-  --bg-control-hover: rgba(23, 23, 26, 0.08);
-  --bg-control-pressed: rgba(23, 23, 26, 0.11);
-  --bg-code: #f8faff;
-  --bg-statusline: #f3f7ff;
+  --bg-canvas: #000000;               /* window canvas (sidebar + statusline) */
+  --bg-window: #07050c;               /* conversation pane */
+  --bg-pane-header: #000000;          /* bar on top of a pane */
+  --bg-card: #000000;
+  --bg-card-muted: #0e0a18;           /* field inside a card (settings rows, file list) */
+  --bg-sunken: #0e0a18;
+  --bg-input: #000000;
+  --bubble: var(--violet-ink);
+  --bg-sidebar: #000000;
+  --sidebar-edge: var(--line);
+  --bg-sidebar-hover: rgba(155, 77, 255, 0.12);
+  --bg-sidebar-sel-inactive: rgba(255, 255, 255, 0.06);
+  --bg-sidebar-sel: var(--violet-wash);
+  --bg-menu-hover: rgba(155, 77, 255, 0.16);
+  --bg-elevated: #000000;
+  --bg-control: rgba(255, 255, 255, 0.06);
+  --bg-control-hover: rgba(255, 255, 255, 0.1);
+  --bg-control-pressed: rgba(255, 255, 255, 0.14);
+  --bg-code: #0e0a18;
+  --bg-statusline: #000000;
   --statusline-backdrop: none;
-  --bg-terminal: #ffffff;
-  --fg-terminal: #17171a;
-  --cursor-terminal: #0053fd;
-  --selection-terminal: rgba(0, 83, 253, 0.2);
-  --bg-backdrop: rgba(12, 22, 48, 0.22);
+  --bg-terminal: #000000;
+  --fg-terminal: #ffffff;
+  --cursor-terminal: var(--select);
+  --selection-terminal: rgba(155, 77, 255, 0.4);
+  --bg-backdrop: rgba(0, 0, 0, 0.72);
+  --selection-text: rgba(155, 77, 255, 0.45);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.2);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.36);
+
+  /* Terminal ANSI ramp (xterm, terminalTheme.ts) */
+  --ansi-black: #000000;
+  --ansi-red: #ff3b4e;
+  --ansi-green: #3ce07a;
+  --ansi-yellow: #ffe14d;
+  --ansi-blue: #9b4dff;
+  --ansi-magenta: #ff6bd5;
+  --ansi-cyan: #4fe3f0;
+  --ansi-white: #b8b0cc;
+  --ansi-bright-black: #6e6685;
+  --ansi-bright-red: #ff6b79;
+  --ansi-bright-green: #5cf097;
+  --ansi-bright-yellow: #fff08a;
+  --ansi-bright-blue: #b077ff;
+  --ansi-bright-magenta: #ff9ae3;
+  --ansi-bright-cyan: #8ff0f7;
+  --ansi-bright-white: #ffffff;
 
   /* Status (solid points) */
-  --ok: #1f9d55;   --ok-text: #17804a;
-  --warn: #e0a43a; --warn-text: #9a5d00;
-  --crit: #e5484d; --crit-text: #c8372d;
-  --run: #0053fd;  --run-text: #0047d9;
-  --meter-track: rgba(23, 23, 26, 0.08);
+  --ok: #3ce07a;   --ok-text: #3ce07a;
+  --warn: #ffb23d; --warn-text: #ffb23d;
+  --crit: #ff3b4e; --crit-text: #ff6b79;
+  --run: #9b4dff;  --run-text: #b077ff;
+  --meter-track: rgba(255, 255, 255, 0.14);
 
-  /* Status pastels (pills, notices) */
-  --run-bg: #e6eeff;
-  --wait-bg: #fff6e8;
-  --ok-bg: rgba(31, 157, 85, 0.1);
-  --crit-bg: rgba(200, 55, 45, 0.08);
-  --neutral-bg: rgba(23, 23, 26, 0.06);
+  /* Status washes (pills, notices) */
+  --run-bg: var(--violet-wash);
+  --wait-bg: #2a1a00;
+  --ok-bg: #0d2a17;
+  --crit-bg: #2e0c12;
+  --neutral-bg: rgba(255, 255, 255, 0.08);
+  --warn-border: rgba(255, 178, 61, 0.6);
+  --crit-border: rgba(255, 59, 78, 0.7);
 
   /* Diff */
-  --diff-add-bg: #eaf7ef; --diff-add-fg: #17804a; --diff-add-gutter: #d4eedd;
-  --diff-del-bg: #fcefee; --diff-del-fg: #c8372d; --diff-del-gutter: #f6d9d7;
+  --diff-add-bg: #0d2a17; --diff-add-fg: #5cf097; --diff-add-gutter: #123a20;
+  --diff-del-bg: #2e0c12; --diff-del-fg: #ff6b79; --diff-del-gutter: #3d1018;
+  --diff-gutter-old: rgba(255, 255, 255, 0.02);
 
   /* Spacing (4pt) */
   --space-1: 4px;
@@ -115,31 +170,40 @@
   --space-8: 32px;
   --space-10: 40px;
 
-  /* Radius: 12 for cards, 8 for controls, pill for chips */
-  --radius-control: 8px;
-  --radius-card: 12px;
-  --radius-card-lg: 12px;
+  /* Radius: none. Pixel boxes are square; dots stay square too. */
+  --radius-control: 0px;
+  --radius-card: 0px;
+  --radius-card-lg: 0px;
   --radius-panel: 0px;
-  --radius-popover: 12px;
-  --radius-dialog: 16px;
-  --radius-capsule: 999px;
-  --radius-menu: 12px;
-  --radius-menu-item: 8px;
-  --radius-composer: 12px;
-  --radius-row: 8px;
+  --radius-popover: 0px;
+  --radius-dialog: 0px;
+  --radius-capsule: 0px;
+  --radius-menu: 0px;
+  --radius-menu-item: 0px;
+  --radius-composer: 0px;
+  --radius-row: 0px;
 
-  /* Elevation: flat. Cards carry a hairline; only floating layers get a real shadow. */
-  --shadow-hairline: 0 0 0 1px rgba(23, 23, 26, 0.08);
-  --shadow-card: 0 0 0 1px rgba(23, 23, 26, 0.08), 0 1px 2px rgba(23, 23, 26, 0.04);
-  --shadow-card-hover: 0 0 0 1px rgba(0, 83, 253, 0.25), 0 1px 2px rgba(23, 23, 26, 0.04);
+  /* Elevation: frames, not blur. Cards carry a 2px frame; floating layers a 3px white frame + hard violet drop. */
+  --shadow-hairline: 0 0 0 2px var(--line);
+  --shadow-card: 0 0 0 2px var(--frame);
+  --shadow-card-quiet: 0 0 0 2px var(--line);
+  --shadow-card-hover: 0 0 0 2px var(--frame), 3px 3px 0 2px var(--drop);
   --shadow-panel: none;
-  --shadow-float: 0 12px 32px -8px rgba(12, 30, 80, 0.18), 0 2px 6px rgba(12, 30, 80, 0.06);
-  --shadow-popover: 0 0 0 1px rgba(23, 23, 26, 0.08), 0 12px 32px -8px rgba(12, 30, 80, 0.18), 0 2px 6px rgba(12, 30, 80, 0.06);
-  --shadow-dialog: 0 0 0 1px rgba(23, 23, 26, 0.08), 0 12px 32px -8px rgba(12, 30, 80, 0.22), 0 2px 6px rgba(12, 30, 80, 0.06);
-  --shadow-control: 0 0 0 1px rgba(23, 23, 26, 0.14);
-  /* Composer card: hairline, primary border + soft ring on focus. */
-  --shadow-composer: 0 0 0 1px rgba(23, 23, 26, 0.14), 0 1px 2px rgba(23, 23, 26, 0.04);
-  --shadow-composer-focus: 0 0 0 1px #0053fd, 0 0 0 4px rgba(0, 83, 253, 0.12);
+  --shadow-float: 6px 6px 0 0 var(--drop);
+  --shadow-popover: 0 0 0 3px var(--frame), 6px 6px 0 3px var(--drop);
+  --shadow-dialog: 0 0 0 3px var(--frame), 8px 8px 0 3px var(--drop);
+  --shadow-control: 0 0 0 2px var(--line-strong);
+  --shadow-press: 3px 3px 0 0 var(--drop);         /* solid pixel shadow under buttons / send */
+  --shadow-press-inset: inset -3px -3px 0 0 var(--violet-deep);
+  /* Composer: the dialogue frame, violet once focused. */
+  --shadow-composer: 0 0 0 3px var(--frame);
+  --shadow-composer-focus: 0 0 0 3px var(--frame), 6px 6px 0 3px var(--drop);
+
+  /* Sprites (overlay: ~/.hopecode/theme/sprites/heart.png replaces --sprite-heart) */
+  --sprite-heart: url('../assets/sprites/heart.svg');
+  --heart-w: 16px;
+  --heart-h: 14px;
+  --heart-gutter: 30px;    /* left padding of rows that can carry the heart cursor */
 
   /* Control + row heights */
   --control-h-sm: 28px;
@@ -148,7 +212,7 @@
   --seg-h: 28px;
   --seg-h-sm: 24px;
   --pill-h: 22px;
-  --row-h: 36px;       /* sidebar nav + thread row */
+  --row-h: 34px;       /* sidebar nav + thread row */
   --row-h-sm: 30px;    /* sidebar project header */
   --toolbar-h: 40px;
   --sidebar-header-h: 40px;
@@ -166,14 +230,16 @@
   --panel-w: 460px;
   --panel-min-w: 320px;
   --panel-max-w: 820px;
-  --statusline-h: 30px;
+  --statusline-h: 32px;
 
-  /* Motion: short and quiet (120 / 200ms), one ease-out curve; popovers rise 8px from 98.5%. */
+  /* Motion: short and quiet (120 / 200ms), one ease-out curve; popovers rise 8px from 98.5%. Pixel bits (the heart,
+     sprite bob, cursor blink) step instead of tweening. */
   --motion-1: 120ms;
   --motion-2: 200ms;
   --motion-3: 280ms;
   --ease-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-emph: cubic-bezier(0.3, 0, 0, 1);
+  --ease-pixel: steps(3, end);
   --rise-y: 8px;
   --rise-scale: 0.985;
   /* Legacy aliases (older component CSS). */
@@ -183,8 +249,8 @@
   --ease-pane: var(--ease-soft);
 
   /* Composer */
-  --bg-composer: #ffffff;
-  --composer-max-w: 760px;
+  --bg-composer: #000000;
+  --composer-max-w: 780px;
   --send-size: 32px;
 
   /* Account palette: muted mid-tones that keep white initials legible */

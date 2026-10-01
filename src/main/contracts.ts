@@ -245,6 +245,8 @@ export interface AcpLaunchSpec {
   command: string;
   args: string[];
   env: Record<string, string>;
+  /** Process working directory; default = the session cwd. The session cwd always goes through ACP `session/*`. */
+  cwd?: string;
 }
 
 export interface AcpLaunchOptions {
@@ -258,13 +260,12 @@ export interface AcpLaunchOptions {
   gitCeiling?: string;
 }
 
+export type AcpLaunchResult = { ok: true; spec: AcpLaunchSpec } | { ok: false; reason: 'not-installed' | 'not-logged-in' };
+
 /** Resolves the agent command (bundled codex-acp + installed codex, detected `hermes acp`, or the fixture agent). */
 export interface AcpLauncher {
   /** Not installed / not resolvable -> `{ ok: false }` and nothing is spawned. */
-  resolve(
-    cwd: string,
-    opts: AcpLaunchOptions,
-  ): { ok: true; spec: AcpLaunchSpec } | { ok: false; reason: 'not-installed' | 'not-logged-in' };
+  resolve(cwd: string, opts: AcpLaunchOptions): AcpLaunchResult | Promise<AcpLaunchResult>;
 }
 
 /** Read-only detection of each agent's own login on this Mac (plan 2.9.3). Results never carry secrets. */

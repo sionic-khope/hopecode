@@ -14,7 +14,7 @@
   font-size: var(--text-lg);
   font-weight: var(--weight-semibold);
   padding-bottom: var(--space-1);
-  border-bottom: 1px solid var(--separator);
+  border-bottom: 2px solid var(--separator);
 }
 .hc-accounts-pop__count {
   font-size: var(--text-xs);
@@ -61,7 +61,7 @@
 .hc-accounts-pop__dot {
   width: 10px;
   height: 10px;
-  border-radius: 50%;
+  border-radius: 0;
   flex: none;
 }
 .hc-accounts-pop__alias {

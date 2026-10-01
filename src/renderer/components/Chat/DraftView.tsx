@@ -152,7 +152,7 @@ export function DraftView({
     <div className="hc-draft" data-testid="draft">
       <div className="hc-draft__hero">
         <div className="hc-draft__mark" aria-hidden>
-          <BrandMark size={52} />
+          <BrandMark size={64} />
         </div>
         <p className="hc-draft__greeting">{greeting()}</p>
         <h1 className="hc-draft__title">무엇을 만들어 볼까요?</h1>

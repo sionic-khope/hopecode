@@ -142,10 +142,17 @@ export class AcpRunner implements AgentRunner {
     if (this.retired) return { accepted: false, reason: 'busy' };
     const thread = this.thread();
     if (this.busy || thread.status === 'running') return { accepted: false, reason: 'busy' };
-    const spec = this.resolveSpec(thread);
-    if (!spec) return { accepted: false, reason: 'agent-unavailable' };
-
+    // Busy while the launcher resolves (it may wait for an engine detection in progress).
     this.busy = true;
+    const spec = await this.resolveSpec(thread).catch((err: unknown) => {
+      this.deps.log('[acp] launcher failed', err);
+      return null;
+    });
+    if (this.retired || !spec) {
+      this.busy = false;
+      return this.retired ? { accepted: false, reason: 'busy' } : { accepted: false, reason: 'agent-unavailable' };
+    }
+
     this.interrupted = false;
     this.clearIdleTimer();
     const attached = images.length > 0 ? { images } : {};
@@ -329,7 +336,15 @@ export class AcpRunner implements AgentRunner {
         if (this.respawnNeeded || (this.conn && this.conn.isGone)) {
           this.respawnNeeded = false;
           await this.closeConnection({});
-          spec = this.resolveSpec(this.thread()) ?? spec;
+          // Never fall back to the previous spec: the launcher re-verifies the engine, and a refusal must stop
+          // the turn rather than respawn the old CODEX_PATH.
+          const next = await this.resolveSpec(this.thread());
+          if (!next) {
+            this.reportError(`${this.label()}을(를) 다시 시작할 수 없습니다. 설치·로그인 상태를 확인해 주세요.`);
+            this.endTurn('error');
+            return;
+          }
+          spec = next;
         }
         // Closed / retired while the old connection was closing: never spawn an orphan.
         if (this.retired) {
@@ -812,8 +827,8 @@ export class AcpRunner implements AgentRunner {
   // Connection lifecycle
   // -------------------------------------------------------------------------
 
-  private resolveSpec(thread: Thread): AcpLaunchSpec | null {
-    const res = this.deps.launcher.resolve(thread.cwd, {
+  private async resolveSpec(thread: Thread): Promise<AcpLaunchSpec | null> {
+    const res = await this.deps.launcher.resolve(thread.cwd, {
       model: thread.model || null,
       effort: thread.effort,
       permissionMode: thread.permissionMode,

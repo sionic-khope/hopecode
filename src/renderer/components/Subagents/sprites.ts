@@ -3,9 +3,10 @@
 
 export const SPRITE_GRID = 12;
 
-/** Muted palette tuned for the light theme (pixel art only; UI colors come from tokens.css). */
+/** Muted palette on the black world: a pale lavender outline so the silhouettes read on #000 (pixel art only; UI
+ *  colors come from tokens.css). */
 export const SPRITE_PALETTE: Readonly<Record<string, string>> = {
-  k: '#3d4353', // outline ink
+  k: '#E9E2FF', // outline (pale lavender on black)
   w: '#ffffff',
   c: '#f4ebdd', // cream
   B: '#8fb0de', // soft blue

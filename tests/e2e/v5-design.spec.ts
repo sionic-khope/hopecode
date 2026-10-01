@@ -1,6 +1,6 @@
 // v5 design pass: captures every restyled surface (draft, conversation with permission + diff, right panel with
 // changes and terminal, sidebar + profile menu, settings, accounts, command palette) and checks the design
-// tokens the new language depends on (flat panes, display face on titles, primary blue).
+// tokens the new language depends on (flat panes, the pixel display face on titles; colors follow the v12 dark tokens).
 import { expect, test } from '@playwright/test';
 import { bottomTerminal, createSandbox, launch, menuShortcut, openDraft, openFromMore, screenshot, startThread, type Launched, type Sandbox } from './helpers';
 
@@ -23,16 +23,16 @@ test.afterAll(async () => {
   sandbox?.cleanup();
 });
 
-test('draft: display-face title, primary New Task Start, hairline suggestion cards', async () => {
+test('draft: pixel display title, primary New Task Start, hairline suggestion cards', async () => {
   const { page } = run;
   await openDraft(page);
   const draft = page.getByTestId('draft');
   await expect(draft).toBeVisible();
   const title = draft.getByRole('heading', { name: '무엇을 만들어 볼까요?' });
-  expect(await title.evaluate((el) => getComputedStyle(el).fontFamily)).toMatch(/^"?Hahmlet"?,/);
+  expect(await title.evaluate((el) => getComputedStyle(el).fontFamily)).toMatch(/^"?Galmuri11"?,/);
   // Flat panes: the sidebar and the conversation pane are not floating rounded cards any more.
   expect(await page.locator('.app__chat').evaluate((el) => getComputedStyle(el).borderTopLeftRadius)).toBe('0px');
-  expect(await page.locator('.app__chat').evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(248, 250, 255)');
+  expect(await page.locator('.app__chat').evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(7, 5, 12)');
   await page.mouse.move(5, 700);
   await screenshot(page, 'v5-draft', SHOTS);
 });
@@ -48,7 +48,7 @@ test('conversation: permission card, then the Edit diff', async () => {
   await expect(page.locator('.hc-messages')).toContainText('Done. The greeting now says "Hello Hopecode".');
   await page.locator('.hc-tool').filter({ hasText: 'Edit' }).locator('.hc-tool__header').click();
   await expect(page.locator('.hc-tool .hc-diff__row--add')).toContainText('Hello Hopecode');
-  expect(await page.locator('.app__thread-name').evaluate((el) => getComputedStyle(el).fontFamily)).toMatch(/^"?Hahmlet"?,/);
+  expect(await page.locator('.app__thread-name').evaluate((el) => getComputedStyle(el).fontFamily)).toMatch(/^"?Galmuri11"?,/);
   await page.mouse.move(5, 700);
   await screenshot(page, 'v5-conversation-diff', SHOTS);
 });
@@ -107,7 +107,7 @@ test('settings and accounts pages (via the nav 더보기 menu)', async () => {
   await openFromMore(page, '설정');
   const settings = page.getByTestId('settings');
   await expect(settings).toBeVisible();
-  expect(await settings.locator('.hc-settings__title').evaluate((el) => getComputedStyle(el).fontFamily)).toMatch(/^"?Hahmlet"?,/);
+  expect(await settings.locator('.hc-settings__title').evaluate((el) => getComputedStyle(el).fontFamily)).toMatch(/^"?Galmuri11"?,/);
   await page.mouse.move(5, 700);
   await screenshot(page, 'v5-settings', SHOTS);
 

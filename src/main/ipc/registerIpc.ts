@@ -10,6 +10,7 @@ import { realpath, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, relative, resolve } from 'node:path';
 import { INVOKE_CHANNELS, type InvokeChannel, type InvokeResponse } from '../../shared/ipc';
+import { EMPTY_THEME_OVERLAY, type ThemeOverlay } from '../../shared/theme';
 import type {
   AgentUsageService,
   Broadcaster,
@@ -155,6 +156,8 @@ export interface RegisterIpcServices {
   provideThreadStart?: (start: (req: ThreadStartRequest) => Promise<ThreadStartResult>) => void;
   /** Lightbox "Finder에서 보기" / "복사" (Electron shell + clipboard). */
   images?: ImageActions;
+  /** Local theme folder scan (theme/themeProtocol.ts); absent = no overlay. */
+  themeOverlay?: () => Promise<ThemeOverlay>;
 }
 
 const NO_IMAGE_ACTIONS: ImageActions = {
@@ -900,6 +903,11 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
     },
 
     'app:info': async () => s.appInfo(),
+
+    'theme:overlay': async (req) => {
+      assertReq('theme:overlay', req === undefined || req === null, 'takes no request');
+      return s.themeOverlay ? s.themeOverlay() : EMPTY_THEME_OVERLAY;
+    },
 
     'app:openDataFolder': async () => {
       await s.openDataFolder();

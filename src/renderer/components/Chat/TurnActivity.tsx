@@ -50,7 +50,7 @@ export function TurnActivity({ agent, phase, startedAt }: TurnActivityProps) {
     <div className="hc-agent-row hc-agent-row--lead hc-activity" data-testid="turn-activity" data-phase={phase}>
       <span className="hc-agent-row__avatar">
         <span className="hc-agent-avatar hc-activity__avatar" title={AGENTS[agent].name} aria-label={AGENTS[agent].name} role="img">
-          <AgentIcon kind={agent} size={15} />
+          <AgentIcon kind={agent} size={22} />
         </span>
       </span>
       <div className="hc-agent-row__body hc-activity__body">

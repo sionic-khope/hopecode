@@ -1,5 +1,5 @@
-/* Shell: flat panes split by hairlines -- blue-white sidebar, pale conversation pane, white right panel -- over a
-   thin statusline. Cards live inside the panes, not around them. */
+/* Shell: flat black panes split by 2px lines -- black sidebar, near-black conversation well, black right panel -- over
+   a black statusline with HP / TP meters. Cards live inside the panes, not around them. */
 .app {
   display: grid;
   grid-template-columns: var(--app-sidebar-w, var(--sidebar-w)) minmax(0, 1fr) var(--app-panel-w, 0px);
@@ -46,7 +46,7 @@
   min-width: calc(var(--sidebar-w) - var(--canvas-gap));
   border-radius: var(--radius-panel);
   background: var(--bg-sidebar);
-  box-shadow: inset -1px 0 0 var(--sidebar-edge);
+  box-shadow: inset -2px 0 0 var(--sidebar-edge);
   overflow: hidden;
   transition:
     opacity var(--motion-2) var(--ease-soft),
@@ -129,7 +129,7 @@
   gap: var(--space-2);
   padding: 0 var(--space-3) 0 var(--space-5);
   background: var(--bg-pane-header);
-  border-bottom: 1px solid var(--separator);
+  border-bottom: 2px solid var(--separator);
   transition: box-shadow var(--motion-2) var(--ease-soft);
 }
 /* Pages and the draft have no thread header: the bar melts into the pane (its window controls still sit there). */
@@ -140,7 +140,7 @@
 }
 /* Once the transcript scrolls under the title the bar lifts off it with a soft drop. */
 .app__titlebar--scrolled {
-  box-shadow: 0 8px 20px -14px rgba(12, 30, 80, 0.22);
+  box-shadow: 0 2px 0 0 var(--separator);
   position: relative;
   z-index: 3;
 }
@@ -158,14 +158,14 @@
   max-width: 100%;
   padding: 3px 8px;
   margin-left: -8px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: var(--font-display);
-  font-size: 17px;
-  line-height: 24px;
-  font-weight: var(--weight-semibold);
+  font-size: var(--text-xl);
+  line-height: var(--lh-xl);
+  font-weight: var(--weight-bold);
   letter-spacing: var(--tracking-title);
   color: var(--label);
   transition: background-color var(--motion-1) var(--ease-soft);
@@ -258,7 +258,7 @@
   gap: var(--space-2);
   padding: 0 var(--space-4);
   background: var(--bg-statusline);
-  border-top: 1px solid var(--separator);
+  border-top: 2px solid var(--separator);
   font-family: var(--font-ui);
   font-size: var(--text-status);
   line-height: var(--lh-status);

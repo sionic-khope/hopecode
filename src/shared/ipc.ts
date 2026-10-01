@@ -35,6 +35,7 @@ import type {
   UsageSample,
 } from './types';
 import type { PluginInventory, PullRequestList, Schedule, ScheduleInput } from './nav';
+import type { ThemeOverlay } from './theme';
 
 /** renderer -> main (`ipcRenderer.invoke`). `req: void` means no argument. */
 export interface InvokeMap {
@@ -154,6 +155,8 @@ export interface InvokeMap {
   /** Validated partial update; main applies it (poller interval, rotation, worktrees, defaults) and broadcasts it. */
   'settings:update': { req: SettingsPatch; res: AppSettings };
   'app:info': { req: void; res: AppInfo };
+  /** Slots of the local theme folder that hold a file (hopecode-theme:// URLs) and its validated palette. */
+  'theme:overlay': { req: void; res: ThemeOverlay };
   /** Reveals the app data folder (fixed path; nothing else can be opened) in Finder. */
   'app:openDataFolder': { req: void; res: void };
   'app:quit': { req: void; res: void };
@@ -293,6 +296,7 @@ export const INVOKE_CHANNELS = [
   'pty:resize',
   'settings:update',
   'app:info',
+  'theme:overlay',
   'app:openDataFolder',
   'app:quit',
   'config:sharedStatus',

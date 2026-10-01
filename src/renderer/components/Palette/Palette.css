@@ -1,5 +1,5 @@
-/* Command palette (⌘K). Same family as .hc-modal: fading blurred backdrop, white dialog card, soft dialog shadow.
-   Anchored high (~14vh) instead of centered so the field sits where the eye already is. Uses tokens.css only. */
+/* Command palette (⌘K). Same family as .hc-modal: a dimmed backdrop, a white-framed black box with a hard violet drop,
+   the heart cursor on the active result. Anchored high (~14vh) so the field sits where the eye already is. Tokens only. */
 
 .hc-palette-backdrop {
   position: fixed;
@@ -10,7 +10,6 @@
   justify-content: center;
   padding: 14vh var(--space-4) var(--space-6);
   background: var(--bg-backdrop);
-  backdrop-filter: blur(2px);
   animation: hc-palette-fade var(--motion-2) var(--ease-soft);
 }
 @keyframes hc-palette-fade {
@@ -57,7 +56,7 @@
   gap: 10px;
   height: 56px;
   padding: 0 var(--space-5);
-  border-bottom: 1px solid var(--separator);
+  border-bottom: 2px solid var(--separator);
 }
 .hc-palette__search-icon {
   flex: none;
@@ -80,7 +79,7 @@
   font: inherit;
   font-size: var(--text-lg);
   line-height: var(--lh-lg);
-  caret-color: var(--accent);
+  caret-color: var(--soul);
 }
 .hc-palette__input::placeholder {
   color: var(--label-tertiary);
@@ -106,18 +105,20 @@
   padding: 8px 10px 4px;
   font-size: var(--text-xs);
   line-height: var(--lh-xs);
-  font-weight: var(--weight-semibold);
-  color: var(--label-secondary);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tag);
+  color: var(--label-tertiary);
   -webkit-user-select: none;
   user-select: none;
 }
 
 .hc-palette__item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
   min-height: 38px;
-  padding: 6px 10px;
+  padding: 6px 10px 6px var(--heart-gutter);
   border-radius: var(--radius-row);
   color: var(--label-secondary);
   font-size: var(--text-md);
@@ -131,7 +132,13 @@
 }
 .hc-palette__item--active {
   background: var(--accent-tint);
-  color: var(--label);
+  color: var(--label-selected);
+}
+.hc-palette__item--active::before {
+  opacity: 1;
+}
+.hc-palette__item--active .hc-palette__title {
+  color: var(--label-selected);
 }
 
 .hc-palette__icon {
@@ -141,7 +148,7 @@
   justify-content: center;
   width: 26px;
   height: 26px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--bg-control);
   color: var(--label-secondary);
   transition:
@@ -152,9 +159,9 @@
   background: transparent;
 }
 .hc-palette__item--active .hc-palette__icon {
-  background: var(--bg-card);
-  color: var(--accent);
-  box-shadow: 0 0 0 1px rgba(0, 83, 253, 0.25), 0 1px 2px rgba(23, 23, 26, 0.06);
+  background: var(--accent-soft);
+  color: var(--label);
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 .hc-palette__item--active .hc-palette__icon:empty {
   background: transparent;
@@ -189,11 +196,11 @@
 }
 .hc-palette__hl {
   padding: 0;
-  border-radius: 3px;
+  border-radius: 0;
   background: transparent;
-  color: var(--accent-strong);
-  font-weight: var(--weight-semibold);
-  box-shadow: inset 0 -0.42em 0 var(--accent-subtle);
+  color: var(--cyan);
+  font-weight: var(--weight-bold);
+  box-shadow: none;
 }
 
 .hc-palette__keys {
@@ -225,7 +232,7 @@
   gap: 8px;
   height: 38px;
   padding: 0 var(--space-4);
-  border-top: 1px solid var(--separator);
+  border-top: 2px solid var(--separator);
   background: var(--bg-card-muted);
   font-size: var(--text-xs);
   line-height: var(--lh-xs);
@@ -242,7 +249,7 @@
   min-width: 18px;
   height: 18px;
   padding: 0 4px;
-  border-radius: 5px;
+  border-radius: 0;
   font-size: var(--text-2xs);
 }
 .hc-palette__hint .hc-kbd + .hc-kbd {

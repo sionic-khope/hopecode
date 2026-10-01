@@ -1,6 +1,6 @@
 // AcpRunner end-to-end over a real SDK client <-> the Lane D fixture agent (tests/fixtures/acp/fakeAcpAgent.mjs),
 // plus a raw NDJSON agent for hang / resume / SIGTERM edge cases. No real codex-acp / hermes, no network.
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -225,6 +225,51 @@ describe('AcpRunner (codex profile)', () => {
     const u = setup({ launcher: { resolve: () => ({ ok: false, reason: 'not-installed' }) } });
     expect(await u.runner.send('hi')).toEqual({ accepted: false, reason: 'agent-unavailable' });
     expect(u.events()).toEqual([]);
+  });
+
+  it('respawn refused by the launcher: the turn fails instead of reusing the previous spec', async () => {
+    const inner = createAcpFixtureLauncher({
+      profile: 'codex',
+      scriptPath: FAKE_AGENT,
+      stateDir: join(tmp(), 'state'),
+      env: { FAKE_ACP_SET_MODE_FAIL: '1' },
+    });
+    let calls = 0;
+    // #1 first send, #2 the full-access send, #3 acceptance of 'again', #4 the respawn after the kill -> refused.
+    const launcher: AcpLauncher = { resolve: (cwd, o) => (++calls >= 4 ? { ok: false, reason: 'not-installed' } : inner.resolve(cwd, o)) };
+    const s = setup({ launcher });
+    await turn(s.runner, 'hi');
+    await s.runner.send('/mode agent-full-access'); // the revert set_mode fails -> the agent is killed for a respawn
+    await s.runner.whenSettled();
+    expect((await s.conns[0]!.exited).signal).toBe('SIGKILL');
+    expect(await s.runner.send('again')).toEqual({ accepted: true });
+    await s.runner.whenSettled();
+    expect(calls).toBe(4);
+    expect(s.conns).toHaveLength(1);
+    expect(turnEnds(s.events()).at(-1)).toEqual({ type: 'turn-end', ok: false, reason: 'error' });
+    expect((s.events().filter((e) => e.type === 'error').at(-1) as { message: string }).message).toContain('다시 시작할 수 없습니다');
+  });
+
+  it('async launcher with spec.cwd: the process runs there, the session cwd still goes through session/new', async () => {
+    const runDir = join(tmp(), 'run');
+    mkdirSync(runDir, { recursive: true });
+    const inner = createAcpFixtureLauncher({ profile: 'codex', scriptPath: FAKE_AGENT, stateDir: join(tmp(), 'state') });
+    const launcher: AcpLauncher = {
+      async resolve(cwd, opts) {
+        await new Promise((r) => setTimeout(r, 20));
+        const res = await inner.resolve(cwd, opts);
+        return res.ok ? { ok: true, spec: { ...res.spec, cwd: runDir } } : res;
+      },
+    };
+    const s = setup({ launcher });
+    const first = s.runner.send('[whoami]');
+    // Busy while the launcher is still resolving.
+    expect(await s.runner.send('again')).toEqual({ accepted: false, reason: 'busy' });
+    expect(await first).toEqual({ accepted: true });
+    await s.runner.whenSettled();
+    const who = reported(s.events(), 'WHOAMI');
+    expect(realpathSync(who.processCwd as string)).toBe(realpathSync(runDir));
+    expect(who.cwd).toBe(s.cwd);
   });
 
   it('/tool and /diff: tool items with result and whole-file diffs', async () => {

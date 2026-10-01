@@ -94,7 +94,7 @@ export function AboutModal({
       onClose={onClose}
       title="Hopecode"
       subtitle="여러 Claude 계정으로 이어서 일하는 Claude Code 데스크탑"
-      icon={<BrandMark size={36} />}
+      icon={<BrandMark size={32} />}
       className="hc-about"
       width={440}
       actions={

@@ -13,6 +13,8 @@ export interface CodexDetectorDeps extends DetectorDeps {
   codexAcpPath: () => string | null;
   /** `agentBinaries.resolveCodex`: the installed Codex engine (null = none at or above CODEX_MIN_VERSION). */
   codexEngine: () => Promise<CodexEngine | null>;
+  /** `agentBinaries.codexEngineError`: why the Settings override is unusable (null = no override problem). */
+  codexEngineError?: () => string | null;
   /** Login-shell env (CODEX_HOME, OPENAI_API_KEY, CODEX_API_KEY). */
   env: () => Record<string, string>;
   /** core/jwtClaims `decodeJwtClaims` (Lane A). Payload only, never throws. */
@@ -28,7 +30,11 @@ export async function detectCodex(deps: CodexDetectorDeps): Promise<LocalAuthInf
   if (!deps.codexAcpPath()) return { ...info, state: 'not-installed', detail: 'codex-acp-not-found' };
   const engine = await deps.codexEngine();
   if (!engine) {
-    return { ...info, state: 'not-installed', enginePath: null, detail: `ChatGPT 앱 또는 Codex CLI(${CODEX_MIN_VERSION} 이상) 설치가 필요합니다` };
+    const overrideError = deps.codexEngineError?.() ?? null;
+    const detail = overrideError
+      ? `설정의 Codex 실행 파일 경로를 사용할 수 없습니다: ${overrideError}. 경로를 고치거나 비워 두면 자동으로 찾습니다`
+      : `ChatGPT 앱 또는 Codex CLI(${CODEX_MIN_VERSION} 이상) 설치가 필요합니다`;
+    return { ...info, state: 'not-installed', enginePath: null, detail };
   }
   info.version = engine.version;
   info.enginePath = engine.path;

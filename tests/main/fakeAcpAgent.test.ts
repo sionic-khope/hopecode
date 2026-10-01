@@ -398,9 +398,9 @@ describe('fakeAcpAgent', () => {
   });
 
   describe('launcher', () => {
-    it('builds argv/env for each profile and honours unavailable', () => {
+    it('builds argv/env for each profile and honours unavailable', async () => {
       const base = { scriptPath: SCRIPT, stateDir };
-      const codex = createAcpFixtureLauncher({ ...base, profile: 'codex' }).resolve(cwd, { model: 'gpt-6.1-sol', effort: 'high', permissionMode: 'plan', gitCeiling: '/x' });
+      const codex = await createAcpFixtureLauncher({ ...base, profile: 'codex' }).resolve(cwd, { model: 'gpt-6.1-sol', effort: 'high', permissionMode: 'plan', gitCeiling: '/x' });
       expect(codex.ok && codex.spec.args).toEqual([SCRIPT]);
       expect(codex.ok && codex.spec.env).toMatchObject({
         FAKE_ACP_PROFILE: 'codex',
@@ -411,11 +411,11 @@ describe('fakeAcpAgent', () => {
         CODEX_CONFIG: '{"model":"gpt-6.1-sol","model_reasoning_effort":"high"}',
         INITIAL_AGENT_MODE: 'read-only',
       });
-      const hermes = createAcpFixtureLauncher({ ...base, profile: 'hermes', env: { FAKE_ACP_NO_MODELS: '1' } }).resolve(cwd, { permissionMode: 'default' });
+      const hermes = await createAcpFixtureLauncher({ ...base, profile: 'hermes', env: { FAKE_ACP_NO_MODELS: '1' } }).resolve(cwd, { permissionMode: 'default' });
       expect(hermes.ok && hermes.spec.args).toEqual([SCRIPT]);
       expect(hermes.ok && hermes.spec.env).not.toHaveProperty('INITIAL_AGENT_MODE');
       expect(hermes.ok && hermes.spec.env.FAKE_ACP_NO_MODELS).toBe('1');
-      expect(createAcpFixtureLauncher({ ...base, profile: 'hermes', unavailable: 'not-logged-in' }).resolve(cwd, { permissionMode: 'default' })).toEqual({ ok: false, reason: 'not-logged-in' });
+      expect(await createAcpFixtureLauncher({ ...base, profile: 'hermes', unavailable: 'not-logged-in' }).resolve(cwd, { permissionMode: 'default' })).toEqual({ ok: false, reason: 'not-logged-in' });
     });
   });
 });
