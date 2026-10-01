@@ -12,7 +12,14 @@ import { accountPinSection } from '../Chat/ComposerControls';
 import { CommitMenu, type CommitMenuRequest } from '../Changes/CommitMenu';
 import { EnvPopover } from '../Env/EnvPopover';
 import { ConfirmDeletePopover, type NEEDS_FORCE } from '../Sidebar/ItemMenu';
-import { GlyphList, GlyphMarkdown, GlyphMore, GlyphPanelBottom, GlyphPanelRight, GlyphShare } from './toolbarGlyphs';
+import {
+  GlyphChanges as GlyphChangesToggle,
+  GlyphList,
+  GlyphMarkdown,
+  GlyphMore,
+  GlyphShare,
+  GlyphTerminal as GlyphTerminalToggle,
+} from './toolbarGlyphs';
 import './WindowToolbar.css';
 
 export interface WindowToolbarProps {
@@ -108,7 +115,14 @@ export function WindowToolbar({
 
   const moreSections = useMemo<MenuSection[]>(() => {
     const sections: MenuSection[] = [];
-    if (thread && editors.length > 0) {
+    if (thread && thread.projectId === null) {
+      // A chat without a project: its scratch folder opens in Finder only (no editors, no git).
+      sections.push({
+        key: 'editors',
+        kind: 'action',
+        items: [{ key: 'finder', label: '폴더 열기', icon: <GlyphFolderOpen />, onSelect: () => onOpenEditor('finder') }],
+      });
+    } else if (thread && editors.length > 0) {
       sections.push({
         key: 'editors',
         title: '에디터에서 열기',
@@ -161,7 +175,8 @@ export function WindowToolbar({
   const copyMarkdown = () => {
     if (!thread) return;
     const items = useAppStore.getState().chatItemsByThread[thread.id] ?? [];
-    const markdown = threadToMarkdown({ title: thread.title, project: project?.name ?? null, agentName: AGENTS[thread.agent].name }, items);
+    const projectName = project?.name ?? (thread.projectId === null ? '프로젝트 없음' : null);
+    const markdown = threadToMarkdown({ title: thread.title, project: projectName, agentName: AGENTS[thread.agent].name }, items);
     void copyText(markdown).then((ok) =>
       setFlash(ok ? { kind: 'ok', text: 'Markdown을 클립보드에 복사했습니다' } : { kind: 'error', text: '클립보드에 복사하지 못했습니다' }),
     );
@@ -282,7 +297,7 @@ export function WindowToolbar({
         title={terminalOpen ? '하단 터미널 닫기 (⌘J)' : '하단 터미널 열기 (⌘J)'}
         onClick={onToggleTerminal}
       >
-        <GlyphPanelBottom />
+        <GlyphTerminalToggle data-glyph="terminal" />
       </button>
       <button
         type="button"
@@ -292,7 +307,7 @@ export function WindowToolbar({
         title="변경사항 패널 (⌘⇧D)"
         onClick={() => onTogglePanel('changes')}
       >
-        <GlyphPanelRight />
+        <GlyphChangesToggle data-glyph="changes" />
       </button>
     </div>
   );

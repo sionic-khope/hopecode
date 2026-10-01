@@ -8,6 +8,7 @@ import { pickAccount } from '../../core/rotationPolicy';
 import {
   CLIENT_APP_NAME,
   CONTINUE_PROMPT,
+  EFFORT_LEVELS,
   MINUTE_MS,
   SESSION_CLEANUP_PERIOD_DAYS,
   SESSION_ID_PATTERN,
@@ -27,7 +28,19 @@ import type {
   TurnEndReason,
   UiPermissionMode,
 } from '../../shared/types';
-import type { Broadcaster, ClaudeBinary, QueryFn, ShellEnv, Store, ThreadLog, UsagePoller } from '../contracts';
+import type {
+  AgentRunner,
+  Broadcaster,
+  ClaudeBinary,
+  ModelInfoLite,
+  QueryFn,
+  ShellEnv,
+  Store,
+  ThreadLog,
+  UsagePoller,
+} from '../contracts';
+import { claudeConfigDirFor } from '../accounts/localDefault';
+import { scratchDir as defaultScratchDir } from '../paths';
 import { changedImagesBetween, type ImageSnapshot } from '../images/imageFiles';
 import type { PermissionBroker } from './permissionBroker';
 import type { SyncTranscriptFn } from './transcriptSync';
@@ -54,6 +67,8 @@ export interface ThreadRunnerDeps {
    * become a gallery item. Omitted = no galleries.
    */
   scanImages?: (cwd: string) => Promise<ImageSnapshot | null>;
+  /** Root of project-less chat folders (paths.scratchDir()); their Queries get GIT_CEILING_DIRECTORIES=<root>. */
+  scratchDir?: () => string;
   now: () => number;
   log: (message: string, err?: unknown) => void;
 }
@@ -147,7 +162,8 @@ function switchReasonLabel(from: SwitchedFrom): string {
   }
 }
 
-export class ThreadRunner {
+export class ThreadRunner implements AgentRunner {
+  readonly agent = 'claude-code' as const;
   private active: ActiveQuery | null = null;
   private turn: TurnState | null = null;
   /** True from account decision until the turn chain settles (guards concurrent sends). */
@@ -306,10 +322,11 @@ export class ThreadRunner {
     for (const q of this.closingQueries) q.abort.abort();
   }
 
-  async setEffort(effort: EffortLevel | null): Promise<void> {
-    this.patch({ effort });
+  async setEffort(effort: Thread['effort']): Promise<void> {
+    const claudeEffort = effort && isClaudeEffort(effort) ? effort : null;
+    this.patch({ effort: claudeEffort });
     // `effortLevel: null` returns the live session to the model's default effort.
-    if (this.active) await this.active.q.applyFlagSettings({ effortLevel: effort });
+    if (this.active) await this.active.q.applyFlagSettings({ effortLevel: claudeEffort });
   }
 
   async setModel(model: string): Promise<void> {
@@ -320,6 +337,21 @@ export class ThreadRunner {
   /** Live Query (for supportedModels()). */
   query(): Query | null {
     return this.active?.q ?? null;
+  }
+
+  /** Model catalog of the live Query; null while none is open. */
+  supportedModels(): Promise<ModelInfoLite[]> | null {
+    return this.active?.q.supportedModels() ?? null;
+  }
+
+  /** ACP session modes do not exist for Claude threads. */
+  async setAgentMode(_modeId: string): Promise<void> {
+    throw new Error('unsupported');
+  }
+
+  /** ACP config options do not exist for Claude threads. */
+  async setAgentConfig(_configId: string, _value: string | boolean): Promise<void> {
+    throw new Error('unsupported');
   }
 
   /** Retire the runner (thread deleted / app quit): no further turn, retry or patch; waits for CLI exit. */
@@ -603,7 +635,8 @@ export class ThreadRunner {
       cwd: thread.cwd,
       ...(thread.model && thread.model !== 'default' ? { model: thread.model } : {}),
       permissionMode: thread.permissionMode,
-      ...(thread.effort ? { effort: thread.effort } : {}),
+      // Only Claude's levels reach the SDK (a Codex-only value such as `ultra` is dropped).
+      ...(thread.effort && isClaudeEffort(thread.effort) ? { effort: thread.effort } : {}),
       // Always set so the UI can switch to bypassPermissions at runtime via setPermissionMode.
       allowDangerouslySkipPermissions: true,
       includePartialMessages: true,
@@ -615,8 +648,10 @@ export class ThreadRunner {
       settings: { cleanupPeriodDays: SESSION_CLEANUP_PERIOD_DAYS },
       pathToClaudeCodeExecutable: this.deps.claudeBinary.resolvePath(),
       env: this.deps.shellEnv.childEnv({
-        configDir: account.configDir,
+        // The local-default account runs without CLAUDE_CONFIG_DIR (base Keychain service, plan 2.9.5).
+        configDir: claudeConfigDirFor(account),
         clientApp: `${CLIENT_APP_NAME}/${this.deps.appVersion}`,
+        ...(thread.projectId === null ? { gitCeiling: (this.deps.scratchDir ?? defaultScratchDir)() } : {}),
       }),
       stderr: (data: string) => this.deps.log(`[claude:${this.threadId}] ${data.trimEnd()}`),
       abortController: abort,
@@ -930,4 +965,8 @@ function resultErrorText(msg: Extract<SDKMessage, { type: 'result' }>): string {
     if (text) return text;
   }
   return `Claude Code 오류 (${m.subtype ?? 'unknown'}).`;
+}
+
+function isClaudeEffort(value: string): value is EffortLevel {
+  return (EFFORT_LEVELS as readonly string[]).includes(value);
 }

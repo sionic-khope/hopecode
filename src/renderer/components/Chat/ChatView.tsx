@@ -2,11 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ChatImage, EffortLevel, ModelOption, PermissionDecision, Project, Thread, UiPermissionMode } from '../../../shared/types';
 import { formatResetCountdown } from '../../../core/format';
 import { MINUTE_MS } from '../../../shared/constants';
+import { AGENTS } from '../../../shared/agents';
+import { ipcErrorMessage } from '../../errors';
 import { selectChatItems, selectStreamingItemId, useAppStore, usePendingPermissions } from '../../store';
 import { MessageList } from './MessageList';
 import { ToolPathContext } from './ToolCard';
 import { Composer } from './Composer';
-import { AgentChip, FolderTag, ModelPicker, PermissionChip } from './ComposerControls';
+import { AcpModelChip, AgentChip, AgentModeChip, FolderTag, ModelPicker, NO_PROJECT_LABEL, PermissionChip, SystemModelTag } from './ComposerControls';
+import { agentModeChip, codexThreadChip, hermesModelLabel } from './acpChips';
 import './Chat.css';
 
 export interface ChatViewProps {
@@ -69,6 +72,58 @@ export function ChatView({
   const prefill = useAppStore((s) => (s.composerPrefill?.target === threadId ? s.composerPrefill : null));
   const clearPrefill = useCallback(() => useAppStore.getState().clearComposerPrefill(), []);
   const handleEditResend = useCallback((text: string) => useAppStore.getState().prefillComposer(threadId, text), [threadId]);
+  const [controlError, setControlError] = useState<string | null>(null);
+  // ACP controls: the applied value comes back through `agent:controls` / `thread:updated`.
+  const handleAgentConfig = useCallback(
+    (configId: string, value: string) => {
+      setControlError(null);
+      void useAppStore
+        .getState()
+        .setThreadAgentConfig(threadId, configId, value)
+        .catch((err: unknown) => setControlError(`설정을 바꾸지 못했습니다: ${ipcErrorMessage(err)}`));
+    },
+    [threadId],
+  );
+  const handleAgentMode = useCallback(
+    (modeId: string) => {
+      setControlError(null);
+      void useAppStore
+        .getState()
+        .setThreadAgentMode(threadId, modeId)
+        .catch((err: unknown) => setControlError(`모드를 바꾸지 못했습니다: ${ipcErrorMessage(err)}`));
+    },
+    [threadId],
+  );
+  const features = AGENTS[thread.agent].features;
+  const codex = thread.agent === 'codex' ? codexThreadChip(thread) : null;
+  const modeChip = features.agentModes ? agentModeChip(thread.acp) : null;
+
+  const trailing =
+    thread.agent === 'hermes' ? (
+      <SystemModelTag label={hermesModelLabel(thread.acp?.controls?.reportedModel)} />
+    ) : codex ? (
+      <AcpModelChip
+        model={codex.model}
+        effort={codex.effort}
+        modelLabel={codex.modelLabel}
+        effortLabel={codex.effortLabel}
+        models={codex.models}
+        efforts={codex.efforts}
+        readOnlyTitle={codex.modelConfigId || codex.effortConfigId ? undefined : 'Codex 세션이 열리면 바꿀 수 있습니다'}
+        onModelChange={codex.modelConfigId ? (v) => handleAgentConfig(codex.modelConfigId as string, v) : undefined}
+        onEffortChange={codex.effortConfigId ? (v) => handleAgentConfig(codex.effortConfigId as string, v) : undefined}
+      />
+    ) : (
+      <ModelPicker
+        models={models}
+        model={thread.model}
+        effort={thread.effort === 'ultra' ? null : thread.effort}
+        resolvedModel={thread.resolvedModel}
+        defaultLabel={defaultModelLabel}
+        onModelChange={handleModel}
+        onEffortChange={handleEffort}
+      />
+    );
 
   return (
     <div className="hc-chat">
@@ -85,6 +140,11 @@ export function ChatView({
       />
       </ToolPathContext.Provider>
       {waiting ? <WaitingBanner until={thread.waitingUntil} /> : null}
+      {controlError ? (
+        <div className="hc-notice hc-notice--error hc-chat__waiting" role="alert" onClick={() => setControlError(null)}>
+          {controlError}
+        </div>
+      ) : null}
       <Composer
         running={running}
         onSend={handleSend}
@@ -103,21 +163,16 @@ export function ChatView({
                 path={thread.worktree ? `${project.path} · ${thread.worktree.branch}` : project.path}
                 homeDir={homeDir}
               />
+            ) : thread.projectId === null ? (
+              <FolderTag name={NO_PROJECT_LABEL} path={thread.cwd} homeDir={homeDir} />
             ) : null}
-            <PermissionChip value={thread.permissionMode} onChange={handleMode} />
+            {features.permissionModes ? <PermissionChip value={thread.permissionMode} onChange={handleMode} agent={thread.agent} /> : null}
+            {modeChip ? (
+              <AgentModeChip label={modeChip.label} currentModeId={modeChip.currentModeId} modes={modeChip.modes} onChange={handleAgentMode} />
+            ) : null}
           </>
         }
-        trailing={
-          <ModelPicker
-            models={models}
-            model={thread.model}
-            effort={thread.effort}
-            resolvedModel={thread.resolvedModel}
-            defaultLabel={defaultModelLabel}
-            onModelChange={handleModel}
-            onEffortChange={handleEffort}
-          />
-        }
+        trailing={trailing}
       />
     </div>
   );

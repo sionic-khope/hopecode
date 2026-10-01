@@ -12,6 +12,7 @@ import {
   launch,
   openDraft,
   screenshot,
+  screenshotOf,
   sendMessage,
   startThread,
   type Launched,
@@ -109,13 +110,23 @@ test('thread: toolbar order, terminal and changes toggles', async () => {
 
   const app = page.locator('.app');
   const terminalToggle = bar.getByRole('button', { name: '하단 터미널' });
+  const changesToggle = bar.getByRole('button', { name: '변경사항 패널' });
+  // AC12: terminal (>_) and changes (± file) glyphs; labels, tooltips and pressed state unchanged.
+  await expect(terminalToggle.locator('[data-glyph="terminal"]')).toHaveCount(1);
+  await expect(changesToggle.locator('[data-glyph="changes"]')).toHaveCount(1);
+  await expect(terminalToggle).toHaveAttribute('title', '하단 터미널 열기 (⌘J)');
+  await expect(terminalToggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(changesToggle).toHaveAttribute('title', '변경사항 패널 (⌘⇧D)');
+  await expect(changesToggle).toHaveAttribute('aria-pressed', 'false');
   await terminalToggle.click();
   await expect(app).toHaveClass(/app--terminal-open/);
+  await expect(terminalToggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(terminalToggle).toHaveAttribute('title', '하단 터미널 닫기 (⌘J)');
   await expect(bottomTerminal(page).locator('.xterm')).toBeVisible();
   await terminalToggle.click();
   await expect(app).toHaveClass(/app--terminal-closed/);
+  await expect(terminalToggle).toHaveAttribute('aria-pressed', 'false');
 
-  const changesToggle = bar.getByRole('button', { name: '변경사항 패널' });
   await changesToggle.click();
   await expect(page.getByTestId('changes-panel')).toBeVisible();
   await expect(changesToggle).toHaveAttribute('aria-pressed', 'true');
@@ -123,6 +134,7 @@ test('thread: toolbar order, terminal and changes toggles', async () => {
   await expect(app).toHaveClass(/app--panel-closed/);
   await page.mouse.move(10, 700);
   await screenshot(page, 'v5-toolbar', SHOTS);
+  await screenshotOf(page, toolbar(page), 'v7-toolbar-icons', SHOTS);
 });
 
 test('env popover: change counts from git:changes, click opens the changes tab', async () => {

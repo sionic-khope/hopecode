@@ -64,6 +64,7 @@ export function AccountRow({ account, usage, usageHistory, now, onUpdate, onRemo
     transition: transition ?? undefined,
   };
 
+  const isLocal = account.source === 'local-default';
   const badge = statusBadge(usage);
   const showReLoginHint = needsReLogin(usage);
 
@@ -158,6 +159,7 @@ export function AccountRow({ account, usage, usageHistory, now, onUpdate, onRemo
         </div>
 
         <div className="hc-acct-row__badges">
+          {isLocal ? <Pill tone="accent">로컬 (기본)</Pill> : null}
           {badge ? <Pill tone={badge.tone}>{badge.label}</Pill> : null}
         </div>
 
@@ -176,7 +178,7 @@ export function AccountRow({ account, usage, usageHistory, now, onUpdate, onRemo
               취소
             </Button>
             <Button variant="destructive" size="sm" disabled={removing} onClick={confirmRemove}>
-              {removing ? '제거 중…' : '제거'}
+              {removing ? (isLocal ? '제외 중…' : '제거 중…') : isLocal ? '풀에서 제외' : '제거'}
             </Button>
           </div>
         ) : (
@@ -184,8 +186,8 @@ export function AccountRow({ account, usage, usageHistory, now, onUpdate, onRemo
             variant="plain"
             size="sm"
             icon
-            aria-label={`${account.alias} 제거`}
-            title="계정 제거"
+            aria-label={isLocal ? `${account.alias} 풀에서 제외` : `${account.alias} 제거`}
+            title={isLocal ? '풀에서 제외' : '계정 제거'}
             onClick={() => setConfirmingDelete(true)}
           >
             <TrashIcon />
@@ -196,8 +198,10 @@ export function AccountRow({ account, usage, usageHistory, now, onUpdate, onRemo
       {confirmingDelete ? (
         <div className={`hc-acct-row__remove-note${removeError ? ' hc-acct-row__remove-note--error' : ''}`} role={removeError ? 'alert' : undefined}>
           {removeError
-            ? `${account.alias} 계정을 제거하지 못했습니다: ${removeError}`
-            : `${account.alias} 계정을 제거할까요? 실행 중인 세션은 닫히고 대화 기록은 다른 계정으로 옮겨집니다. 로그인 정보와 설정 폴더는 삭제됩니다.`}
+            ? `${account.alias} 계정을 ${isLocal ? '풀에서 제외' : '제거'}하지 못했습니다: ${removeError}`
+            : isLocal
+              ? `${account.alias} 계정을 풀에서 제외할까요? 이 Mac의 Claude Code 로그인 파일(~/.claude)은 삭제하지 않습니다. 실행 중인 세션은 닫히고 대화 기록은 다른 계정으로 옮겨집니다.`
+              : `${account.alias} 계정을 제거할까요? 실행 중인 세션은 닫히고 대화 기록은 다른 계정으로 옮겨집니다. 로그인 정보와 설정 폴더는 삭제됩니다.`}
         </div>
       ) : null}
 

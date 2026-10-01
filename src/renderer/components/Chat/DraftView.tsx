@@ -1,10 +1,13 @@
-import { useCallback, useRef, useState } from 'react';
-import type { EffortLevel, ModelOption, Project, UiPermissionMode } from '../../../shared/types';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import type { CodexEffortLevel, EffortLevel, ModelOption, Project, UiPermissionMode } from '../../../shared/types';
+import { AGENTS } from '../../../shared/agents';
+import { draftAgentDefaults } from '../../../core/agentDefaults';
 import { useAppStore, type DraftState } from '../../store';
 import { BrandMark } from '../common';
 import { GlyphBranch, GlyphChanges, GlyphCode, GlyphTerminal } from '../common/glyphs';
 import { Composer, type ComposerHandle } from './Composer';
-import { AgentChip, FolderChip, ModelPicker, PermissionChip } from './ComposerControls';
+import { AcpModelChip, AgentChip, FolderChip, ModelPicker, PermissionChip, SystemModelTag } from './ComposerControls';
+import { SYSTEM_DEFAULT_LABEL, codexEffortChoices, codexModelChoices, effortValueLabel } from './acpChips';
 import { BoltIcon } from './icons';
 import './Chat.css';
 
@@ -63,15 +66,19 @@ export function DraftView({
   homeDir,
 }: DraftViewProps) {
   const [folderOpen, setFolderOpen] = useState(false);
-  /** Bumped by every send without a folder: re-keys the chip so its pulse replays. */
-  const [pulse, setPulse] = useState(0);
   const [starting, setStarting] = useState(false);
   const composerRef = useRef<ComposerHandle>(null);
   const project = projects.find((p) => p.id === draft.projectId) ?? null;
   const prefill = useAppStore((s) => (s.composerPrefill?.target === 'draft' ? s.composerPrefill : null));
   const clearPrefill = useCallback(() => useAppStore.getState().clearComposerPrefill(), []);
-
-  const needFolder = pulse > 0 && !project;
+  const localAuth = useAppStore((s) => s.localAuth);
+  const threads = useAppStore((s) => s.threads);
+  const features = AGENTS[draft.agent].features;
+  const codexEfforts = useMemo(() => (draft.agent === 'codex' ? codexEffortChoices(threads) : []), [draft.agent, threads]);
+  const codexModels = useMemo(
+    () => (draft.agent === 'codex' ? codexModelChoices(threads, draft.model) : []),
+    [draft.agent, draft.model, threads],
+  );
 
   const pickOther = useCallback(() => {
     void onPickFolder()
@@ -82,13 +89,9 @@ export function DraftView({
       .catch((err: unknown) => console.error('[hopecode] folder pick failed', err));
   }, [onPickFolder, onDraftChange]);
 
+  // No folder is not an error: the thread starts as a chat without a project (scratch folder, plan 2.12).
   const send = useCallback(
     async (text: string) => {
-      if (!draft.projectId) {
-        setPulse((n) => n + 1);
-        setFolderOpen(true);
-        return false;
-      }
       setStarting(true);
       try {
         return await onStart(text);
@@ -96,14 +99,54 @@ export function DraftView({
         setStarting(false);
       }
     },
-    [draft.projectId, onStart],
+    [onStart],
   );
 
   const attach = useCallback(async () => (draft.projectId ? onAttachFiles(draft.projectId) : []), [draft.projectId, onAttachFiles]);
   const setMode = useCallback((permissionMode: UiPermissionMode) => onDraftChange({ permissionMode }), [onDraftChange]);
   const setModel = useCallback((model: string) => onDraftChange({ model }), [onDraftChange]);
   const setEffort = useCallback((effort: EffortLevel | null) => onDraftChange({ effort }), [onDraftChange]);
-  const setAgent = useCallback((agent: DraftState['agent']) => onDraftChange({ agent }), [onDraftChange]);
+  // Switching agents resets model / effort to that agent's new-chat defaults (Opus 5.5 · High, GPT-6-Sol · High,
+  // Hermes' system default).
+  const setAgent = useCallback(
+    (agent: DraftState['agent']) => {
+      if (agent === draft.agent) return;
+      onDraftChange({ agent, ...draftAgentDefaults(agent, useAppStore.getState().settings) });
+    },
+    [draft.agent, onDraftChange],
+  );
+  const recheckAgents = useCallback(() => {
+    void useAppStore
+      .getState()
+      .recheckAgents()
+      .catch((err: unknown) => console.error('[hopecode] agent recheck failed', err));
+  }, []);
+  const setCodexEffort = useCallback((value: string) => onDraftChange({ effort: value as CodexEffortLevel }), [onDraftChange]);
+
+  const trailing =
+    draft.agent === 'hermes' ? (
+      <SystemModelTag label={SYSTEM_DEFAULT_LABEL} />
+    ) : draft.agent === 'codex' ? (
+      <AcpModelChip
+        model={draft.model}
+        effort={draft.effort}
+        modelLabel={codexModels.find((m) => m.value === draft.model)?.label ?? draft.model}
+        effortLabel={draft.effort ? effortValueLabel(draft.effort) : null}
+        models={codexModels}
+        efforts={codexEfforts}
+        onModelChange={setModel}
+        onEffortChange={setCodexEffort}
+      />
+    ) : (
+      <ModelPicker
+        models={models}
+        model={draft.model}
+        effort={draft.effort === 'ultra' ? null : draft.effort}
+        defaultLabel={defaultModelLabel}
+        onModelChange={setModel}
+        onEffortChange={setEffort}
+      />
+    );
 
   return (
     <div className="hc-draft" data-testid="draft">
@@ -127,7 +170,7 @@ export function DraftView({
               <span className="hc-draft__folder">{project.name}</span>에서 새 worktree로 시작합니다
             </>
           ) : (
-            '작업할 폴더를 고르고 요청을 입력하세요'
+            <span data-testid="draft-scratch">프로젝트 없이 새 채팅을 시작합니다 (git 기능 없음)</span>
           )}
         </p>
       </div>
@@ -146,31 +189,20 @@ export function DraftView({
         onPrefillApplied={clearPrefill}
         leading={
           <>
-            <AgentChip value={draft.agent} onChange={setAgent} />
+            <AgentChip value={draft.agent} onChange={setAgent} localAuth={localAuth} onRecheck={recheckAgents} />
             <FolderChip
-              key={pulse}
               projects={projects}
               projectId={draft.projectId}
               onSelect={(projectId) => onDraftChange({ projectId })}
               onPickOther={pickOther}
               open={folderOpen}
               onOpenChange={setFolderOpen}
-              attention={needFolder}
               homeDir={homeDir}
             />
-            <PermissionChip value={draft.permissionMode} onChange={setMode} />
+            {features.permissionModes ? <PermissionChip value={draft.permissionMode} onChange={setMode} agent={draft.agent} /> : null}
           </>
         }
-        trailing={
-          <ModelPicker
-            models={models}
-            model={draft.model}
-            effort={draft.effort}
-            defaultLabel={defaultModelLabel}
-            onModelChange={setModel}
-            onEffortChange={setEffort}
-          />
-        }
+        trailing={trailing}
       />
       <div className="hc-newtask-row">
         <button
@@ -182,10 +214,6 @@ export function DraftView({
           <BoltIcon width={15} height={15} />
           New Task Start
         </button>
-      </div>
-      {/* Reserved line so the alert never shifts the composer. */}
-      <div className="hc-draft__hint" role={needFolder ? 'alert' : undefined}>
-        {needFolder ? '먼저 작업할 폴더를 선택하세요' : null}
       </div>
       <ul className="hc-suggest" aria-label="추천 프롬프트">
         {SUGGESTED_PROMPTS.map((p, i) => (

@@ -17,7 +17,10 @@ export function scrubEnv(base: Record<string, string | undefined>): Record<strin
   return result;
 }
 
-/** scrubEnv(base) then inject CLAUDE_CONFIG_DIR / TERM / CLAUDE_AGENT_SDK_CLIENT_APP when provided. */
+/**
+ * scrubEnv(base) then inject CLAUDE_CONFIG_DIR / TERM / CLAUDE_AGENT_SDK_CLIENT_APP / GIT_CEILING_DIRECTORIES when
+ * provided.
+ */
 export function buildChildEnv(
   base: Record<string, string | undefined>,
   inject: ChildEnvInject,
@@ -26,5 +29,6 @@ export function buildChildEnv(
   if (inject.configDir !== undefined) result.CLAUDE_CONFIG_DIR = inject.configDir;
   if (inject.term !== undefined) result.TERM = inject.term;
   if (inject.clientApp !== undefined) result.CLAUDE_AGENT_SDK_CLIENT_APP = inject.clientApp;
+  if (inject.gitCeiling !== undefined) result.GIT_CEILING_DIRECTORIES = inject.gitCeiling;
   return result;
 }

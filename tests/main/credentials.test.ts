@@ -141,3 +141,58 @@ describe('credentials (read-only)', () => {
     });
   });
 });
+
+describe('credentials: local-default account (plan 2.9.5)', () => {
+  const LOCAL = '/tmp/hopecode-test-home/fake-claude';
+
+  function local(opts: { keychain?: string; file?: string } = {}) {
+    const execFile = vi.fn<ExecFileFn>(async (_file, args) => {
+      if (args[0] === 'find-generic-password' && opts.keychain !== undefined) return { stdout: opts.keychain };
+      if (args[0] === 'find-generic-password') throw new Error('not found');
+      return { stdout: '' };
+    });
+    const readFile = vi.fn(async (p: string) => {
+      if (opts.file !== undefined && p === `${LOCAL}/.credentials.json`) return opts.file;
+      throw new Error('ENOENT');
+    });
+    const c = createCredentials({
+      execFile,
+      readFile,
+      username: () => 'alice',
+      now: () => NOW,
+      platform: 'darwin',
+      localClaudeDir: () => LOCAL,
+    });
+    return { c, execFile, readFile };
+  }
+
+  it('reads the local dir through the base service `Claude Code-credentials`', async () => {
+    const { c, execFile } = local({ keychain: creds(NOW + 60_000, 'local-tok') });
+    const r = await c.read(LOCAL);
+    expect(r).toMatchObject({ status: 'ok', accessToken: 'local-tok' });
+    expect(execFile.mock.calls[0]![1]).toEqual(['find-generic-password', '-s', 'Claude Code-credentials', '-a', 'alice', '-w']);
+  });
+
+  it('falls back to <localDir>/.credentials.json', async () => {
+    const { c, readFile } = local({ file: creds(NOW + 60_000, 'file-tok') });
+    expect(await c.read(`${LOCAL}/`)).toMatchObject({ status: 'ok', accessToken: 'file-tok' });
+    expect(readFile).toHaveBeenCalledWith(`${LOCAL}/.credentials.json`);
+  });
+
+  it('managed dirs keep the hashed service', async () => {
+    const { c, execFile } = local();
+    await c.read(DIR);
+    const expected = `Claude Code-credentials-${createHash('sha256').update(DIR).digest('hex').slice(0, 8)}`;
+    expect(execFile.mock.calls[0]![1]).toContain(expected);
+  });
+
+  it('deleteKeychainItem throws for the local dir, its ancestors and the base service; nothing is deleted', async () => {
+    const { c, execFile } = local();
+    await expect(c.deleteKeychainItem(LOCAL)).rejects.toThrow(/local Claude/);
+    await expect(c.deleteKeychainItem('/tmp/hopecode-test-home')).rejects.toThrow(/local Claude/);
+    const base = setup({ serviceName: () => 'Claude Code-credentials' });
+    await expect(base.c.deleteKeychainItem(DIR)).rejects.toThrow(/base Claude Code Keychain/);
+    expect(execFile.mock.calls.some((call) => call[1][0] === 'delete-generic-password')).toBe(false);
+    expect(base.execFile.mock.calls.some((call) => call[1][0] === 'delete-generic-password')).toBe(false);
+  });
+});

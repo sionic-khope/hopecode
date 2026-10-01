@@ -344,3 +344,80 @@ describe('accountPool', () => {
     expect(t.pool.list().map((a) => a.id)).toEqual(['b']);
   });
 });
+
+describe('accountPool: local-default account (plan 2.9.5)', () => {
+  function makeLocalPool(existing: Account[] = []) {
+    const store = makeStore(existing);
+    const broadcaster = makeBroadcaster();
+    const credentials = { invalidate: vi.fn(), deleteKeychainItem: vi.fn(async () => {}) };
+    const removeConfigDir = vi.fn(async () => {});
+    const onAccountAdded = vi.fn();
+    const pool = createAccountPool({
+      store,
+      accountsDir: () => accountsDir,
+      links: { linkSharedConfig: async () => ({ linked: [], skipped: [] }) },
+      startLogin: () => {
+        throw new Error('no login in this test');
+      },
+      credentials,
+      broadcaster,
+      onAccountAdded,
+      removeConfigDir,
+      localClaudeDir: () => claudeDir,
+      newId: () => 'local-1',
+      now: () => 7,
+    });
+    return { pool, store, broadcaster, credentials, removeConfigDir, onAccountAdded };
+  }
+
+  it('addLocalDefault appends the local account at the end of the pool, once', () => {
+    const t = makeLocalPool([account('a', 0), account('b', 3)]);
+    const added = t.pool.addLocalDefault({ email: 'me@example.com', plan: 'max' });
+    expect(added).toMatchObject({
+      id: 'local-1',
+      alias: '로컬 (기본)',
+      configDir: claudeDir,
+      priority: 4,
+      enabled: true,
+      source: 'local-default',
+      email: 'me@example.com',
+      createdAt: 7,
+    });
+    expect(added.color).not.toBe('#007AFF');
+    expect(t.pool.addLocalDefault({ email: 'x', plan: null }).id).toBe('local-1');
+    expect(t.pool.list().filter((a) => a.source === 'local-default')).toHaveLength(1);
+    expect(t.onAccountAdded).toHaveBeenCalledTimes(1);
+    expect(t.broadcaster.of('account:updated')).toHaveLength(1);
+  });
+
+  it('remove(local, deleteConfigDir=true) drops it from the pool only: no Keychain / dir deletion', async () => {
+    const t = makeLocalPool([account('a', 0)]);
+    t.pool.addLocalDefault({ email: 'me@example.com', plan: 'max' });
+    await t.pool.remove('local-1', true);
+    expect(t.pool.list().map((a) => a.id)).toEqual(['a']);
+    expect(t.credentials.deleteKeychainItem).not.toHaveBeenCalled();
+    expect(t.removeConfigDir).not.toHaveBeenCalled();
+    expect(existsSync(join(claudeDir, 'CLAUDE.md'))).toBe(true);
+  });
+
+  it('a managed account pointing at the local dir (inside accountsDir) is still never deleted', async () => {
+    const t = makeLocalPool();
+    // Even if the local dir lived under accountsDir, the path guard runs before the containment check.
+    const insideLocal = join(accountsDir, 'mine');
+    const pool = createAccountPool({
+      store: makeStore([account('m', 0, { configDir: insideLocal })]),
+      accountsDir: () => accountsDir,
+      links: { linkSharedConfig: async () => ({ linked: [], skipped: [] }) },
+      startLogin: () => {
+        throw new Error('unused');
+      },
+      credentials: t.credentials,
+      removeConfigDir: t.removeConfigDir,
+      localClaudeDir: () => insideLocal,
+    });
+    await expect(pool.remove('m', true)).rejects.toThrow(/local Claude/);
+    expect(t.removeConfigDir).not.toHaveBeenCalled();
+    expect(t.credentials.deleteKeychainItem).not.toHaveBeenCalled();
+    expect(pool.list().map((a) => a.id)).toEqual(['m']);
+  });
+});

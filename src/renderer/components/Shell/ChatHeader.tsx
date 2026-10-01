@@ -71,7 +71,13 @@ export const ChatHeader = memo(function ChatHeader({ thread, onRename, ...toolba
             {thread.title}
           </button>
         )}
-        {project ? <span className="app__thread-project">{project.name}</span> : null}
+        {project ? (
+          <span className="app__thread-project">{project.name}</span>
+        ) : thread.projectId === null ? (
+          <span className="app__thread-project app__thread-project--none" title="프로젝트 없는 채팅 (git 기능 없음)">
+            프로젝트 없음
+          </span>
+        ) : null}
         {state ? (
           <StatusPill state={state} className="hc-chat-header__status">
             {state === 'waiting' && waitingText ? `대기 중 · ${waitingText}` : undefined}

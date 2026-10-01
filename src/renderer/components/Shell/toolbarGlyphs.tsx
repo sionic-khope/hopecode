@@ -48,22 +48,22 @@ export function GlyphList(props: GlyphProps) {
   );
 }
 
-/** 하단 터미널 toggle: window with a bottom strip. */
-export function GlyphPanelBottom(props: GlyphProps) {
+/** 하단 터미널 toggle: a bare `>_` prompt (the terminal itself, not the panel's position). */
+export function GlyphTerminal(props: GlyphProps) {
   return (
     <svg {...base} {...props}>
-      <rect x="2.75" y="3.75" width="14.5" height="12.5" rx="2.5" />
-      <path d="M2.75 12h14.5M5.5 14.1l1.1-.95-1.1-.95" />
+      <path d="m4 5.75 4.25 4.25L4 14.25" />
+      <path d="M10.25 14.25h5.75" />
     </svg>
   );
 }
 
-/** 오른쪽 패널 toggle: window with a right column. */
-export function GlyphPanelRight(props: GlyphProps) {
+/** 변경사항 panel toggle: a page with a ± (added / removed lines). */
+export function GlyphChanges(props: GlyphProps) {
   return (
     <svg {...base} {...props}>
-      <rect x="2.75" y="3.75" width="14.5" height="12.5" rx="2.5" />
-      <path d="M12 3.75v12.5" />
+      <path d="M5.75 2.75h5.5l3.5 3.5v10a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1v-12.5a1 1 0 0 1 1-1Z" />
+      <path d="M7.75 8.75h4.5M10 6.5V11M7.75 14h4.5" />
     </svg>
   );
 }

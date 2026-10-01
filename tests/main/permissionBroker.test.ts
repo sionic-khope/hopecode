@@ -167,3 +167,98 @@ describe('permissionBroker', () => {
     expect(broadcaster.of('permission:request')[0]!.hasSessionSuggestion).toBe(false);
   });
 });
+
+describe('permissionBroker.requestAcp (ACP session/request_permission)', () => {
+  const hermesOptions = [
+    { optionId: 'allow_once', name: 'Allow once', kind: 'allow_once' as const },
+    { optionId: 'allow_session', name: 'Allow for session', kind: 'allow_always' as const },
+    { optionId: 'allow_always', name: 'Allow always', kind: 'allow_always' as const },
+    { optionId: 'deny', name: 'Deny', kind: 'reject_once' as const },
+    { optionId: 'deny_always', name: 'Deny always', kind: 'reject_always' as const },
+  ];
+  const req = (options = hermesOptions) => ({
+    sessionId: 's1',
+    toolCall: { toolCallId: 'call-1', title: 'Run npm test', kind: 'execute' as const, rawInput: { command: 'npm test' } },
+    options,
+  });
+
+  function acpSetup() {
+    const broadcaster = createRecordingBroadcaster();
+    const broker = createPermissionBroker({ broadcaster });
+    return { broadcaster, broker };
+  }
+
+  it('broadcasts a card with the agent options and resolves with the mapped option', async () => {
+    const { broker, broadcaster } = acpSetup();
+    const p = broker.requestAcp('t1', 'hermes', req(), new AbortController().signal);
+    const [card] = broadcaster.of('permission:request');
+    expect(card).toMatchObject({
+      threadId: 't1',
+      toolUseId: 'call-1',
+      toolName: 'Bash',
+      input: { title: 'Run npm test', command: 'npm test' },
+      title: 'Run npm test',
+      agent: 'hermes',
+      hasSessionSuggestion: true,
+      sessionLabel: 'Allow for session',
+    });
+    expect(card!.requestId).toMatch(/^acp-/);
+    expect(card!.agentOptions).toEqual(hermesOptions);
+    broker.respond(card!.requestId, 'allow-session');
+    await expect(p).resolves.toEqual({ outcome: { outcome: 'selected', optionId: 'allow_session' } });
+  });
+
+  it('allow -> allow_once, deny -> reject_once; deny without reject_once -> cancelled (never reject_always)', async () => {
+    const { broker, broadcaster } = acpSetup();
+    const a = broker.requestAcp('t1', 'hermes', req(), new AbortController().signal);
+    broker.respond(broadcaster.of('permission:request')[0]!.requestId, 'allow');
+    await expect(a).resolves.toEqual({ outcome: { outcome: 'selected', optionId: 'allow_once' } });
+
+    const d = broker.requestAcp('t1', 'hermes', req(), new AbortController().signal);
+    broker.respond(broadcaster.of('permission:request')[1]!.requestId, 'deny');
+    await expect(d).resolves.toEqual({ outcome: { outcome: 'selected', optionId: 'deny' } });
+
+    const onlyAlways = hermesOptions.filter((o) => o.kind !== 'reject_once');
+    const c = broker.requestAcp('t1', 'hermes', req(onlyAlways), new AbortController().signal);
+    broker.respond(broadcaster.of('permission:request')[2]!.requestId, 'deny');
+    await expect(c).resolves.toEqual({ outcome: { outcome: 'cancelled' } });
+  });
+
+  it('abort signal / cancelThread / cancelAll answer cancelled and broadcast permission:cancel', async () => {
+    const { broker, broadcaster } = acpSetup();
+    const abort = new AbortController();
+    const a = broker.requestAcp('t1', 'codex', req(), abort.signal);
+    const b = broker.requestAcp('t1', 'codex', req(), new AbortController().signal);
+    const c = broker.requestAcp('t2', 'codex', req(), new AbortController().signal);
+    abort.abort();
+    await expect(a).resolves.toEqual({ outcome: { outcome: 'cancelled' } });
+    broker.cancelThread('t1');
+    await expect(b).resolves.toEqual({ outcome: { outcome: 'cancelled' } });
+    broker.cancelAll();
+    await expect(c).resolves.toEqual({ outcome: { outcome: 'cancelled' } });
+    expect(broadcaster.of('permission:cancel')).toHaveLength(3);
+    expect(broker.pending()).toEqual([]);
+  });
+
+  it('already-aborted signal answers cancelled without a card; large rawInput becomes a truncated preview', async () => {
+    const { broker, broadcaster } = acpSetup();
+    const abort = new AbortController();
+    abort.abort();
+    await expect(broker.requestAcp('t1', 'codex', req(), abort.signal)).resolves.toEqual({ outcome: { outcome: 'cancelled' } });
+    expect(broadcaster.of('permission:request')).toHaveLength(0);
+
+    const big = { ...req(), toolCall: { ...req().toolCall, rawInput: { blob: 'x'.repeat(20_000) } } };
+    void broker.requestAcp('t1', 'codex', big, new AbortController().signal);
+    const input = broadcaster.of('permission:request')[0]!.input;
+    expect(input).toMatchObject({ title: 'Run npm test', truncated: true });
+    const preview = String(input.preview);
+    expect(preview.startsWith(`{"blob":"${'x'.repeat(6 * 1024 - 9)}\n… (truncated) …\n`)).toBe(true);
+    expect(preview.endsWith(`${'x'.repeat(2 * 1024 - 2)}"}`)).toBe(true);
+    expect(preview.length).toBeLessThanOrEqual(8 * 1024 + 30);
+
+    const spoof = { ...req(), toolCall: { ...req().toolCall, rawInput: { command: 'rm -rf x', title: 'harmless' } } };
+    void broker.requestAcp('t1', 'codex', spoof, new AbortController().signal);
+    expect(broadcaster.of('permission:request')[1]!.input).toEqual({ command: 'rm -rf x', title: 'Run npm test' });
+    expect(broker.pending()).toHaveLength(2);
+  });
+});

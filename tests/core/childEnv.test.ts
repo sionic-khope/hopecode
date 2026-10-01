@@ -78,4 +78,16 @@ describe('buildChildEnv', () => {
     expect(result.TERM).toBe('xterm-256color');
     expect(result.CLAUDE_AGENT_SDK_CLIENT_APP).toBe('hopecode/0.1.0');
   });
+
+  it('injects GIT_CEILING_DIRECTORIES only when gitCeiling is provided', () => {
+    expect(buildChildEnv(DIRTY_BASE, { gitCeiling: '/Users/khope/.hopecode/scratch' }).GIT_CEILING_DIRECTORIES).toBe(
+      '/Users/khope/.hopecode/scratch',
+    );
+    expect('GIT_CEILING_DIRECTORIES' in buildChildEnv(DIRTY_BASE, {})).toBe(false);
+  });
+
+  it('gitCeiling overrides a GIT_CEILING_DIRECTORIES inherited from the login shell', () => {
+    const result = buildChildEnv({ ...DIRTY_BASE, GIT_CEILING_DIRECTORIES: '/elsewhere' }, { gitCeiling: '/scratch' });
+    expect(result.GIT_CEILING_DIRECTORIES).toBe('/scratch');
+  });
 });

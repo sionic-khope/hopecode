@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { linkSharedConfig, removeConfigDir, verifyLinks } from '../../src/main/accounts/configDirLinks';
+import { localClaudeDir } from '../../src/main/paths';
 
 let root: string;
 let claude: string; // fake ~/.claude
@@ -105,5 +106,36 @@ describe('removeConfigDir', () => {
     expect(existsSync(link)).toBe(false);
     expect(existsSync(join(claude, 'CLAUDE.md'))).toBe(true);
     await expect(removeConfigDir(join(root, 'nope'))).resolves.toBeUndefined();
+  });
+});
+
+describe('removeConfigDir local Claude guard (plan 2.9.5)', () => {
+  let previous: string | undefined;
+  beforeEach(() => {
+    previous = process.env['HOPECODE_HOME'];
+    process.env['HOPECODE_HOME'] = root;
+  });
+  afterEach(() => {
+    if (previous === undefined) delete process.env['HOPECODE_HOME'];
+    else process.env['HOPECODE_HOME'] = previous;
+  });
+
+  it('refuses paths.localClaudeDir() itself (default argument) and leaves it intact', async () => {
+    const local = localClaudeDir();
+    expect(local).toBe(join(root, 'home', 'fake-claude'));
+    mkdirSync(local, { recursive: true });
+    writeFileSync(join(local, '.credentials.json'), '{}');
+    await expect(removeConfigDir(local)).rejects.toThrow(/local Claude/);
+    await expect(removeConfigDir(`${local}/`)).rejects.toThrow(/local Claude/);
+    await expect(removeConfigDir(join(local, '..', 'fake-claude'))).rejects.toThrow(/local Claude/);
+    expect(existsSync(join(local, '.credentials.json'))).toBe(true);
+  });
+
+  it('refuses an ancestor of the local dir and an explicit local dir', async () => {
+    await expect(removeConfigDir(join(root, 'home'))).rejects.toThrow(/local Claude/);
+    await expect(removeConfigDir(claude, claude)).rejects.toThrow(/local Claude/);
+    expect(existsSync(join(claude, 'CLAUDE.md'))).toBe(true);
+    await expect(removeConfigDir(acct, claude)).resolves.toBeUndefined();
+    expect(existsSync(acct)).toBe(false);
   });
 });

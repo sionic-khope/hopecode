@@ -191,6 +191,21 @@ describe('store', () => {
     }
   });
 
+  it('Codex effort `ultra` survives a reload; a Claude thread cannot carry it', async () => {
+    const codex = { ...makeThread({ id: 'cx' }), agent: 'codex', effort: 'ultra' };
+    const claude = { ...makeThread({ id: 'cl' }), agent: 'claude-code', effort: 'ultra' };
+    await writeFile(
+      filePath,
+      JSON.stringify({ version: 1, projects: [], threads: [codex, claude], accounts: [], settings: DEFAULT_SETTINGS }),
+      'utf8',
+    );
+    const state = await createStore(filePath).load();
+    expect(state.threads.map((t) => [t.id, t.effort])).toEqual([
+      ['cx', 'ultra'],
+      ['cl', null],
+    ]);
+  });
+
   it('pinned / archived / effort survive a save and reload', async () => {
     const store = createStore(filePath);
     await store.load();

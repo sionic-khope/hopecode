@@ -11,11 +11,12 @@ import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, relative, resolve } from 'node:path';
 import { INVOKE_CHANNELS, type InvokeChannel, type InvokeResponse } from '../../shared/ipc';
 import type {
-  AccountPool,
+  AgentUsageService,
   Broadcaster,
   Dialogs,
   EditorLauncher,
   GitService,
+  LocalAuthService,
   PtyManager,
   SessionManager,
   Store,
@@ -26,9 +27,22 @@ import type {
   WorktreeManager,
 } from '../contracts';
 import type { SyncTranscriptFn } from '../session/transcriptSync';
+import {
+  isLocalDefault,
+  removeAccountWithHandoff,
+  setLocalDefaultInPool,
+  type LocalDefaultAccountPool,
+} from '../accounts/localDefault';
+import { createScratchDir, removeScratchDir, scratchGitCeiling } from '../scratch/scratchDirs';
+import { draftAgentDefaults, isFullAccessMode, SETTABLE_CONFIG_CATEGORIES } from '../../core/agentDefaults';
 import { NAV_CHANNELS, buildNavHandlers, type NavChannel, type NavHandlers, type NavServices } from './navHandlers';
 import { imageHandlers, isChatImageList, type ImageActions } from './imageHandlers';
-import { DEFAULT_THREAD_TITLE, DRAFT_PTY_SESSION_ID, USAGE_HISTORY_RETENTION_MS } from '../../shared/constants';
+import {
+  CODEX_MODEL_PATTERN,
+  DEFAULT_THREAD_TITLE,
+  DRAFT_PTY_SESSION_ID,
+  USAGE_HISTORY_RETENTION_MS,
+} from '../../shared/constants';
 import { AGENTS, DEFAULT_AGENT, isAgentKind } from '../../shared/agents';
 import { isStrictlyInside } from '../containment';
 import { markdownFileName, threadToMarkdown } from '../../core/threadMarkdown';
@@ -38,12 +52,15 @@ import { applySettingsPatch, isEditorId, validateSettingsPatch } from '../../cor
 import type {
   AccountPatch,
   AgentKind,
+  AgentUsageSnapshot,
   AppInfo,
   AppSettings,
   ChatSendResult,
   EffortLevel,
   PermissionDecision,
   Project,
+  GitChanges,
+  GitRemoteInfo,
   SharedConfigStatus,
   Thread,
   ThreadStartRequest,
@@ -52,6 +69,7 @@ import type {
 import {
   assertReq,
   isBoolean,
+  isCodexEffortLevel,
   isEffortLevel,
   isFiniteNumber,
   isNonEmptyString,
@@ -82,11 +100,28 @@ export class UntrustedSenderError extends Error {
   }
 }
 
+/** Per-thread folders of chats without a project (scratch/scratchDirs.ts; tests inject a temp root). */
+export interface ScratchFolders {
+  create(threadId: string): string;
+  remove(threadId: string): boolean;
+  /** GIT_CEILING_DIRECTORIES for the thread's shell. */
+  gitCeiling(): string;
+}
+
+const DEFAULT_SCRATCH: ScratchFolders = { create: createScratchDir, remove: removeScratchDir, gitCeiling: scratchGitCeiling };
+
 export interface RegisterIpcServices {
   store: Store;
   threadLog: ThreadLog;
   sessionManager: SessionManager;
-  accountPool: AccountPool;
+  accountPool: LocalDefaultAccountPool;
+  /** Local agent login detection (agents:list / agents:recheck, thread:start availability, `agents:updated`). */
+  localAuth: LocalAuthService;
+  /** Hermes usage (agentUsage:*); `setActive` = the agent of the selected thread (polled while selected). */
+  agentUsage: AgentUsageService & { setActive(agent: AgentKind | null): void };
+  /** Fixture run: the local Claude account is only enrolled with HOPECODE_FIXTURE_LOCAL_CLAUDE=1. */
+  fixtures?: boolean;
+  scratch?: ScratchFolders;
   usagePoller: UsagePoller;
   usageHistory: UsageHistory;
   ptyManager: PtyManager;
@@ -131,6 +166,12 @@ const NO_IMAGE_ACTIONS: ImageActions = {
 
 type Handlers = { [K in InvokeChannel]: (req: unknown) => Promise<InvokeResponse<K>> };
 
+const AGENT_KINDS = Object.keys(AGENTS) as AgentKind[];
+
+const SCRATCH_GIT_ERROR = '프로젝트 없는 채팅에서는 사용할 수 없습니다';
+const NO_REPO_CHANGES: GitChanges = { isRepo: false, branch: null, baseBranch: null, files: [], ahead: 0, dirty: false };
+const NO_REMOTE: GitRemoteInfo = { remote: null, remoteUrl: null, branch: null, baseBranch: null, ghAvailable: false };
+
 /** A new thread never starts in bypassPermissions (that mode needs the confirmed switch). */
 function safeInitialMode(mode: Thread['permissionMode']): Thread['permissionMode'] {
   return mode === 'bypassPermissions' ? 'default' : mode;
@@ -156,7 +197,18 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
     worktreeManager,
     dialogs,
     broadcaster,
+    localAuth,
+    agentUsage,
   } = s;
+  const scratch = s.scratch ?? DEFAULT_SCRATCH;
+  const removalDeps = {
+    accountPool,
+    store,
+    sessionManager,
+    syncTranscript: s.syncTranscript,
+    broadcaster,
+    log: (message: string, err?: unknown) => console.error(message, err ?? ''),
+  };
 
   function requireThread(channel: string, threadId: unknown): Thread {
     assertReq(channel, isNonEmptyString(threadId), 'threadId must be a non-empty string');
@@ -195,18 +247,34 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
     return project?.path ?? homedir();
   }
 
+  /** A project-less thread's shell gets GIT_CEILING_DIRECTORIES (no repository above the scratch root is found). */
+  function ptyOpenOpts(threadId: string): { gitCeiling?: string } | undefined {
+    if (threadId === DRAFT_PTY_SESSION_ID || store.getThread(threadId)?.projectId !== null) return undefined;
+    return { gitCeiling: scratch.gitCeiling() };
+  }
+
+  /** Scratch folder removal never fails the caller (the record goes either way). */
+  function removeScratch(threadId: string): void {
+    try {
+      scratch.remove(threadId);
+    } catch (err) {
+      console.error('[ipc] scratch folder remove failed', err);
+    }
+  }
+
   /**
    * New idle thread in `project`: its own git worktree when the setting allows it and the folder is a repo,
-   * otherwise the project folder itself. Not stored or broadcast.
+   * otherwise the project folder itself. `project` null = a chat without a project in its own scratch folder
+   * (no git, no worktree). Not stored or broadcast.
    */
   async function createThreadRecord(
-    project: Project,
+    project: Project | null,
     opts: {
       title: string;
       agent?: AgentKind;
       model?: string;
       permissionMode: Thread['permissionMode'];
-      effort?: EffortLevel | null;
+      effort?: Thread['effort'];
       pinnedAccountId?: string | null;
       /** PR head to start from; always gets its own worktree (the project's checkout is never switched). */
       base?: { branch: string; pr?: number };
@@ -215,14 +283,15 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
     const id = randomUUID();
     const shortId = id.slice(0, 8);
     const settings = store.get().settings;
-    const { cwd, worktree } =
-      settings.useWorktree || opts.base
+    const { cwd, worktree } = !project
+      ? { cwd: scratch.create(id), worktree: undefined }
+      : settings.useWorktree || opts.base
         ? await worktreeManager.create(project.path, shortId, { trusted: project.trusted, ...(opts.base ? { base: opts.base } : {}) })
         : { cwd: project.path, worktree: undefined };
     const now = Date.now();
     return {
       id,
-      projectId: project.id,
+      projectId: project ? project.id : null,
       agent: opts.agent ?? DEFAULT_AGENT,
       title: opts.title,
       cwd,
@@ -259,9 +328,29 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
         .remove(project.path, worktree, { force })
         .catch((err: unknown) => console.error('[ipc] worktree remove failed', err));
     }
+    if (thread.projectId === null) removeScratch(thread.id);
     store.update((draft) => {
       draft.threads = draft.threads.filter((t) => t.id !== thread.id);
     });
+  }
+
+  function setLocalDefault(include: boolean): Promise<{ ok: true } | { ok: false; error: string }> {
+    return setLocalDefaultInPool(
+      {
+        ...removalDeps,
+        fixtures: s.fixtures === true,
+        recheckClaude: async () =>
+          (await localAuth.recheck('claude-code', { force: true })).find((info) => info.agent === 'claude-code'),
+      },
+      include,
+    );
+  }
+
+  /** Thread of an ACP agent (mode / config option channels). */
+  function requireAcpThread(channel: string, threadId: unknown): Thread {
+    const thread = requireThread(channel, threadId);
+    assertReq(channel, AGENTS[thread.agent].features.runtime === 'acp', 'not an ACP agent thread');
+    return thread;
   }
 
   /** Thread plus its project folder (git operations run in `thread.cwd`, based on the project's branch). */
@@ -295,6 +384,10 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
         homeDir: homedir(),
         pendingPermissions: sessionManager.pendingPermissions(),
         testMode: s.testMode === true,
+        localAuth: localAuth.list(),
+        agentUsage: Object.fromEntries(
+          AGENT_KINDS.filter((a) => AGENTS[a].usageSource === 'hermes').map((a) => [a, agentUsage.get(a)]),
+        ) as Partial<Record<AgentKind, AgentUsageSnapshot | null>>,
       };
     },
 
@@ -399,24 +492,37 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
       const channel = 'thread:start';
       assertReq(channel, isPlainObject(req), 'request object required');
       const r = req as Record<string, unknown>;
-      assertReq(channel, isNonEmptyString(r.projectId), 'projectId required');
+      // projectId omitted (or null) = a chat without a project, in its own scratch folder (plan 2.12).
+      assertReq(channel, r.projectId === undefined || r.projectId === null || isNonEmptyString(r.projectId), 'invalid projectId');
       assertReq(channel, isNonEmptyString(r.text) && r.text.trim().length > 0, 'text required');
       assertReq(channel, isOptionalString(r.model), 'model must be a string');
       assertReq(channel, r.permissionMode === undefined || isUiPermissionMode(r.permissionMode), 'invalid permissionMode');
-      assertReq(channel, r.effort === undefined || r.effort === null || isEffortLevel(r.effort), 'invalid effort');
       assertReq(channel, r.agent === undefined || isAgentKind(r.agent), 'invalid agent');
+      // Codex has its own effort set (`ultra`); Claude / Hermes take Claude's.
+      const isEffort = r.agent === 'codex' ? isCodexEffortLevel : isEffortLevel;
+      assertReq(channel, r.effort === undefined || r.effort === null || isEffort(r.effort), 'invalid effort');
       assertReq(
         channel,
         r.pinnedAccountId === undefined || isNullableString(r.pinnedAccountId),
         'pinnedAccountId must be a string or null',
       );
-      assertReq(channel, r.baseBranch === undefined || (isNonEmptyString(r.baseBranch) && isSafeBranchName(r.baseBranch)), 'invalid baseBranch');
+      assertReq(
+        channel,
+        r.baseBranch === undefined || (isNonEmptyString(r.baseBranch) && isSafeBranchName(r.baseBranch) && !!r.projectId),
+        'invalid baseBranch',
+      );
       assertReq(
         channel,
         r.basePr === undefined || (r.baseBranch !== undefined && isFiniteNumber(r.basePr) && Number.isInteger(r.basePr) && r.basePr > 0),
         'invalid basePr',
       );
-      const project = requireProject(channel, r.projectId);
+      const agent = (r.agent as AgentKind | undefined) ?? DEFAULT_AGENT;
+      assertReq(channel, agent !== 'codex' || r.model === undefined || CODEX_MODEL_PATTERN.test(r.model as string), 'invalid codex model');
+      const project = r.projectId ? requireProject(channel, r.projectId) : null;
+      // An ACP agent that is not installed / logged in is refused before any worktree or scratch folder exists.
+      if (AGENTS[agent].features.runtime === 'acp' && !localAuth.availability(agent).usable) {
+        return { ok: false, reason: 'agent-unavailable' };
+      }
       const text = r.text as string;
       const pinnedAccountId = (r.pinnedAccountId as string | null | undefined) ?? null;
       assertReq(channel, pinnedAccountId === null || !!accountPool.get(pinnedAccountId), `account not found: ${pinnedAccountId}`);
@@ -425,12 +531,15 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
       let mode = (r.permissionMode as Thread['permissionMode'] | undefined) ?? store.get().settings.defaultPermissionMode;
       if (mode === 'bypassPermissions' && !(await dialogs.confirmBypassPermissions())) mode = 'default';
 
+      // Per-agent defaults (plan 2.11): Claude / Codex from settings unless the draft chose; Hermes never sets them.
+      const defaults = draftAgentDefaults(agent, store.get().settings);
+      const system = AGENTS[agent].defaults === 'system';
       const thread = await createThreadRecord(project, {
         title: deriveThreadTitle(text),
-        agent: r.agent as AgentKind | undefined,
-        model: r.model as string | undefined,
+        agent,
+        model: system ? defaults.model : ((r.model as string | undefined) ?? defaults.model),
         permissionMode: mode,
-        effort: (r.effort as EffortLevel | null | undefined) ?? null,
+        effort: system || r.effort === undefined ? defaults.effort : (r.effort as Thread['effort']),
         pinnedAccountId,
         ...(r.baseBranch !== undefined
           ? { base: { branch: r.baseBranch as string, ...(r.basePr !== undefined ? { pr: r.basePr as number } : {}) } }
@@ -444,11 +553,12 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
       const rollback = async () => {
         await sessionManager.closeThread(thread.id).catch((err: unknown) => console.error('[ipc] closeThread failed', err));
         await threadLog.remove(thread.id).catch((err: unknown) => console.error('[ipc] threadLog.remove failed', err));
-        if (thread.worktree) {
+        if (thread.worktree && project) {
           await worktreeManager
             .remove(project.path, thread.worktree, { force: true })
             .catch((err: unknown) => console.error('[ipc] worktree remove failed', err));
         }
+        if (thread.projectId === null) removeScratch(thread.id);
         store.update((draft) => {
           draft.threads = draft.threads.filter((t) => t.id !== thread.id);
         });
@@ -507,13 +617,12 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
     },
 
     'thread:setEffort': async (req) => {
-      assertReq(
-        'thread:setEffort',
-        isPlainObject(req) && isNonEmptyString(req.threadId) && (req.effort === null || isEffortLevel(req.effort)),
-        'threadId/effort required',
-      );
-      const { threadId, effort } = req as { threadId: string; effort: EffortLevel | null };
-      requireThread('thread:setEffort', threadId);
+      assertReq('thread:setEffort', isPlainObject(req) && isNonEmptyString(req.threadId), 'threadId/effort required');
+      const { threadId, effort } = req as { threadId: string; effort: Thread['effort'] };
+      const target = requireThread('thread:setEffort', threadId);
+      // Codex has its own effort set (`ultra`); Claude / Hermes take Claude's.
+      const isEffort = target.agent === 'codex' ? isCodexEffortLevel : isEffortLevel;
+      assertReq('thread:setEffort', effort === null || isEffort(effort), 'threadId/effort required');
       await sessionManager.setEffort(threadId, effort);
       const current = store.getThread(threadId);
       if (current) broadcaster.emit('thread:updated', { ...current });
@@ -698,55 +807,9 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
         'accountId/deleteConfigDir required',
       );
       const { accountId, deleteConfigDir } = req as { accountId: string; deleteConfigDir: boolean };
-      const account = accountPool.get(accountId);
-      if (!account) return { ok: true };
-
-      // Threads whose freshest transcript lives in this account are handed to another enabled account.
-      const dependents = store.get().threads.filter((t) => t.lastAccountId === accountId);
-      const heir = accountPool.list().find((a) => a.id !== accountId && a.enabled);
-      if (dependents.length > 0 && !heir) {
-        return {
-          ok: false,
-          error: `${account.alias} 계정에 스레드 ${dependents.length}개의 대화 기록이 있습니다. 다른 계정을 추가하거나 활성화한 뒤 제거하세요.`,
-        };
-      }
-
-      // Disable first so no new turn picks it, then (a) stop its Queries (CLI exit awaited).
-      const wasEnabled = account.enabled;
-      if (wasEnabled) accountPool.update(accountId, { enabled: false });
-      await sessionManager.closeAccount(accountId);
-
-      // (b) copy transcripts to the heir and move lastAccountId. A failed copy aborts the removal: deleting the
-      // account (and its config dir) would lose that thread's history.
-      for (const thread of store.get().threads) {
-        const patch: Partial<Thread> = {};
-        if (thread.lastAccountId === accountId && heir) {
-          if (thread.sdkSessionId) {
-            try {
-              await s.syncTranscript(thread.sdkSessionId, account.configDir, heir.configDir);
-            } catch (err) {
-              console.error('[ipc] transcript handoff failed', err);
-              if (wasEnabled) accountPool.update(accountId, { enabled: true });
-              return {
-                ok: false,
-                error: `"${thread.title}"의 대화 기록을 ${heir.alias}(으)로 옮기지 못했습니다: ${err instanceof Error ? err.message : String(err)}. ${account.alias} 계정은 제거되지 않았습니다.`,
-              };
-            }
-          }
-          patch.lastAccountId = heir.id;
-        }
-        if (thread.activeAccountId === accountId) patch.activeAccountId = null;
-        if (thread.pinnedAccountId === accountId) patch.pinnedAccountId = null;
-        if (Object.keys(patch).length > 0) broadcaster.emit('thread:updated', { ...store.patchThread(thread.id, patch) });
-      }
-
-      // (c) only now remove the account (and its config dir).
-      try {
-        await accountPool.remove(accountId, deleteConfigDir);
-      } catch (err) {
-        return { ok: false, error: `${account.alias} 계정을 제거하지 못했습니다: ${err instanceof Error ? err.message : String(err)}` };
-      }
-      return { ok: true };
+      // The local Claude login only leaves the pool (and stays out): the same path as account:setLocalDefault false.
+      if (isLocalDefault(accountPool.get(accountId))) return setLocalDefault(false);
+      return removeAccountWithHandoff(removalDeps, accountId, deleteConfigDir);
     },
 
     'usage:refresh': async (req) => {
@@ -781,7 +844,7 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
       assertReq('pty:open', projectId === undefined || isNonEmptyString(projectId), 'projectId must be a string');
       requirePtySessionId('pty:open', threadId);
       const cwd = resolvePtyCwd('pty:open', threadId, projectId as string | undefined);
-      return ptyManager.open(threadId, cwd, cols, rows);
+      return ptyManager.open(threadId, cwd, cols, rows, ptyOpenOpts(threadId));
     },
 
     'pty:restart': async (req) => {
@@ -801,7 +864,7 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
       const cwd = resolvePtyCwd('pty:restart', threadId, projectId as string | undefined);
       // kill + open back to back: the old process's exit arrives later and is ignored (the id maps to the new shell).
       ptyManager.kill(threadId);
-      const { ptyId } = ptyManager.open(threadId, cwd, cols, rows);
+      const { ptyId } = ptyManager.open(threadId, cwd, cols, rows, ptyOpenOpts(threadId));
       return { ptyId };
     },
 
@@ -850,6 +913,8 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
       assertReq('editor:open', isPlainObject(req) && isEditorId(req.editor), 'threadId/editor required');
       const { thread } = requireThreadFolder('editor:open', req);
       const editor = (req as { editor: Parameters<EditorLauncher['open']>[0] }).editor;
+      // A chat without a project only offers "폴더 열기" (Finder).
+      assertReq('editor:open', thread.projectId !== null || editor === 'finder', 'only Finder for a chat without a project');
       const rawPath = (req as { path?: unknown }).path;
       // Only the thread's own folder (or a file inside it) is ever handed to another app.
       if (rawPath === undefined) return s.editorLauncher.open(editor, thread.cwd);
@@ -862,25 +927,30 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
       await s.editorLauncher.open(editor, editor === 'finder' ? dirname(realTarget as string) : (realTarget as string));
     },
 
+    // A chat without a project never runs git (its scratch folder may sit inside some other repository).
     'git:changes': async (req) => {
       const { thread, projectPath } = requireThreadFolder('git:changes', req);
+      if (thread.projectId === null) return NO_REPO_CHANGES;
       return s.gitService.changes(thread.cwd, projectPath);
     },
 
     'git:fileDiff': async (req) => {
       const { thread, projectPath } = requireThreadFolder('git:fileDiff', req);
       const path = requireRelPath('git:fileDiff', (req as { path?: unknown }).path);
+      if (thread.projectId === null) return { path, binary: false, hunks: [] };
       return s.gitService.fileDiff(thread.cwd, projectPath, path);
     },
 
     'git:revertFile': async (req) => {
       const { thread } = requireThreadFolder('git:revertFile', req);
       const path = requireRelPath('git:revertFile', (req as { path?: unknown }).path);
+      if (thread.projectId === null) return { ok: false, error: SCRATCH_GIT_ERROR };
       return s.gitService.revertFile(thread.cwd, path);
     },
 
     'git:commit': async (req) => {
       const { thread } = requireThreadFolder('git:commit', req);
+      if (thread.projectId === null) return { ok: false, error: SCRATCH_GIT_ERROR };
       const message = (req as { message?: unknown }).message;
       assertReq('git:commit', isString(message) && message.length <= 10_000, 'message must be a string');
       return s.gitService.commit(thread.cwd, message as string);
@@ -888,17 +958,20 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
 
     'git:merge': async (req) => {
       const { thread, projectPath } = requireThreadFolder('git:merge', req);
+      if (thread.projectId === null) return { ok: false, error: SCRATCH_GIT_ERROR };
       if (!thread.worktree) return { ok: false, error: 'worktree 스레드가 아닙니다' };
       return s.gitService.merge(thread.cwd, projectPath);
     },
 
     'git:remoteInfo': async (req) => {
       const { thread, projectPath } = requireThreadFolder('git:remoteInfo', req);
+      if (thread.projectId === null) return NO_REMOTE;
       return s.gitService.remoteInfo(thread.cwd, projectPath);
     },
 
     'git:pushPr': async (req) => {
       const { thread, projectPath } = requireThreadFolder('git:pushPr', req);
+      if (thread.projectId === null) return { ok: false, error: SCRATCH_GIT_ERROR };
       const { title, body } = req as { title?: unknown; body?: unknown };
       assertReq('git:pushPr', isNonEmptyString(title) && title.length <= 300, 'title required');
       assertReq('git:pushPr', isString(body) && body.length <= 20_000, 'body must be a string');
@@ -907,6 +980,7 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
 
     'git:createBranch': async (req) => {
       const { thread } = requireThreadFolder('git:createBranch', req);
+      if (thread.projectId === null) return { ok: false, error: SCRATCH_GIT_ERROR };
       const name = (req as { name?: unknown }).name;
       assertReq('git:createBranch', isString(name) && name.length <= 256, 'name must be a string');
       // Only a thread's own worktree (created and recorded by main) is ever switched.
@@ -946,6 +1020,79 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
       requirePtySessionId('pty:resize', threadId);
       ptyManager.resize(threadId, cols, rows);
     },
+
+    'thread:setAgentMode': async (req) => {
+      const channel = 'thread:setAgentMode';
+      assertReq(channel, isPlainObject(req) && isNonEmptyString(req.modeId), 'threadId/modeId required');
+      const thread = requireAcpThread(channel, req.threadId);
+      // The agent-mode chip is Hermes' (features.agentModes); Codex modes follow thread:setPermissionMode.
+      assertReq(channel, AGENTS[thread.agent].features.agentModes, 'agent modes are not supported for this agent');
+      const modeId = req.modeId as string;
+      // Only a mode the agent reported for this thread's session.
+      const mode = thread.acp?.controls?.modes.find((m) => m.id === modeId);
+      assertReq(channel, !!mode, `unknown mode: ${modeId}`);
+      const target = mode as NonNullable<typeof mode>;
+      // Full-access-like modes skip every approval: the same native warning as bypassPermissions (Cancel default).
+      // Always asked, also when the mode looks current: without a live session the value is only remembered
+      // (pendingModeId) and the stored current mode may be stale.
+      if (isFullAccessMode(target) && !(await dialogs.confirmBypassPermissions())) return;
+      await sessionManager.setAgentMode(thread.id, modeId);
+    },
+
+    'thread:setAgentConfig': async (req) => {
+      const channel = 'thread:setAgentConfig';
+      assertReq(
+        channel,
+        isPlainObject(req) && isNonEmptyString(req.configId) && (isString(req.value) || isBoolean(req.value)),
+        'threadId/configId/value required',
+      );
+      const thread = requireAcpThread(channel, req.threadId);
+      const { configId, value } = req as { configId: string; value: string | boolean };
+      const option = thread.acp?.controls?.configOptions.find((o) => o.id === configId);
+      assertReq(channel, !!option, `unknown config option: ${configId}`);
+      const opt = option as NonNullable<typeof option>;
+      // Only model / effort: other categories (e.g. Codex "Approval Preset", category `mode`) could switch the
+      // agent to full access without the bypassPermissions confirm.
+      assertReq(channel, opt.category !== null && SETTABLE_CONFIG_CATEGORIES.has(opt.category), `config option not settable: ${configId}`);
+      if (opt.type === 'boolean') {
+        assertReq(channel, isBoolean(value), 'value must be a boolean');
+      } else {
+        assertReq(channel, isString(value) && opt.options.some((o) => o.value === value), 'value is not one of the options');
+        // The model id also goes into codex `-c model="..."` on the next spawn.
+        assertReq(channel, thread.agent !== 'codex' || opt.category !== 'model' || CODEX_MODEL_PATTERN.test(value as string), 'invalid codex model');
+      }
+      await sessionManager.setAgentConfig(thread.id, configId, value);
+      const current = store.getThread(thread.id);
+      if (current) broadcaster.emit('thread:updated', { ...current });
+    },
+
+    'account:setLocalDefault': async (req) => {
+      assertReq('account:setLocalDefault', isPlainObject(req) && isBoolean(req.include), 'include required');
+      return setLocalDefault(req.include as boolean);
+    },
+
+    'agents:list': async () => localAuth.list(),
+
+    'agents:recheck': async (req) => {
+      const agent = isPlainObject(req) ? req.agent : undefined;
+      assertReq('agents:recheck', agent === undefined || isAgentKind(agent), 'invalid agent');
+      // The 재확인 button: ignores the cache TTL and re-runs the Hermes initialize probe.
+      return localAuth.recheck(agent as AgentKind | undefined, { force: true });
+    },
+
+    'agentUsage:refresh': async (req) => {
+      assertReq('agentUsage:refresh', isPlainObject(req) && isAgentKind(req.agent), 'agent required');
+      return agentUsage.refresh(req.agent as AgentKind);
+    },
+
+    'agentUsage:setActive': async (req) => {
+      assertReq(
+        'agentUsage:setActive',
+        isPlainObject(req) && (req.agent === null || isAgentKind(req.agent)),
+        'agent must be an agent kind or null',
+      );
+      agentUsage.setActive(req.agent as AgentKind | null);
+    },
   };
 }
 
@@ -981,10 +1128,12 @@ export function registerIpc(ipcMain: IpcMainLike, services: RegisterIpcServices)
 
   const unsubAccounts = services.accountPool.onChange((accounts) => services.broadcaster.emit('account:updated', accounts));
   const unsubUsage = services.usagePoller.onUpdate((snapshot) => services.broadcaster.emit('usage:updated', snapshot));
+  const unsubAgents = services.localAuth.onChange((list) => services.broadcaster.emit('agents:updated', list));
 
   return () => {
     unsubAccounts();
     unsubUsage();
+    unsubAgents();
     for (const channel of INVOKE_CHANNELS) ipcMain.removeHandler?.(channel);
   };
 }

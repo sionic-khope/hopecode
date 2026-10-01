@@ -13,6 +13,9 @@ export type LimitKind = 'fiveHour' | 'sevenDay' | 'fable';
 /** Reasoning effort (SDK `EffortLevel`, Options.effort / applyFlagSettings({effortLevel})). */
 export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
+/** Codex reasoning effort (`model_reasoning_effort`; codex models_cache supported_reasoning_levels). Not Claude's set. */
+export type CodexEffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra';
+
 /** Model-scoped weekly limit buckets (SDK `seven_day_<model>` rate limit types). */
 export type ModelLimitKind = 'fable' | 'opus' | 'sonnet';
 
@@ -61,6 +64,11 @@ export interface Account {
   priority: number;
   enabled: boolean;
   createdAt: number;
+  /**
+   * `local-default`: the Mac's own Claude Code login (`paths.localClaudeDir()`, base Keychain service). Never
+   * deleted (no config dir / Keychain removal) and never given CLAUDE_CONFIG_DIR. Absent = `managed`.
+   */
+  source?: 'managed' | 'local-default';
 }
 
 export type AccountPatch = Partial<Pick<Account, 'alias' | 'color' | 'enabled'>>;
@@ -93,14 +101,56 @@ export interface WorktreeInfo {
 }
 
 /**
- * Coding agent that runs a thread's sessions. A union so more agents can be added: each kind gets an entry in
- * shared/agents.ts (AGENTS) and a runner branch in main's SessionManager. Only Claude Code exists today.
+ * Coding agent that runs a thread's sessions. Each kind has an entry in shared/agents.ts (AGENTS) and a runner
+ * branch in main's SessionManager: Claude Code runs on the Agent SDK, Codex / Hermes over ACP (stdio).
  */
-export type AgentKind = 'claude-code';
+export type AgentKind = 'claude-code' | 'codex' | 'hermes';
+
+/** One ACP session mode (`SessionModeState.availableModes[]`). */
+export interface AcpModeLite {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+/** One value of a select config option (groups are flattened). */
+export interface AcpConfigValueLite {
+  value: string;
+  name: string;
+  description?: string;
+}
+
+/** ACP `SessionConfigOption` reduced to what the composer renders (no `_meta`). */
+export type AcpConfigOptionLite = {
+  id: string;
+  name: string;
+  description?: string;
+  /** `mode` | `model` | `model_config` | `thought_level` | agent-specific; null when the agent sent none. */
+  category: string | null;
+} & ({ type: 'select'; currentValue: string; options: AcpConfigValueLite[] } | { type: 'boolean'; currentValue: boolean });
+
+/** Controls an ACP agent reported for a session (modes, config options). Persisted on the thread; no secrets. */
+export interface AcpControls {
+  modes: AcpModeLite[];
+  currentModeId: string | null;
+  configOptions: AcpConfigOptionLite[];
+  /** Hermes' non-standard `models.currentModelId` (read-only label, 120 chars max); null when not reported. */
+  reportedModel: string | null;
+}
+
+/** ACP session state of a Codex / Hermes thread (absent on Claude threads). */
+export interface ThreadAcpState {
+  /** ACP session id to `session/load` on the next connection; null before the first `session/new`. */
+  sessionId: string | null;
+  controls: AcpControls | null;
+  /** Mode chosen while no connection was open; applied right after the next session opens. */
+  pendingModeId?: string | null;
+}
 
 export interface Thread {
   id: string;
-  projectId: string;
+  /** null = a chat without a project (runs in an app-managed scratch folder, no git). */
+  projectId: string | null;
   /** Agent that runs this thread (persisted; threads saved before agents existed migrate to 'claude-code'). */
   agent: AgentKind;
   title: string;
@@ -112,8 +162,8 @@ export interface Thread {
   /** Actual model reported by SDK init message. */
   resolvedModel: string | null;
   permissionMode: UiPermissionMode;
-  /** Reasoning effort for this thread's Queries; null = the model's default. */
-  effort: EffortLevel | null;
+  /** Reasoning effort for this thread's Queries (Codex threads: CodexEffortLevel); null = the model's default. */
+  effort: EffortLevel | CodexEffortLevel | null;
   pinnedAccountId: string | null;
   /** Shown in the sidebar's "pinned threads" section. */
   pinned: boolean;
@@ -133,6 +183,8 @@ export interface Thread {
   ctxPercent: number | null;
   createdAt: number;
   updatedAt: number;
+  /** ACP session state (Codex / Hermes threads only). */
+  acp?: ThreadAcpState;
 }
 
 /** External apps the "에디터에서 열기" menu can hand a thread folder to (detected in /Applications). */
@@ -170,10 +222,21 @@ export interface AppSettings {
    * substituted before it lands in the composer. Never empty (falls back to the default); at most 4000 chars.
    */
   newTaskTemplate: string;
+  /**
+   * The Mac's own Claude Code login joins the account pool (`Account.source === 'local-default'`). Changed only
+   * through `account:setLocalDefault`.
+   */
+  localClaudeInPool: boolean;
+  /** Codex model of a new chat (ACP config option value, e.g. `gpt-6-sol`). */
+  codexDefaultModel: string;
+  /** Codex reasoning effort of a new chat. */
+  codexDefaultEffort: CodexEffortLevel;
+  /** Settings schema revision (SETTINGS_REV); drives one-time default migrations. Not user-editable. */
+  settingsRev: number;
 }
 
-/** Fields `settings:update` may change (the ToS acknowledgement has its own flow). */
-export type SettingsPatch = Partial<Omit<AppSettings, 'tosNoticeAcknowledged'>>;
+/** Fields `settings:update` may change (ToS acknowledgement, pool membership and the revision have their own flows). */
+export type SettingsPatch = Partial<Omit<AppSettings, 'tosNoticeAcknowledged' | 'localClaudeInPool' | 'settingsRev'>>;
 
 export interface PersistedState {
   version: 1;
@@ -222,11 +285,23 @@ export interface AssistantTextItem extends ChatItemBase {
   parentToolUseId?: string;
 }
 
+/** Whole-file diff reported by an ACP agent (`ToolCallContent` `diff`). */
+export interface ToolFileDiff {
+  path: string;
+  /** '' for a new file. */
+  oldText: string;
+  newText: string;
+  /** Text was cut to the size cap. */
+  truncated?: boolean;
+}
+
 export interface ToolItem extends ChatItemBase {
   type: 'tool';
   toolUseId: string;
   name: string;
   input: Record<string, unknown>;
+  /** ACP `diff` content of the tool call (rendered with DiffView oldText/newText). */
+  diffs?: ToolFileDiff[];
   /** Tool result rendered as text (undefined while pending). */
   result?: string;
   isError?: boolean;
@@ -264,7 +339,8 @@ export type TurnEndReason = 'rate_limited' | 'interrupted' | 'error' | 'auth';
 export type ChatEvent =
   | { type: 'text-delta'; itemId: string; text: string }
   | { type: 'item-upsert'; item: ChatItem }
-  | { type: 'turn-start'; accountId: string }
+  /** `accountId` is absent for agents without account rotation (Codex / Hermes). */
+  | { type: 'turn-start'; accountId?: string }
   | { type: 'turn-end'; ok: boolean; reason?: TurnEndReason }
   | { type: 'error'; message: string };
 
@@ -328,6 +404,19 @@ export interface PermissionRequest {
   displayName?: string;
   hasSessionSuggestion: boolean;
   defaultToNo?: boolean;
+  /** Agent that asked (absent = claude-code). */
+  agent?: AgentKind;
+  /** ACP permission options as the agent sent them; the card enables / annotates its buttons from these. */
+  agentOptions?: AcpPermissionOptionLite[];
+  /** The agent's own name for the option behind "이 세션 동안 허용" (shown as the button's caption). */
+  sessionLabel?: string;
+}
+
+/** ACP `PermissionOption` without `_meta`. */
+export interface AcpPermissionOptionLite {
+  optionId: string;
+  name: string;
+  kind: 'allow_once' | 'allow_always' | 'reject_once' | 'reject_always';
 }
 
 export type PermissionDecision = 'allow' | 'allow-session' | 'deny';
@@ -394,6 +483,8 @@ export interface ChildEnvInject {
   configDir?: string;
   term?: string;
   clientApp?: string;
+  /** GIT_CEILING_DIRECTORIES (scratch threads: stop git from finding a repository above the scratch root). */
+  gitCeiling?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -402,8 +493,67 @@ export interface ChildEnvInject {
 
 export interface ChatSendResult {
   accepted: boolean;
-  /** `auth`: every enabled account needs to log in again. */
-  reason?: 'waiting' | 'no-accounts' | 'busy' | 'auth';
+  /**
+   * `auth`: every enabled account needs to log in again. `agent-unavailable`: the thread's agent is not installed
+   * or not logged in on this Mac.
+   */
+  reason?: 'waiting' | 'no-accounts' | 'busy' | 'auth' | 'agent-unavailable';
+}
+
+// ---------------------------------------------------------------------------
+// Local agent auth / agent usage
+// ---------------------------------------------------------------------------
+
+export type LocalAuthState = 'logged-in' | 'logged-out' | 'not-installed' | 'error';
+
+/**
+ * What the app detected about an agent's own login on this Mac (read-only). Carries no credential material by
+ * construction: there is no field a token or key could go into.
+ */
+export interface LocalAuthInfo {
+  agent: AgentKind;
+  state: LocalAuthState;
+  /** 'claude.ai' | 'chatgpt' | 'api-key' | 'provider' (Hermes) */
+  method: 'claude.ai' | 'chatgpt' | 'api-key' | 'provider' | null;
+  email: string | null;
+  plan: string | null;
+  /** Hermes: active provider id (the agent-type auth method id of ACP initialize). */
+  provider: string | null;
+  /** Hermes: credential count per provider from `hermes auth list` (no labels, no values). */
+  providers?: { id: string; count: number }[];
+  /** Display-only origin ('~/.codex/auth.json', 'Keychain: Claude Code-credentials', '~/.local/bin/hermes'). */
+  source: string;
+  version: string | null;
+  /** Short reason code / text without secrets. */
+  detail: string | null;
+  checkedAt: number;
+}
+
+export interface AgentAvailability {
+  agent: AgentKind;
+  usable: boolean;
+  reason: 'ok' | 'not-installed' | 'not-logged-in' | 'error';
+}
+
+/** One limit window of an agent's account usage (`hermes usage --json` windows[]). */
+export interface AgentUsageWindow {
+  label: string;
+  /** 0..100 */
+  usedPercent: number;
+  /** epoch ms, null when unknown */
+  resetsAt: number | null;
+  detail: string | null;
+}
+
+/** Account usage of a non-Claude agent (statusline meters). */
+export interface AgentUsageSnapshot {
+  agent: AgentKind;
+  provider: string | null;
+  title: string | null;
+  plan: string | null;
+  windows: AgentUsageWindow[];
+  /** epoch ms of the fetch */
+  fetchedAt: number;
 }
 
 export interface BootstrapPayload {
@@ -419,6 +569,10 @@ export interface BootstrapPayload {
   pendingPermissions: PermissionRequest[];
   /** Fixture / headless e2e run: the renderer shows no system notifications. */
   testMode: boolean;
+  /** Local agent logins detected so far (cached; `agents:recheck` refreshes). */
+  localAuth: LocalAuthInfo[];
+  /** Latest usage per agent that has one (absent / null = hide the meters). */
+  agentUsage: Partial<Record<AgentKind, AgentUsageSnapshot | null>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -513,13 +667,15 @@ export type GitActionResult<T = Record<never, never>> = ({ ok: true } & T) | { o
 // ---------------------------------------------------------------------------
 
 export interface ThreadStartRequest {
-  projectId: string;
+  /** Omitted = a chat without a project (scratch folder). */
+  projectId?: string;
   text: string;
   /** Agent of the new thread (default 'claude-code'). */
   agent?: AgentKind;
   model?: string;
   permissionMode?: UiPermissionMode;
-  effort?: EffortLevel | null;
+  /** Claude: EffortLevel; Codex: CodexEffortLevel. */
+  effort?: EffortLevel | CodexEffortLevel | null;
   pinnedAccountId?: string | null;
   /** Start the worktree from this branch (a PR head) instead of the project's HEAD. */
   baseBranch?: string;

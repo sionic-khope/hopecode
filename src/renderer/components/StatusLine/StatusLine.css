@@ -15,6 +15,12 @@
   box-shadow: var(--focus-ring);
 }
 
+.hc-statusline__segment-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .hc-statusline__divider {
   flex: none;
   width: 1px;

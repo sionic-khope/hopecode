@@ -1,10 +1,13 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import type { Account, ModelOption, PoolSnapshot, Thread } from '../../../shared/types';
 import { modelLabel } from '../../../core/modelLabel';
+import { codexModelLabel } from '../../../core/modelDisplay';
 import { formatSessionDuration } from '../../../core/format';
 import { Pill } from '../common';
 import { AccountsPopover } from '../Accounts/AccountsPopover';
+import { useAppStore } from '../../store';
 import { UsageMeter } from './UsageMeter';
+import { statusLineMode, usageSourceTitle, usageWindowsFor } from './statusLineMode';
 import './StatusLine.css';
 
 export interface StatusLineProps {
@@ -47,7 +50,13 @@ export const StatusLine = memo(function StatusLine({ pool, accounts, activeThrea
   const availLevel = total === 0 ? 'ok' : available === 0 ? 'crit' : available < total ? 'warn' : 'ok';
 
   const modelId = activeThread ? (activeThread.resolvedModel ?? activeThread.model) : null;
-  const modelText = modelTextProp ?? (modelId ? modelLabel(modelId, models) : '–');
+  const agentModelText = (): string | null => {
+    if (!activeThread) return null;
+    if (activeThread.agent === 'codex' && modelId) return codexModelLabel(modelId, activeThread.acp?.controls?.configOptions ?? []);
+    if (activeThread.agent === 'hermes') return activeThread.acp?.controls?.reportedModel || '시스템 기본값';
+    return null;
+  };
+  const modelText = modelTextProp ?? agentModelText() ?? (modelId ? modelLabel(modelId, models) : '–');
 
   let sessionLabel = '–';
   if (activeThread?.sessionStartedAt != null) {
@@ -59,8 +68,48 @@ export const StatusLine = memo(function StatusLine({ pool, accounts, activeThrea
     }
   }
 
+  const mode = statusLineMode(activeThread);
+  const agent = activeThread?.agent ?? 'claude-code';
+  const snapshot = useAppStore((st) => st.agentUsage[agent] ?? null);
+  const windows = mode === 'agent-usage' ? usageWindowsFor(agent, snapshot) : [];
+  const effort = mode === 'pool' ? null : (activeThread?.effort ?? null);
+
+  const modelPill = (
+    <Pill className="hc-statusline__model" title={modelId ?? undefined}>
+      {modelText}
+    </Pill>
+  );
+  const ctx = <UsageMeter label="ctx" percent={activeThread?.ctxPercent ?? null} now={now} width={32} />;
+
+  if (mode !== 'pool') {
+    return (
+      <footer className="app__status hc-statusline tnum" data-testid="statusline" data-mode={mode}>
+        <div className="hc-statusline__trigger hc-statusline__trigger--static">
+          {modelPill}
+          {effort ? (
+            <>
+              <Divider />
+              <span className="hc-statusline__segment">
+                <span className="hc-statusline__label">effort</span>
+                <span className="hc-statusline__value">{effort}</span>
+              </span>
+            </>
+          ) : null}
+          {windows.map((w) => (
+            <span key={w.label} className="hc-statusline__segment-wrap" title={snapshot ? usageSourceTitle(snapshot) : undefined}>
+              <Divider />
+              <UsageMeter label={w.label} percent={w.usedPercent} resetsAt={w.resetsAt} now={now} />
+            </span>
+          ))}
+          <Divider />
+          {ctx}
+        </div>
+      </footer>
+    );
+  }
+
   return (
-    <footer className="app__status hc-statusline tnum" data-testid="statusline">
+    <footer className="app__status hc-statusline tnum" data-testid="statusline" data-mode="pool">
       <button
         ref={triggerRef}
         type="button"
@@ -69,9 +118,7 @@ export const StatusLine = memo(function StatusLine({ pool, accounts, activeThrea
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        <Pill className="hc-statusline__model" title={modelId ?? undefined}>
-          {modelText}
-        </Pill>
+        {modelPill}
         <Divider />
         <UsageMeter label="5h" percent={summary.avg.fiveHour} resetsAt={summary.earliestReset.fiveHour} now={now} />
         <Divider />
@@ -84,7 +131,7 @@ export const StatusLine = memo(function StatusLine({ pool, accounts, activeThrea
           <span className="hc-statusline__value">{sessionLabel}</span>
         </span>
         <Divider />
-        <UsageMeter label="ctx" percent={activeThread?.ctxPercent ?? null} now={now} width={32} />
+        {ctx}
         <Divider />
         <span className="hc-statusline__segment hc-statusline__avail">
           <span className={`hc-statusline__dot hc-statusline__dot--${availLevel}`} aria-hidden />

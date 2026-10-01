@@ -1,14 +1,18 @@
 // Read-only OAuth credential lookup per account config dir (plan 0.2, ported from OMC hud/usage-api.js).
 // Order: Keychain (`-a <user>` then no account) -> `<configDir>/.credentials.json`.
 // No token refresh and no Keychain write-back: expired tokens surface as `token_expired`.
+// The local-default account (configDir === paths.localClaudeDir()) uses the base service `Claude Code-credentials`,
+// i.e. the login of the CLI run without CLAUDE_CONFIG_DIR; its Keychain item is never deleted (plan 2.9.5).
 import { execFile as nodeExecFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFile as nodeReadFile } from 'node:fs/promises';
 import { userInfo } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { keychainServiceName } from '../../core/keychainName';
-import { KEYCHAIN_TIMEOUT_MS } from '../../shared/constants';
+import { KEYCHAIN_SERVICE_BASE, KEYCHAIN_TIMEOUT_MS } from '../../shared/constants';
 import type { Credentials, CredentialsResult } from '../contracts';
+import { localClaudeDir as defaultLocalClaudeDir } from '../paths';
+import { assertNotLocalClaudeDir } from './localDefault';
 
 export const SECURITY_BIN = '/usr/bin/security';
 /** Cache lifetime for tokens that carry no expiresAt. */
@@ -24,6 +28,8 @@ export interface CredentialsDeps {
   now?: () => number;
   platform?: NodeJS.Platform;
   serviceName?: (configDir: string) => string;
+  /** paths.localClaudeDir(): the local-default account's dir (base Keychain service, never deleted). */
+  localClaudeDir?: () => string;
 }
 
 interface RawCreds {
@@ -81,7 +87,10 @@ export function createCredentials(deps: CredentialsDeps = {}): Credentials {
   const username = deps.username ?? defaultUsername;
   const now = deps.now ?? Date.now;
   const platform = deps.platform ?? process.platform;
-  const serviceName = deps.serviceName ?? ((dir: string) => keychainServiceName(dir, sha256Hex));
+  const localDir = deps.localClaudeDir ?? defaultLocalClaudeDir;
+  const isLocalDir = (dir: string): boolean => resolve(dir) === resolve(localDir());
+  const hashedServiceName = deps.serviceName ?? ((dir: string) => keychainServiceName(dir, sha256Hex));
+  const serviceName = (dir: string): string => (isLocalDir(dir) ? keychainServiceName(undefined, sha256Hex) : hashedServiceName(dir));
   const cache = new Map<string, { result: OkResult; until: number }>();
 
   const isExpired = (c: RawCreds): boolean => c.expiresAt != null && c.expiresAt <= now();
@@ -144,10 +153,14 @@ export function createCredentials(deps: CredentialsDeps = {}): Credentials {
       cache.delete(configDir);
     },
     async deleteKeychainItem(configDir: string): Promise<void> {
+      // Never the local Claude Code login: neither its dir nor the base service name (plan 2.9.5 guard 3).
+      assertNotLocalClaudeDir(configDir, localDir());
+      const service = serviceName(configDir);
+      if (service === KEYCHAIN_SERVICE_BASE) throw new Error('refusing to delete the base Claude Code Keychain item');
       cache.delete(configDir);
       if (platform !== 'darwin') return;
       try {
-        await execFile(SECURITY_BIN, ['delete-generic-password', '-s', serviceName(configDir)], {
+        await execFile(SECURITY_BIN, ['delete-generic-password', '-s', service], {
           timeout: KEYCHAIN_TIMEOUT_MS,
         });
       } catch {

@@ -20,6 +20,9 @@ function summarize(item: ToolItem, cwd?: string | null, home?: string | null): s
   const { name, input } = item;
   const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
   const pth = (v: unknown): string | undefined => (typeof v === 'string' ? displayPath(v, cwd, home) : undefined);
+  // ACP tool calls carry the agent's own one-line title (plan 2.4); it beats any per-tool guess.
+  const title = str(input.title)?.trim();
+  if (title) return title;
 
   switch (name) {
     case 'Read':
@@ -66,8 +69,9 @@ export const ToolCard = memo(function ToolCard({ item, defaultExpanded = false }
   const paths = useContext(ToolPathContext);
   const summary = summarize(item, paths.cwd, paths.home);
   const hasPatch = Array.isArray(item.patch) && item.patch.length > 0;
+  const diffs = item.diffs ?? [];
   const editFallback =
-    !hasPatch && item.name === 'Edit' && typeof item.input.old_string === 'string' && typeof item.input.new_string === 'string';
+    !hasPatch && diffs.length === 0 && item.name === 'Edit' && typeof item.input.old_string === 'string' && typeof item.input.new_string === 'string';
 
   return (
     <div className={`hc-tool${open ? ' hc-tool--open' : ''}`} data-tool-id={item.toolUseId}>
@@ -100,6 +104,16 @@ export const ToolCard = memo(function ToolCard({ item, defaultExpanded = false }
       <Collapse open={open}>
         <div className="hc-tool__body">
           {hasPatch ? <DiffView patch={item.patch} /> : null}
+          {diffs.map((d, i) => (
+            <div key={`${d.path}:${i}`} className="hc-tool__file-diff" data-testid="tool-file-diff">
+              <div className="hc-tool__file-path" title={d.path}>
+                {displayPath(d.path, paths.cwd, paths.home)}
+                {d.oldText === '' ? <span className="hc-tool__file-tag">새 파일</span> : null}
+                {d.truncated ? <span className="hc-tool__file-tag">일부만 표시</span> : null}
+              </div>
+              <DiffView oldText={d.oldText} newText={d.newText} />
+            </div>
+          ))}
           {editFallback ? (
             <DiffView oldText={item.input.old_string as string} newText={item.input.new_string as string} />
           ) : null}

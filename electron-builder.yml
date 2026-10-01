@@ -13,6 +13,8 @@ extraResources:
 asarUnpack:
   - "**/node_modules/node-pty/**"
   - "**/node_modules/@anthropic-ai/claude-agent-sdk-darwin-*/**"
+  # codex-acp native binary (spawned directly; the runAsNode fuse rules out its node wrapper). +x: afterPack.mjs.
+  - "**/node_modules/@zed-industries/codex-acp-darwin-*/**"
 mac:
   icon: build/icon.icns
   target:

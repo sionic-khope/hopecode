@@ -33,6 +33,9 @@ export function initStoreEventSubscriptions(): () => void {
     }),
     on('settings:updated', (settings) => useAppStore.getState().applySettingsUpdated(settings)),
     on('models:updated', (models) => useAppStore.getState().applyModelsUpdated(models)),
+    on('agents:updated', (list) => useAppStore.getState().applyLocalAuthUpdated(list)),
+    on('agent:controls', ({ threadId, controls }) => useAppStore.getState().applyAgentControls(threadId, controls)),
+    on('agentUsage:updated', ({ agent, snapshot }) => useAppStore.getState().applyAgentUsageUpdated(agent, snapshot)),
   ];
 
   return () => {

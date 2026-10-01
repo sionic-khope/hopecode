@@ -1,7 +1,18 @@
 // Pure selector functions over `AppStoreState` (plan 4.4 store selectors). Plain functions rather
 // than hooks so they're usable both as `useAppStore(selectX)` and directly in tests.
 import { summarizePool } from '../../core/poolSummary';
-import type { Account, ChatItem, PermissionRequest, PoolSnapshot, PoolSummary, Project, Thread } from '../../shared/types';
+import type {
+  Account,
+  AgentKind,
+  AgentUsageSnapshot,
+  ChatItem,
+  LocalAuthInfo,
+  PermissionRequest,
+  PoolSnapshot,
+  PoolSummary,
+  Project,
+  Thread,
+} from '../../shared/types';
 import type { AppStoreState, LoginSessionState, PtyStatus, Route } from './appStore';
 
 const EMPTY_CHAT_ITEMS: ChatItem[] = [];
@@ -26,6 +37,10 @@ export const selectThreadById = (s: AppStoreState, threadId: string): Thread | u
 
 export const selectThreadsByProject = (s: AppStoreState, projectId: string): Thread[] =>
   s.threads.filter((t) => t.projectId === projectId);
+
+/** Chats without a project (scratch), newest first; archived ones are left out. Not memoized: use with a shallow equality hook. */
+export const selectChatThreads = (s: AppStoreState): Thread[] =>
+  s.threads.filter((t) => t.projectId === null && !t.archived).sort((a, b) => b.updatedAt - a.updatedAt);
 
 export const selectChatItems = (s: AppStoreState, threadId: string): ChatItem[] =>
   s.chatItemsByThread[threadId] ?? EMPTY_CHAT_ITEMS;
@@ -64,3 +79,7 @@ export const selectSidebarCollapsed = (s: AppStoreState): boolean => s.sidebarCo
 export const selectDraft = (s: AppStoreState) => s.draft;
 export const selectHomeDir = (s: AppStoreState): string | null => s.homeDir;
 export const selectChatScrolled = (s: AppStoreState): boolean => s.chatScrolled;
+export const selectLocalAuth = (s: AppStoreState): LocalAuthInfo[] => s.localAuth;
+export const selectLocalAuthFor = (s: AppStoreState, agent: AgentKind): LocalAuthInfo | undefined =>
+  s.localAuth.find((i) => i.agent === agent);
+export const selectAgentUsage = (s: AppStoreState, agent: AgentKind): AgentUsageSnapshot | null => s.agentUsage[agent] ?? null;

@@ -1,10 +1,13 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Account, Project, Thread } from '../../../shared/types';
 import { BrandMark } from '../common';
-import { IconArchive, IconChevron, IconFolderPlus, IconPinThread } from './icons';
+import { IconArchive, IconChevron, IconCompose, IconFolderPlus, IconPinThread } from './icons';
 import { ProjectGroup, type ThreadRowHandlers } from './ProjectGroup';
 import { SidebarNav, type NavPage } from './SidebarNav';
 import { MINUTE_MS } from '../../../shared/constants';
+import { useShallow } from 'zustand/react/shallow';
+import { selectChatThreads, useAppStore } from '../../store';
+import { chatSectionThreads } from './chatSection';
 import { ThreadRow } from './ThreadRow';
 import './Sidebar.css';
 
@@ -68,6 +71,9 @@ export const Sidebar = memo(function Sidebar({
   ...rowHandlers
 }: SidebarProps) {
   const [projectsCollapsed, setProjectsCollapsed] = useState(false);
+  const [chatsCollapsed, setChatsCollapsed] = useState(false);
+  const scratchThreads = useAppStore(useShallow(selectChatThreads));
+  const chats = useMemo(() => chatSectionThreads(scratchThreads), [scratchThreads]);
   const [archivedOpen, setArchivedOpen] = useState(false);
   const archivedRef = useRef<HTMLElement>(null);
   const now = useMinuteClock();
@@ -81,7 +87,7 @@ export const Sidebar = memo(function Sidebar({
   const { pinned, byProject, archived } = useMemo(() => {
     const map = new Map<string, Thread[]>();
     for (const t of threads) {
-      if (t.archived || t.pinned) continue;
+      if (t.archived || t.pinned || t.projectId === null) continue;
       const bucket = map.get(t.projectId);
       if (bucket) bucket.push(t);
       else map.set(t.projectId, [t]);
@@ -93,6 +99,12 @@ export const Sidebar = memo(function Sidebar({
       archived: threads.filter((t) => t.archived).sort(byRecent),
     };
   }, [threads]);
+
+  // 채팅 ＋: an empty draft without a folder (sending starts a scratch chat).
+  const onNewChatWithoutProject = useCallback(() => {
+    onNewChat();
+    useAppStore.getState().setDraft({ projectId: null });
+  }, [onNewChat]);
 
   const accountFor = (t: Thread) => (t.pinnedAccountId ? accounts.find((a) => a.id === t.pinnedAccountId) : undefined);
 
@@ -151,6 +163,57 @@ export const Sidebar = memo(function Sidebar({
             </ul>
           </section>
         ) : null}
+
+        <section className="hc-section" aria-label="채팅" data-testid="sidebar-chats">
+          <div className="hc-section__header">
+            <button
+              type="button"
+              className="hc-section__toggle"
+              aria-expanded={!chatsCollapsed}
+              onClick={() => setChatsCollapsed((v) => !v)}
+            >
+              <span className="hc-section__title">채팅</span>
+              {chats.length > 0 ? <span className="hc-section__count">{chats.length}</span> : null}
+              <IconChevron
+                width={11}
+                height={11}
+                className={`hc-section__chevron${chatsCollapsed ? ' hc-section__chevron--collapsed' : ''}`}
+              />
+            </button>
+            <button
+              type="button"
+              className="hc-section__action"
+              aria-label="프로젝트 없이 새 채팅"
+              title="프로젝트 없이 새 채팅"
+              onClick={onNewChatWithoutProject}
+            >
+              <IconCompose />
+            </button>
+          </div>
+          {chatsCollapsed ? null : chats.length === 0 ? (
+            <div className="hc-sidebar__empty">
+              <p className="hc-sidebar__empty-sub">새 채팅을 시작하면 여기에 추가됩니다.</p>
+            </div>
+          ) : (
+            <ul className="hc-section__list">
+              {chats.map((t) => (
+                <ThreadRow
+                  key={t.id}
+                  thread={t}
+                  account={accountFor(t)}
+                  selected={t.id === selectedThreadId}
+                  onSelect={rowHandlers.onSelectThread}
+                  onRename={rowHandlers.onRenameThread}
+                  onSetPinned={rowHandlers.onSetPinned}
+                  onSetArchived={rowHandlers.onSetArchived}
+                  onDelete={rowHandlers.onDeleteThread}
+                  done={unseenDone[t.id] === true}
+                  now={now}
+                />
+              ))}
+            </ul>
+          )}
+        </section>
 
         <section className="hc-section" aria-label="프로젝트">
           <div className="hc-section__header">

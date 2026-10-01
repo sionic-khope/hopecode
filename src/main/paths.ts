@@ -40,6 +40,20 @@ export function worktreesDir(): string {
   return join(hopecodeHome(), 'worktrees');
 }
 
+/** Root of the per-thread folders of chats without a project (`<root>/<threadId>`, 0700, no git). */
+export function scratchDir(): string {
+  return join(hopecodeHome(), 'scratch');
+}
+
+/**
+ * This Mac's own Claude Code config dir (`~/.claude`), the `local-default` account's configDir. Under a
+ * HOPECODE_HOME override (dev / e2e) it is `$HOPECODE_HOME/home/fake-claude`, so tests never touch the real one.
+ * Every local-account check, path guard and detector uses this function (no other `homedir()` + `.claude`).
+ */
+export function localClaudeDir(): string {
+  return overrideRoot() ? join(hopecodeHome(), 'fake-claude') : join(homedir(), '.claude');
+}
+
 /** Must run before `app.ready`. */
 export function initPaths(): void {
   const root = overrideRoot();

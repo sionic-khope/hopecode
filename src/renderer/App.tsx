@@ -90,6 +90,8 @@ function sendErrorMessage(result: ChatSendResult | { accepted: false; reason?: C
       return '사용할 수 있는 계정이 없습니다. 계정 화면에서 계정을 추가하거나 활성화하세요.';
     case 'auth':
       return '모든 계정에 다시 로그인해야 합니다. 계정 화면에서 다시 로그인하세요.';
+    case 'agent-unavailable':
+      return '이 에이전트를 사용할 수 없습니다. 설치·로그인 상태를 계정 화면에서 확인하세요.';
     default:
       return '메시지를 보내지 못했습니다.';
   }
@@ -191,6 +193,12 @@ export function App() {
   }, [selectedThreadId]);
 
   useEffect(() => setSendError(null), [selectedThreadId, route]);
+
+  // Hermes usage is polled only while one of its threads is selected (agentUsage:setActive).
+  const activeAgent = activeThread?.agent ?? null;
+  useEffect(() => {
+    void invoke('agentUsage:setActive', { agent: activeAgent }).catch(reportError('agent usage activation failed'));
+  }, [activeAgent]);
 
   const onSelectThread = useCallback((threadId: string) => {
     const s = useAppStore.getState();
@@ -374,10 +382,10 @@ export function App() {
       .map((t) => ({
         id: `thread:${t.id}`,
         title: t.title,
-        subtitle: byProject.get(t.projectId),
+        subtitle: t.projectId === null ? undefined : byProject.get(t.projectId),
         group: '스레드',
         // Title and first message are both searchable (⌘K / 검색).
-        keywords: [byProject.get(t.projectId) ?? '', firstMessages[t.id] ?? ''],
+        keywords: [(t.projectId === null ? undefined : byProject.get(t.projectId)) ?? '', firstMessages[t.id] ?? ''],
         run: () => onSelectThread(t.id),
       }));
     const primaryEditor = editors.find((e) => e.id === settings.defaultEditor) ?? editors[0];

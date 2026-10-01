@@ -1,13 +1,19 @@
-// Chips on the composer's control row: agent, folder (draft only), permission mode, model + effort.
+// Chips on the composer's control row: agent, folder (draft only), permission mode, model + effort, and the ACP
+// agents' own chips (Codex model / effort from config options, Hermes modes and its read-only model label).
 import { memo, useRef, useState } from 'react';
-import type { Account, AgentKind, EffortLevel, ModelOption, Project, UiPermissionMode } from '../../../shared/types';
-import { AGENT_KINDS, AGENTS } from '../../../shared/agents';
+import type { Account, AgentKind, EffortLevel, LocalAuthInfo, ModelOption, Project, UiPermissionMode } from '../../../shared/types';
+import { AGENTS } from '../../../shared/agents';
 import { AgentIcon } from '../Agent/AgentIcon';
 import { EFFORT_LEVELS, UI_PERMISSION_MODES } from '../../../shared/constants';
-import { concreteModelLabel, modelMenuLabel } from '../../../core/modelDisplay';
+import { concreteModelLabel, isModelSelected, modelMenuLabel } from '../../../core/modelDisplay';
 import { tildePath } from '../../../core/format';
 import { Menu, type MenuSection } from '../common';
+import { GlyphRefresh } from '../common/glyphs';
+import { EFFORT_LABEL, type ChipChoice } from './acpChips';
+import { agentMenuState } from './agentMenuState';
 import { BoltIcon, ChevronDownSmallIcon, FolderIcon, FolderOpenIcon, PersonIcon, ShieldAlertIcon, ShieldIcon } from './icons';
+
+export { EFFORT_LABEL };
 
 // ---------------------------------------------------------------------------
 // Labels
@@ -27,14 +33,6 @@ const PERMISSION_MODE_DESC: Record<UiPermissionMode, string> = {
   bypassPermissions: '모든 도구를 묻지 않고 실행합니다 (확인 필요)',
 };
 
-export const EFFORT_LABEL: Record<EffortLevel, string> = {
-  low: 'Low',
-  medium: 'Medium',
-  high: 'High',
-  xhigh: 'Extra high',
-  max: 'Max',
-};
-
 const EFFORT_DESC: Record<EffortLevel, string> = {
   low: '가장 빠른 응답',
   medium: '적당한 추론',
@@ -45,7 +43,7 @@ const EFFORT_DESC: Record<EffortLevel, string> = {
 
 /** Levels to offer for `model`: its reported list, the full list when unknown, none when unsupported. */
 export function effortLevelsFor(models: readonly ModelOption[], model: string): readonly EffortLevel[] {
-  const option = models.find((m) => m.value === model);
+  const option = models.find((m) => isModelSelected(model, m, models));
   if (option?.effortLevels) return option.effortLevels;
   return EFFORT_LEVELS;
 }
@@ -56,17 +54,18 @@ export function effortLevelsFor(models: readonly ModelOption[], model: string): 
 
 export interface FolderChipProps {
   projects: Project[];
+  /** null: "프로젝트 없이 작업" (the chat runs in an app-managed scratch folder). */
   projectId: string | null;
-  onSelect: (projectId: string) => void;
+  onSelect: (projectId: string | null) => void;
   /** "다른 폴더 선택…": native folder dialog + trust question (project:add). */
   onPickOther: () => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Pulses the chip after a send without a folder. */
-  attention?: boolean;
   /** Home directory: menu paths are shown as `~/…`. */
   homeDir?: string | null;
 }
+
+export const NO_PROJECT_LABEL = '프로젝트 없음';
 
 /** One width for every composer menu (+, folder, permission, account, model). */
 export const COMPOSER_MENU_WIDTH = 288;
@@ -78,7 +77,6 @@ export const FolderChip = memo(function FolderChip({
   onPickOther,
   open,
   onOpenChange,
-  attention = false,
   homeDir = null,
 }: FolderChipProps) {
   const ref = useRef<HTMLButtonElement>(null);
@@ -103,6 +101,20 @@ export const FolderChip = memo(function FolderChip({
         ]
       : []),
     {
+      key: 'scratch',
+      kind: 'radio',
+      items: [
+        {
+          key: 'scratch',
+          label: '프로젝트 없이 작업',
+          description: '앱이 만든 빈 폴더에서 시작합니다 (git 기능 없음)',
+          icon: <ChatBubbleGlyph />,
+          checked: current === null,
+          onSelect: () => onSelect(null),
+        },
+      ],
+    },
+    {
       key: 'other',
       kind: 'action',
       items: [{ key: 'pick', label: '다른 폴더 선택…', icon: <FolderOpenIcon />, onSelect: onPickOther }],
@@ -113,15 +125,15 @@ export const FolderChip = memo(function FolderChip({
       <button
         ref={ref}
         type="button"
-        className={`hc-chip hc-chip--folder${current ? '' : ' hc-chip--empty'}${attention ? ' hc-chip--attention' : ''}`}
+        className={`hc-chip hc-chip--folder${current ? '' : ' hc-chip--scratch'}`}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={current ? `폴더: ${current.name}` : '폴더 선택'}
-        title={current ? tildePath(current.path, homeDir) : '이 채팅을 시작할 폴더를 선택하세요'}
+        aria-label={current ? `폴더: ${current.name}` : `폴더: ${NO_PROJECT_LABEL}`}
+        title={current ? tildePath(current.path, homeDir) : '프로젝트 없이 시작합니다. 폴더를 고르려면 누르세요'}
         onClick={() => onOpenChange(!open)}
       >
-        <FolderIcon />
-        <span className="hc-chip__label">{current?.name ?? '폴더 선택'}</span>
+        {current ? <FolderIcon /> : <ChatBubbleGlyph />}
+        <span className="hc-chip__label">{current?.name ?? NO_PROJECT_LABEL}</span>
         <ChevronDownSmallIcon className="hc-chip__chevron" />
       </button>
       <Menu
@@ -137,6 +149,15 @@ export const FolderChip = memo(function FolderChip({
   );
 });
 
+/** "프로젝트 없이 작업": a speech bubble (same 16px / 1.5 stroke grid as FolderIcon). */
+function ChatBubbleGlyph() {
+  return (
+    <svg width={16} height={16} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3.25 3.5h9.5a1.25 1.25 0 0 1 1.25 1.25v5.5a1.25 1.25 0 0 1-1.25 1.25H8.5l-2.75 2.25V11.5h-2.5A1.25 1.25 0 0 1 2 10.25v-5.5A1.25 1.25 0 0 1 3.25 3.5Z" />
+    </svg>
+  );
+}
+
 /** Started thread: folder name only (the worktree lives under it; it cannot change). */
 export function FolderTag({ name, path, homeDir = null }: { name: string; path: string; homeDir?: string | null }) {
   return (
@@ -151,12 +172,19 @@ export function FolderTag({ name, path, homeDir = null }: { name: string; path: 
 // Permission chip
 // ---------------------------------------------------------------------------
 
+/** Codex maps the app modes onto approval_policy / sandbox_mode (plan 2.15); acceptEdits has no own value there. */
+const CODEX_MODE_NOTE: Partial<Record<UiPermissionMode, string>> = {
+  acceptEdits: 'Codex에서는 기본과 같음',
+};
+
 export const PermissionChip = memo(function PermissionChip({
   value,
   onChange,
+  agent = 'claude-code',
 }: {
   value: UiPermissionMode;
   onChange: (mode: UiPermissionMode) => void;
+  agent?: AgentKind;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLButtonElement>(null);
@@ -169,7 +197,7 @@ export const PermissionChip = memo(function PermissionChip({
       items: UI_PERMISSION_MODES.map((mode) => ({
         key: mode,
         label: PERMISSION_MODE_LABEL[mode],
-        description: PERMISSION_MODE_DESC[mode],
+        description: (agent === 'codex' ? CODEX_MODE_NOTE[mode] : undefined) ?? PERMISSION_MODE_DESC[mode],
         icon: mode === 'bypassPermissions' ? <ShieldAlertIcon /> : <ShieldIcon />,
         tone: mode === 'bypassPermissions' ? ('warn' as const) : ('default' as const),
         checked: mode === value,
@@ -273,7 +301,7 @@ export const ModelPicker = memo(function ModelPicker({
         key: m.value,
         label: modelMenuLabel(m.value, models, defaultLabel),
         description: m.description,
-        checked: m.value === model,
+        checked: isModelSelected(model, m, models),
         keepOpen: true,
         onSelect: () => onModelChange(m.value),
       })),
@@ -333,10 +361,16 @@ export const ModelPicker = memo(function ModelPicker({
 export const AgentChip = memo(function AgentChip({
   value,
   onChange,
+  localAuth = [],
+  onRecheck,
 }: {
   value: AgentKind;
   /** Absent: the thread already runs with this agent (static chip). */
   onChange?: (agent: AgentKind) => void;
+  /** Local login detection: agents that are not installed / not logged in are disabled with the reason. */
+  localAuth?: readonly LocalAuthInfo[];
+  /** "상태 다시 확인" (agents:recheck); shown while some agent is unavailable. */
+  onRecheck?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLButtonElement>(null);
@@ -349,20 +383,33 @@ export const AgentChip = memo(function AgentChip({
       </span>
     );
   }
+  const rows = agentMenuState(localAuth);
+  const anyUnavailable = rows.some((r) => r.disabled);
   const sections: MenuSection[] = [
     {
       key: 'agents',
       title: '에이전트',
       kind: 'radio',
-      items: AGENT_KINDS.map((kind) => ({
-        key: kind,
-        label: AGENTS[kind].name,
-        description: AGENTS[kind].description,
-        icon: <AgentIcon kind={kind} size={16} />,
-        checked: kind === value,
-        onSelect: () => onChange(kind),
+      items: rows.map((row) => ({
+        key: row.agent,
+        label: row.name,
+        description: row.description,
+        icon: <AgentIcon kind={row.agent} size={16} />,
+        tone: row.disabled && row.reason !== 'checking' ? ('warn' as const) : ('default' as const),
+        disabled: row.disabled,
+        checked: row.agent === value,
+        onSelect: () => onChange(row.agent),
       })),
     },
+    ...(anyUnavailable && onRecheck
+      ? [
+          {
+            key: 'recheck',
+            kind: 'action' as const,
+            items: [{ key: 'recheck', label: '설치·로그인 상태 다시 확인', icon: <GlyphRefresh width={16} height={16} />, keepOpen: true, onSelect: onRecheck }],
+          },
+        ]
+      : []),
   ];
   return (
     <>
@@ -381,6 +428,169 @@ export const AgentChip = memo(function AgentChip({
         <ChevronDownSmallIcon className="hc-chip__chevron" />
       </button>
       <Menu open={open} onClose={() => setOpen(false)} anchorRef={ref} sections={sections} label="에이전트" placement="top-start" width={COMPOSER_MENU_WIDTH} />
+    </>
+  );
+});
+
+// ---------------------------------------------------------------------------
+// ACP chips: Codex model + effort (config options), Hermes modes and read-only model
+// ---------------------------------------------------------------------------
+
+/**
+ * Model + effort picker over plain choices (Codex). Same look as ModelPicker. `readOnly` (no session reported its
+ * options yet) keeps the values visible as a static tag.
+ */
+export const AcpModelChip = memo(function AcpModelChip({
+  modelLabel,
+  effortLabel,
+  model,
+  effort,
+  models,
+  efforts,
+  onModelChange,
+  onEffortChange,
+  readOnlyTitle,
+}: {
+  modelLabel: string;
+  effortLabel: string | null;
+  model: string;
+  effort: string | null;
+  models: readonly ChipChoice[];
+  efforts: readonly ChipChoice[];
+  onModelChange?: (value: string) => void;
+  onEffortChange?: (value: string) => void;
+  /** Static chip with this tooltip (nothing to pick from yet). */
+  readOnlyTitle?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLButtonElement>(null);
+  const aria = `모델: ${modelLabel}${effortLabel ? ` · ${effortLabel}` : ''}`;
+  const canPick = (onModelChange && models.length > 0) || (onEffortChange && efforts.length > 0);
+  if (readOnlyTitle || !canPick) {
+    return (
+      <span className="hc-chip hc-chip--model hc-chip--readonly" aria-label={aria} title={readOnlyTitle}>
+        <BoltIcon />
+        <span className="hc-chip__label">{modelLabel}</span>
+        {effortLabel ? <span className="hc-chip__sub">{effortLabel}</span> : null}
+      </span>
+    );
+  }
+  const sections: MenuSection[] = [
+    ...(onModelChange && models.length > 0
+      ? [
+          {
+            key: 'models',
+            title: '모델',
+            kind: 'radio' as const,
+            items: models.map((m) => ({
+              key: m.value,
+              label: m.label,
+              description: m.description,
+              checked: m.value === model,
+              keepOpen: true,
+              onSelect: () => onModelChange(m.value),
+            })),
+          },
+        ]
+      : []),
+    ...(onEffortChange && efforts.length > 0
+      ? [
+          {
+            key: 'effort',
+            title: 'Effort',
+            kind: 'radio' as const,
+            items: efforts.map((e) => ({
+              key: e.value,
+              label: e.label,
+              meta: e.description,
+              checked: e.value === effort,
+              onSelect: () => onEffortChange(e.value),
+            })),
+          },
+        ]
+      : []),
+  ];
+  return (
+    <>
+      <button
+        ref={ref}
+        type="button"
+        className="hc-chip hc-chip--model"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={aria}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <BoltIcon />
+        <span className="hc-chip__label">{modelLabel}</span>
+        {effortLabel ? <span className="hc-chip__sub">{effortLabel}</span> : null}
+        <ChevronDownSmallIcon className="hc-chip__chevron" />
+      </button>
+      <Menu open={open} onClose={() => setOpen(false)} anchorRef={ref} sections={sections} label="모델" placement="top-end" width={COMPOSER_MENU_WIDTH} />
+    </>
+  );
+});
+
+/** Hermes: the model is the agent's own system default; the app only shows what it reported. */
+export function SystemModelTag({ label }: { label: string }) {
+  return (
+    <span
+      className="hc-chip hc-chip--model hc-chip--readonly"
+      aria-label={`모델: ${label}`}
+      title="Hermes의 시스템 기본 설정을 그대로 씁니다. 모델은 Hermes에서 바꾸세요"
+      data-testid="system-model-tag"
+    >
+      <BoltIcon />
+      <span className="hc-chip__label">{label}</span>
+    </span>
+  );
+}
+
+/** ACP session modes (Hermes): the agent's own approval policy, one radio list. */
+export const AgentModeChip = memo(function AgentModeChip({
+  label,
+  currentModeId,
+  modes,
+  onChange,
+}: {
+  label: string;
+  currentModeId: string | null;
+  modes: readonly ChipChoice[];
+  onChange: (modeId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLButtonElement>(null);
+  const sections: MenuSection[] = [
+    {
+      key: 'modes',
+      title: '에이전트 모드',
+      kind: 'radio',
+      items: modes.map((m) => ({
+        key: m.value,
+        label: m.label,
+        description: m.description,
+        icon: <ShieldIcon />,
+        checked: m.value === currentModeId,
+        onSelect: () => onChange(m.value),
+      })),
+    },
+  ];
+  return (
+    <>
+      <button
+        ref={ref}
+        type="button"
+        className="hc-chip hc-chip--perm"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`모드: ${label}`}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <ShieldIcon />
+        <span className="hc-chip__label">{label}</span>
+        <ChevronDownSmallIcon className="hc-chip__chevron" />
+      </button>
+      <Menu open={open} onClose={() => setOpen(false)} anchorRef={ref} sections={sections} label="에이전트 모드" placement="top-start" width={COMPOSER_MENU_WIDTH} />
     </>
   );
 });

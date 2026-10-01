@@ -5,6 +5,7 @@ import { ipcErrorMessage } from '../../errors';
 import { useAppStore } from '../../store';
 import { Button, Modal, Popover } from '../common';
 import { BranchGlyph } from './ChangesPanel';
+import { SCRATCH_NO_GIT_NOTE, isScratchThread } from './scratchGit';
 import { autoCommitMessage, summarizeCounts } from './commitMessage';
 import './Changes.css';
 
@@ -335,7 +336,25 @@ export interface CommitMenuProps {
 }
 
 /** "커밋" popover: commit (with an auto message), merge back, push + PR. */
-export function CommitMenu({ thread, anchorRef, request = null }: CommitMenuProps) {
+export function CommitMenu(props: CommitMenuProps) {
+  if (!isScratchThread(props.thread)) return <GitCommitMenu {...props} />;
+  // Project-less chat: no git, so the menu never opens and never calls git IPC.
+  if (props.anchorRef) return null;
+  return (
+    <button
+      type="button"
+      className="hc-toolbar-btn hc-toolbar-btn--split hc-commit-trigger"
+      aria-label="커밋"
+      title={SCRATCH_NO_GIT_NOTE}
+      disabled
+    >
+      <CommitGlyph />
+      <span className="hc-commit-trigger__label">커밋</span>
+    </button>
+  );
+}
+
+function GitCommitMenu({ thread, anchorRef, request = null }: CommitMenuProps) {
   const bumpGitRevision = useAppStore((s) => s.bumpGitRevision);
   const rev = useAppStore((s) => s.gitRevision[thread.id] ?? 0);
   const ownTriggerRef = useRef<HTMLButtonElement>(null);

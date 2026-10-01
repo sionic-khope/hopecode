@@ -120,7 +120,11 @@ export function Popover({
       if (e.key === 'Escape') {
         e.stopPropagation();
         onClose();
-        anchorRef.current?.focus({ focusVisible: !pointerModality } as FocusOptions);
+        const anchor = anchorRef.current;
+        // Escape on an anchor that still holds focus (menu not focused yet) marks it :focus-visible;
+        // re-focusing alone keeps that state, so drop focus first for pointer users.
+        if (pointerModality && anchor && document.activeElement === anchor) anchor.blur();
+        anchor?.focus({ focusVisible: !pointerModality } as FocusOptions);
       }
     };
     document.addEventListener('mousedown', onDown, true);

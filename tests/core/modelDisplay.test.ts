@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   FALLBACK_DEFAULT_MODEL_LABEL,
+  codexModelLabel,
   concreteModelLabel,
   defaultModelLabelFrom,
   defaultModelLabelFromOptions,
+  isModelSelected,
   modelMenuLabel,
 } from '../../src/core/modelDisplay';
 import { FALLBACK_MODELS } from '../../src/shared/constants';
@@ -69,5 +71,58 @@ describe('model display names', () => {
     expect(defaultModelLabelFrom(threads, LIVE)).toBe('Opus 5.5');
     // A list without a resolved default row does not override what sessions reported.
     expect(defaultModelLabelFrom(threads, [{ value: 'default', label: 'Default' }])).toBe('Sonnet 5');
+  });
+});
+
+describe('full-id model values', () => {
+  it('labels a stored full id with the row that resolves to it', () => {
+    expect(concreteModelLabel('claude-opus-5-5', FALLBACK_MODELS)).toBe('Opus 5.5');
+    expect(concreteModelLabel('claude-opus-5-5', LIVE)).toBe('Opus 5.5');
+  });
+
+  it('checks rows by resolvedModel, exact value first, never the default row', () => {
+    const opus = LIVE[1]!;
+    const def = LIVE[0]!;
+    expect(isModelSelected('opus', opus, LIVE)).toBe(true);
+    expect(isModelSelected('claude-opus-5-5', opus, LIVE)).toBe(true);
+    expect(isModelSelected('claude-opus-5-5', def, LIVE)).toBe(false);
+    expect(isModelSelected('claude-opus-5-5', LIVE[3]!, LIVE)).toBe(false);
+    const twin: ModelOption = { value: 'opus-twin', label: 'Opus twin', resolvedModel: 'claude-opus-5-5' };
+    const rows = [...LIVE, twin];
+    expect(isModelSelected('claude-opus-5-5', opus, rows)).toBe(true);
+    expect(isModelSelected('claude-opus-5-5', twin, rows)).toBe(false);
+    expect(isModelSelected('opus-twin', twin, rows)).toBe(true);
+    expect(isModelSelected('opus-twin', opus, rows)).toBe(false);
+    // An exact value row wins over a resolvedModel match.
+    const exact: ModelOption = { value: 'claude-opus-5-5', label: 'Opus 5.5 pinned', resolvedModel: 'claude-opus-5-5' };
+    expect(isModelSelected('claude-opus-5-5', opus, [...LIVE, exact])).toBe(false);
+    expect(isModelSelected('claude-opus-5-5', exact, [...LIVE, exact])).toBe(true);
+  });
+
+  it('labels Codex models from config options, then the built-in table', () => {
+    const opts = [
+      {
+        id: 'model',
+        name: 'Model',
+        category: 'model',
+        type: 'select' as const,
+        currentValue: 'gpt-6-sol',
+        options: [{ value: 'gpt-6-sol', name: 'GPT-6 Sol (agent)' }],
+      },
+    ];
+    expect(codexModelLabel('gpt-6-sol', opts)).toBe('GPT-6 Sol (agent)');
+    expect(codexModelLabel('gpt-6-sol')).toBe('GPT-6-Sol');
+    expect(codexModelLabel('other-model')).toBe('other-model');
+  });
+});
+
+describe('codexModelLabel with agents that echo raw ids as names', () => {
+  it('prefers the versioned label when the option name equals its value', () => {
+    const opts = [{ id: 'model', name: 'Model', category: 'model', type: 'select', currentValue: 'gpt-6-sol', options: [{ value: 'gpt-6-sol', name: 'gpt-6-sol' }] }] as never;
+    expect(codexModelLabel('gpt-6-sol', opts)).toBe('GPT-6-Sol');
+  });
+  it('keeps a real agent-provided name', () => {
+    const opts = [{ id: 'model', name: 'Model', category: 'model', type: 'select', currentValue: 'gpt-6-sol', options: [{ value: 'gpt-6-sol', name: 'GPT 6 Sol (fast)' }] }] as never;
+    expect(codexModelLabel('gpt-6-sol', opts)).toBe('GPT 6 Sol (fast)');
   });
 });

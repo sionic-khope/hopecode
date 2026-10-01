@@ -3,7 +3,8 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, powerMonitor, shell, clipboard, ClipboardItem, nativeImage } from 'electron';
 import {
@@ -19,11 +20,27 @@ import type { AppInfo, ThreadStartRequest, ThreadStartResult } from '../shared/t
 import { isAppUrl } from './appUrl';
 import { isSafeExternalUrl, openExternalSafe } from './externalUrl';
 import { createAccountPool } from './accounts/accountPool';
-import { createConfigDirLinks, defaultClaudeDir, sharedConfigStatus } from './accounts/configDirLinks';
+import { createConfigDirLinks } from './accounts/configDirLinks';
 import { createCredentials } from './accounts/credentials';
+import { syncLocalDefaultAccount } from './accounts/localDefault';
+import { createSharedConfig, probeEnvInject } from './accounts/poolWiring';
+import { buildAcpEnv } from '../core/acpEnv';
+import { decodeJwtClaims } from '../core/jwtClaims';
+import { AcpConnection } from './acp/acpConnection';
+import { createAcpLaunchers } from './agents/acpLaunchers';
+import { createAgentBinaries } from './agents/agentBinaries';
+import { detectClaude } from './agents/localAuth/claudeDetector';
+import { detectCodex } from './agents/localAuth/codexDetector';
+import { defaultDetectorDeps } from './agents/localAuth/detectorDeps';
+import { detectHermes } from './agents/localAuth/hermesDetector';
+import { createLocalAuthService } from './agents/localAuth/localAuthService';
+import { createAcpFixtureLauncher } from './fixtures/acpFixtureLaunchers';
+import { createFixtureLocalAuth } from './fixtures/fixtureLocalAuth';
+import { scratchGitCeiling } from './scratch/scratchDirs';
+import { createAgentUsageService, createHermesExec } from './usage/agentUsage';
 import { startLoginFlow } from './accounts/loginFlow';
 import { createClaudeBinary } from './claudeBinary';
-import type { Broadcaster, Dialogs, QueryFn, TrustChoice, UsagePoller } from './contracts';
+import type { Broadcaster, Dialogs, LocalAuthService, QueryFn, TrustChoice, UsagePoller } from './contracts';
 import { createFixtureQuery } from './fixtures/fakeQuery';
 import { createFixtureEditorLauncher } from './fixtures/fixtureEditors';
 import { createFixturePublisher } from './fixtures/fixtureGit';
@@ -33,13 +50,14 @@ import { createModelCatalog, probeModels } from './models/modelCatalog';
 import {
   createFixtureCredentials,
   createFixtureDialogs,
+  createFixtureHermesExec,
   createFixtureRunCommand,
   createFixtureUsageClient,
   fixtureSpawnPty,
   seedFixtureAccounts,
 } from './fixtures/fixtureServices';
 import { createBroadcaster, registerIpc } from './ipc';
-import { accountsDir, devEnv, hopecodeHome, initPaths, userDataDir } from './paths';
+import { accountsDir, devEnv, hopecodeHome, initPaths, localClaudeDir, userDataDir } from './paths';
 import { restrictPrivateModes } from './persistence/jsonl';
 import { createStore } from './persistence/store';
 import { createThreadLog } from './persistence/threadLog';
@@ -105,6 +123,7 @@ async function nativeSmoke(): Promise<boolean> {
     ok = false;
     console.error('[smoke] claude binary failed', err);
   }
+  ok = (await codexAcpSmoke()) && ok;
   try {
     const pty = require('node-pty') as typeof import('node-pty');
     const out = await new Promise<string>((resolve, reject) => {
@@ -123,6 +142,60 @@ async function nativeSmoke(): Promise<boolean> {
     console.error('[smoke] node-pty failed', err);
   }
   return ok;
+}
+
+/**
+ * ACP SDK + zod import, the bundled codex-acp binary (asar.unpacked, +x) and an offline `initialize` under a temporary
+ * HOME / CODEX_HOME (the user's ~/.codex is never read). No session is opened, nothing is sent to a model.
+ */
+async function codexAcpSmoke(): Promise<boolean> {
+  try {
+    const acp = await import('@agentclientprotocol/sdk');
+    const zod = await import('zod');
+    console.log(`[smoke] acp sdk import ok (protocol v${acp.PROTOCOL_VERSION}, zod: ${typeof zod.z})`);
+  } catch (err) {
+    console.error('[smoke] acp sdk / zod import failed', err);
+    return false;
+  }
+  // No login-shell PATH fallback: only the bundled platform package counts.
+  const bin = createAgentBinaries({ loginEnv: () => ({}) }).resolveCodexAcp();
+  if (!bin) {
+    console.error('[smoke] codex-acp binary not found or not executable');
+    return false;
+  }
+  if (app.isPackaged && !bin.includes('app.asar.unpacked')) {
+    console.error(`[smoke] packaged codex-acp is not under app.asar.unpacked: ${bin}`);
+    return false;
+  }
+  const home = mkdtempSync(join(tmpdir(), 'hopecode-smoke-codex-'));
+  const codexHome = join(home, '.codex');
+  mkdirSync(codexHome, { mode: 0o700 });
+  const conn = new AcpConnection({
+    spec: { command: bin, args: [], env: { PATH: '/usr/bin:/bin', HOME: home, CODEX_HOME: codexHome } },
+    cwd: home,
+    appVersion: app.getVersion(),
+    handlers: {
+      onUpdate() {},
+      onPermission: async () => ({ outcome: { outcome: 'cancelled' } }),
+    },
+    log: (message) => console.error(message),
+  });
+  try {
+    const init = await conn.initialize(undefined, 20_000);
+    const name = init.agentInfo?.name;
+    if (name !== 'codex-acp') {
+      console.error(`[smoke] codex-acp initialize returned agent ${String(name)}`);
+      return false;
+    }
+    console.log(`[smoke] codex-acp ok (${init.agentInfo?.version ?? '?'}) ${bin}`);
+    return true;
+  } catch (err) {
+    console.error('[smoke] codex-acp initialize failed', err);
+    return false;
+  } finally {
+    await conn.close({ dispose: true }).catch(() => {});
+    rmSync(home, { recursive: true, force: true });
+  }
 }
 
 interface Services {
@@ -238,14 +311,14 @@ async function startServices(): Promise<Services> {
   await modelCatalog.load();
 
   if (fixtures) seedFixtureAccounts(store, accountsDir());
-  const credentials = fixtures ? createFixtureCredentials() : createCredentials();
+  const credentials = fixtures ? createFixtureCredentials() : createCredentials({ localClaudeDir });
   const fixtureRunCommand = fixtures ? createFixtureRunCommand() : undefined;
 
   // AccountPool <-> UsagePoller are mutually dependent; connected through callbacks.
   let usagePoller: UsagePoller | null = null;
   let probeModelsOnce: () => void = () => {};
   // Fixture mode links from an empty dir inside HOPECODE_HOME instead of the user's ~/.claude.
-  const sharedSourceDir = fixtures ? join(hopecodeHome(), 'fixture-claude') : defaultClaudeDir();
+  const sharedSourceDir = fixtures ? join(hopecodeHome(), 'fixture-claude') : localClaudeDir();
   const configLinks = createConfigDirLinks(sharedSourceDir);
   const accountPool = createAccountPool({
     store,
@@ -265,6 +338,7 @@ async function startServices(): Promise<Services> {
     credentials,
     broadcaster,
     usageHistory,
+    localClaudeDir,
     onAccountAdded: (account) => {
       void usagePoller?.refresh(account.id);
       // First account of a fresh install: learn the real model list right away.
@@ -284,6 +358,81 @@ async function startServices(): Promise<Services> {
     pollIntervalMs: () => store.get().settings.usagePollIntervalSec * 1000,
   });
   usagePoller = poller;
+
+  // Local agent logins (plan 2.9). Fixture runs never read ~/.codex, the Keychain or run claude / hermes.
+  const agentBinaries = createAgentBinaries({ loginEnv: () => shellEnv.baseEnv() });
+  const detectedAuth: LocalAuthService = fixtures
+    ? createFixtureLocalAuth(process.env)
+    : createLocalAuthService({
+        detectors: {
+          'claude-code': () =>
+            detectClaude({
+              ...defaultDetectorDeps(),
+              claudePath: () => claudeBinary.resolvePath(),
+              childEnv: (inject) => shellEnv.childEnv(inject),
+            }),
+          codex: () =>
+            detectCodex({
+              ...defaultDetectorDeps(),
+              codexPath: () => agentBinaries.resolveCodexAcp(),
+              env: () => shellEnv.baseEnv(),
+              decodeJwtClaims,
+            }),
+          hermes: (opts) =>
+            detectHermes(
+              {
+                ...defaultDetectorDeps(),
+                hermesPath: () => agentBinaries.resolveHermes(),
+                // Same scrubbed env as the Hermes ACP process (no Claude / Hopecode variables).
+                env: () => buildAcpEnv(shellEnv.baseEnv(), { agent: 'hermes' }),
+              },
+              opts,
+            ),
+        },
+      });
+  // A forced recheck (재확인) also re-resolves the codex-acp / hermes paths.
+  const localAuth: LocalAuthService = {
+    ...detectedAuth,
+    recheck(agent, opts) {
+      if (opts?.force) agentBinaries.invalidate();
+      return detectedAuth.recheck(agent, opts);
+    },
+  };
+  // Every Claude detection result applies the local-account enrollment rule (plan 2.9.5).
+  localAuth.onChange((list) => {
+    syncLocalDefaultAccount(
+      { pool: accountPool, settings: () => store.get().settings, fixtures },
+      list.find((info) => info.agent === 'claude-code'),
+    );
+  });
+
+  const agentUsage = createAgentUsageService({
+    hermes: () => {
+      if (fixtures) return localAuth.availability('hermes').usable ? createFixtureHermesExec() : null;
+      const bin = agentBinaries.resolveHermes();
+      return bin ? createHermesExec(bin, buildAcpEnv(shellEnv.baseEnv(), { agent: 'hermes' })) : null;
+    },
+    broadcaster,
+    log: (message) => console.log(message),
+  });
+
+  // Codex / Hermes processes: the bundled codex-acp and `hermes acp`, or the scripted fixture agent (dev only:
+  // process.execPath + ELECTRON_RUN_AS_NODE, which the packaged app's runAsNode fuse disables).
+  const acpLaunchers = fixtures
+    ? {
+        // HOPECODE_FIXTURE_CODEX_PROFILE=noload: the Codex agent has no session/load (e2e restart notice).
+        codex: createAcpFixtureLauncher({
+          profile: devEnv('HOPECODE_FIXTURE_CODEX_PROFILE') === 'noload' ? 'noload' : 'codex',
+          scriptPath: join(app.getAppPath(), 'tests', 'fixtures', 'acp', 'fakeAcpAgent.mjs'),
+          stateDir: join(hopecodeHome(), 'fake-acp'),
+        }),
+        hermes: createAcpFixtureLauncher({
+          profile: 'hermes',
+          scriptPath: join(app.getAppPath(), 'tests', 'fixtures', 'acp', 'fakeAcpAgent.mjs'),
+          stateDir: join(hopecodeHome(), 'fake-acp'),
+        }),
+      }
+    : createAcpLaunchers({ binaries: agentBinaries, baseEnv: () => shellEnv.baseEnv() });
 
   const ptyManager = createPtyManager({ shellEnv, broadcaster });
   const worktreeManager = createWorktreeManager({ env: () => shellEnv.childEnv({}) });
@@ -310,6 +459,11 @@ async function startServices(): Promise<Services> {
     },
     models: modelCatalog,
     ...(fixtures ? { waitTickMs: FIXTURE_WAIT_TICK_MS } : {}),
+    acpLaunchers,
+    scratchRoot: scratchGitCeiling(),
+    // Hermes' initialize probe spawns a process: an auth failure re-reads only its cached state (plan 2.9.3).
+    onAgentProblem: (agent) => void localAuth.recheck(agent, { force: agent !== 'hermes' }).catch(() => {}),
+    onAcpTurnEnd: (agent) => void agentUsage.refresh(agent).catch(() => {}),
   });
   session.restore();
 
@@ -332,7 +486,7 @@ async function startServices(): Promise<Services> {
         const models = await probeModels({
           query,
           cwd: dataDir,
-          env: shellEnv.childEnv({ configDir: account.configDir, clientApp: `${CLIENT_APP_NAME}/${app.getVersion()}` }),
+          env: shellEnv.childEnv(probeEnvInject(account, `${CLIENT_APP_NAME}/${app.getVersion()}`)),
           pathToClaudeCodeExecutable: claudeBinary.resolvePath(),
           log: (message) => console.log(message),
         });
@@ -360,17 +514,8 @@ async function startServices(): Promise<Services> {
   });
   const editorLauncher = fixtures || headless ? createFixtureEditorLauncher() : createEditorLauncher();
   const sdkVersion = readSdkVersion();
-  const sharedConfig = {
-    status: () => sharedConfigStatus(accountPool.list(), sharedSourceDir),
-    async relink() {
-      for (const account of accountPool.list()) {
-        await configLinks
-          .linkSharedConfig(account.configDir)
-          .catch((err: unknown) => console.error(`[hopecode] relink failed for ${account.alias}`, err));
-      }
-      return sharedConfigStatus(accountPool.list(), sharedSourceDir);
-    },
-  };
+  // The local Claude account IS the shared source (~/.claude): never linked, never reported.
+  const sharedConfig = createSharedConfig({ accountPool, links: configLinks, sourceDir: sharedSourceDir });
 
   // 예약: runs through the `thread:start` handler (bound once registerIpc hands it over). Fixture runs use a clock
   // e2e can move from the main process.
@@ -392,6 +537,9 @@ async function startServices(): Promise<Services> {
     threadLog,
     sessionManager: session,
     accountPool,
+    localAuth,
+    agentUsage,
+    fixtures,
     usagePoller: poller,
     usageHistory,
     ptyManager,
@@ -462,11 +610,14 @@ async function startServices(): Promise<Services> {
   await scheduler.load().catch((err: unknown) => console.error('[hopecode] schedules could not be loaded', err));
   scheduler.start();
   powerMonitor.on('resume', () => void scheduler.tick());
+  // One detection at startup, in the background (the window does not wait); includes the Hermes initialize probe.
+  void localAuth.recheck(undefined, { force: true }).catch((err: unknown) => console.error('[hopecode] agent detection failed', err));
 
   return {
     broadcaster,
     async dispose() {
       poller.stop();
+      agentUsage.dispose();
       scheduler.stop();
       await scheduler.flush().catch((err: unknown) => console.error('[hopecode] schedule flush failed', err));
       await accountPool.cancelAllLogins().catch((err: unknown) => console.error('[hopecode] login cancel failed', err));

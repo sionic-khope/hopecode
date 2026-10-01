@@ -1,7 +1,8 @@
 // Human model names for the composer / statusline: always a concrete, versioned name ("Fable 5.1"), never the
 // bare alias ("Default", "Fable") the SDK accepts as a value. Labels the SDK reported (models:list) win over the
 // built-in alias table, which only covers the time before the first report.
-import type { ModelOption } from '../shared/types';
+import { CODEX_MODEL_LABELS } from '../shared/constants';
+import type { AcpConfigOptionLite, ModelOption } from '../shared/types';
 import { modelLabel } from './modelLabel';
 
 /** Versioned names of the CLI model aliases (used until the SDK reports something more specific). */
@@ -91,4 +92,28 @@ export function defaultModelLabelFrom(
     if (!best || t.updatedAt > best.updatedAt) best = { resolvedModel: t.resolvedModel, updatedAt: t.updatedAt };
   }
   return best ? modelLabel(best.resolvedModel, []) : FALLBACK_DEFAULT_MODEL_LABEL;
+}
+
+/**
+ * Whether a menu row is the checked one for a thread / draft model value. Compared by what the row runs as, so a
+ * stored full id (`claude-opus-5-5`) checks the `opus` row. An exact value match always wins; of several rows with
+ * the same resolvedModel only the first (never `default`) is checked.
+ */
+export function isModelSelected(value: string, option: ModelOption, options: readonly ModelOption[] = []): boolean {
+  if (option.value === value) return true;
+  if (options.some((o) => o.value === value)) return false;
+  if (option.value === 'default' || !option.resolvedModel || option.resolvedModel !== value) return false;
+  const first = options.find((o) => o.value !== 'default' && o.resolvedModel === value);
+  return first === undefined || first === option;
+}
+
+/** Codex model label: the agent's own option name (last seen config options), else the built-in table, else the id. */
+export function codexModelLabel(model: string, configOptions: readonly AcpConfigOptionLite[] = []): string {
+  for (const o of configOptions) {
+    if (o.category !== 'model' || o.type !== 'select') continue;
+    const row = o.options.find((v) => v.value === model);
+    // Agents often echo the raw id as the option name; prefer our versioned label then.
+    if (row) return row.name !== row.value ? row.name : (CODEX_MODEL_LABELS[model] ?? row.name);
+  }
+  return CODEX_MODEL_LABELS[model] ?? model;
 }

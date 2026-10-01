@@ -1,11 +1,14 @@
 // Main-process service interfaces (plan 4.2). Wave 1/2 lanes implement these; index.ts wires them (Wave 3).
 // Every service receives dependencies through its constructor/factory; no service imports another lane's module.
-import type { query } from '@anthropic-ai/claude-agent-sdk';
+import type { ModelInfo, query } from '@anthropic-ai/claude-agent-sdk';
 import type { EventChannel, EventPayload } from '../shared/ipc';
 import type {
   Account,
   AccountPatch,
   AccountUsage,
+  AgentAvailability,
+  AgentKind,
+  AgentUsageSnapshot,
   ChatItem,
   ChatImage,
   ChatSendResult,
@@ -17,6 +20,7 @@ import type {
   GitChanges,
   GitFileDiff,
   GitRemoteInfo,
+  LocalAuthInfo,
   ModelOption,
   PermissionDecision,
   PermissionRequest,
@@ -117,8 +121,11 @@ export interface WorktreeManager {
 }
 
 export interface PtyManager {
-  /** Spawn (or reuse) the thread shell; returns ring-buffer replay for an existing pty. Emits pty:data / pty:exit. */
-  open(threadId: string, cwd: string, cols: number, rows: number): { ptyId: string; replay: string };
+  /**
+   * Spawn (or reuse) the thread shell; returns ring-buffer replay for an existing pty. Emits pty:data / pty:exit.
+   * `gitCeiling`: GIT_CEILING_DIRECTORIES for the shell (threads without a project, plan 2.12).
+   */
+  open(threadId: string, cwd: string, cols: number, rows: number, opts?: { gitCeiling?: string }): { ptyId: string; replay: string };
   write(threadId: string, data: string): void;
   resize(threadId: string, cols: number, rows: number): void;
   kill(threadId: string): void;
@@ -196,13 +203,100 @@ export interface AccountPool {
 // Session (2A)
 // ---------------------------------------------------------------------------
 
+/** Claude model catalog row (SDK `ModelInfo`; mapped with models/modelCatalog.toModelOption). */
+export type ModelInfoLite = ModelInfo;
+
+/**
+ * The runner SessionManager keeps per thread (plan 2.1). ThreadRunner (Claude, SDK Query + account rotation) and
+ * AcpRunner (Codex / Hermes over ACP) implement it.
+ */
+export interface AgentRunner {
+  readonly agent: AgentKind;
+  send(text: string, images?: ChatImage[]): Promise<ChatSendResult>;
+  /** Claude: Query.interrupt. ACP: session/cancel + pending permissions answered `cancelled`. */
+  interrupt(): Promise<void>;
+  /** Re-evaluate a waiting thread (Claude rate limits). ACP: no-op. */
+  resumeWaiting(due: boolean): Promise<void>;
+  /** Claude model alias / id. ACP: stores the thread value only (the composer uses config options instead). */
+  setModel(model: string): Promise<void>;
+  setPermissionMode(mode: UiPermissionMode): Promise<void>;
+  applySessionPermissionMode(mode: UiPermissionMode): void;
+  setEffort(effort: Thread['effort']): Promise<void>;
+  /** ACP only: `session/set_mode`. Claude throws `unsupported`. */
+  setAgentMode(modeId: string): Promise<void>;
+  /** ACP only: `session/set_config_option`. Claude throws `unsupported`. */
+  setAgentConfig(configId: string, value: string | boolean): Promise<void>;
+  /** Stop using the account before its config dir goes away. ACP: no-op. */
+  releaseAccount(accountId: string): Promise<void>;
+  /** Claude model catalog of the live Query; null when this runner has none (ACP, or no Query open). */
+  supportedModels(): Promise<ModelInfoLite[]> | null;
+  /** Kill now (quit timeout). */
+  abort(): void;
+  /**
+   * Graceful stop; resolves after the process exited. `dispose` (app quit) keeps within the quit budget
+   * (ACP skips `session/close`); ThreadRunner ignores it.
+   */
+  close(opts?: { dispose?: boolean }): Promise<void>;
+  whenSettled(): Promise<void>;
+}
+
+/** How to start an ACP agent process (argv array, never a shell string). */
+export interface AcpLaunchSpec {
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+}
+
+export interface AcpLaunchOptions {
+  /** Codex: `-c model=...` (null = agent default). Hermes ignores it. */
+  model?: string | null;
+  /** Codex: `-c model_reasoning_effort=...`. Hermes ignores it. */
+  effort?: string | null;
+  /** Codex: `-c approval_policy / sandbox_mode` (plan 2.15). Hermes ignores it. */
+  permissionMode: UiPermissionMode;
+  /** Scratch thread: GIT_CEILING_DIRECTORIES for the agent. */
+  gitCeiling?: string;
+}
+
+/** Resolves the agent command (bundled codex-acp, detected `hermes acp`, or the fixture agent). */
+export interface AcpLauncher {
+  /** Not installed / not resolvable -> `{ ok: false }` and nothing is spawned. */
+  resolve(
+    cwd: string,
+    opts: AcpLaunchOptions,
+  ): { ok: true; spec: AcpLaunchSpec } | { ok: false; reason: 'not-installed' | 'not-logged-in' };
+}
+
+/** Read-only detection of each agent's own login on this Mac (plan 2.9.3). Results never carry secrets. */
+export interface LocalAuthService {
+  /** Cached results (sync). */
+  list(): LocalAuthInfo[];
+  /** Re-detect one agent or all; `force` ignores the TTL and re-runs the Hermes initialize probe. */
+  recheck(agent?: AgentKind, opts?: { force?: boolean }): Promise<LocalAuthInfo[]>;
+  /** From the cache: can a thread of this agent start now? */
+  availability(agent: AgentKind): AgentAvailability;
+  onChange(cb: (list: LocalAuthInfo[]) => void): Unsubscribe;
+}
+
+/** Account usage of non-Claude agents (`hermes usage --json`, plan 2.8). */
+export interface AgentUsageService {
+  /** Latest snapshot; null = unavailable (statusline hides the meters). */
+  get(agent: AgentKind): AgentUsageSnapshot | null;
+  refresh(agent: AgentKind): Promise<AgentUsageSnapshot | null>;
+  onUpdate(cb: (agent: AgentKind, snapshot: AgentUsageSnapshot | null) => void): Unsubscribe;
+}
+
 export interface SessionManager {
   send(threadId: string, text: string, images?: ChatImage[]): Promise<ChatSendResult>;
   interrupt(threadId: string): Promise<void>;
   setModel(threadId: string, model: string): Promise<void>;
   setPermissionMode(threadId: string, mode: UiPermissionMode): Promise<void>;
   /** Persist the thread's effort and apply it to the live Query (null = model default). */
-  setEffort(threadId: string, effort: EffortLevel | null): Promise<void>;
+  setEffort(threadId: string, effort: Thread['effort']): Promise<void>;
+  /** ACP threads: `session/set_mode` (or remembered until the next session opens). */
+  setAgentMode(threadId: string, modeId: string): Promise<void>;
+  /** ACP threads: `session/set_config_option` (model / effort / agent options). */
+  setAgentConfig(threadId: string, configId: string, value: string | boolean): Promise<void>;
   respondPermission(requestId: string, decision: PermissionDecision, message?: string): void;
   listModels(): Promise<ModelOption[]>;
   /** Close Query and drop runner (thread deleted). */

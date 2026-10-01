@@ -1,9 +1,14 @@
-// Thread -> ThreadRunner registry (plan 4.2 session/sessionManager.ts). The SDK `query` function is
-// injected so unit tests and fixture mode pass src/main/fixtures/fakeQuery.
+// Thread -> AgentRunner registry (plan 2.2 / 4.2 session/sessionManager.ts). Claude threads run a ThreadRunner (SDK
+// `query`, injected so unit tests and fixture mode pass src/main/fixtures/fakeQuery); Codex / Hermes threads run an
+// AcpRunner with the launcher of their agent (bundled codex-acp / `hermes acp`, or the fixture agent).
 import { FALLBACK_MODELS } from '../../shared/constants';
 import type { Account, AgentKind, ModelOption } from '../../shared/types';
 import { toModelOption, type ModelCatalog } from '../models/modelCatalog';
+import type { AcpAgentKind } from '../../core/acpTypes';
+import type { AcpConnection, AcpConnectionOptions } from '../acp/acpConnection';
 import type {
+  AcpLauncher,
+  AgentRunner,
   Broadcaster,
   ClaudeBinary,
   QueryFn,
@@ -14,6 +19,7 @@ import type {
   UsagePoller,
 } from '../contracts';
 import { snapshotChangedImages, type ImageSnapshot } from '../images/imageFiles';
+import { AcpRunner, type AcpRunnerTimeouts } from './acpRunner';
 import { createPermissionBroker, type PermissionBroker } from './permissionBroker';
 import { ThreadRunner } from './threadRunner';
 import { syncTranscript as defaultSyncTranscript, type SyncTranscriptFn } from './transcriptSync';
@@ -41,7 +47,20 @@ export interface SessionManagerDeps {
   waitTickMs?: number;
   /** Turn-end image galleries (default: `git status` of the thread folder). */
   scanImages?: (cwd: string) => Promise<ImageSnapshot | null>;
+  /** Codex / Hermes process launchers (absent = the agent counts as not installed). */
+  acpLaunchers?: Partial<Record<AcpAgentKind, AcpLauncher>>;
+  /** paths.scratchDir(): GIT_CEILING_DIRECTORIES of project-less ACP threads. */
+  scratchRoot?: string;
+  /** An ACP agent could not start or reported missing auth (LocalAuthService recheck). */
+  onAgentProblem?: (agent: AcpAgentKind) => void;
+  /** An ACP turn ended (agent usage refresh). */
+  onAcpTurnEnd?: (agent: AcpAgentKind) => void;
+  /** Tests: ACP connection factory / timeouts. */
+  acpConnect?: (opts: AcpConnectionOptions) => AcpConnection;
+  acpTimeouts?: Partial<AcpRunnerTimeouts>;
 }
+
+const NOT_INSTALLED: AcpLauncher = { resolve: () => ({ ok: false, reason: 'not-installed' }) };
 
 export interface SessionManagerImpl extends SessionManager {
   readonly broker: PermissionBroker;
@@ -54,20 +73,35 @@ export interface SessionManagerImpl extends SessionManager {
 export function createSessionManager(deps: SessionManagerDeps): SessionManagerImpl {
   const now = deps.now ?? Date.now;
   const log = deps.log ?? ((message: string, err?: unknown) => console.error(message, err ?? ''));
-  const runners = new Map<string, ThreadRunner>();
+  const runners = new Map<string, AgentRunner>();
   /** Runners of deleted threads still waiting for their CLI to exit (abortAll must reach them too). */
-  const retiring = new Set<ThreadRunner>();
+  const retiring = new Set<AgentRunner>();
   const broker = createPermissionBroker({
     broadcaster: deps.broadcaster,
     onModeChange: (threadId, mode) => runners.get(threadId)?.applySessionPermissionMode(mode),
   });
   let cachedModels: ModelOption[] | null = null;
 
-  /**
-   * Runner per agent kind: the one branch point for new agents (shared/agents.ts). Each kind's runner must
-   * implement the ThreadRunner surface the manager drives (send / interrupt / setModel / ... / close).
-   */
-  const runnerFactories: Record<AgentKind, (threadId: string) => ThreadRunner> = {
+  const acpRunner = (agent: AcpAgentKind) => (threadId: string) =>
+    new AcpRunner(threadId, {
+      agent,
+      launcher: deps.acpLaunchers?.[agent] ?? NOT_INSTALLED,
+      store: deps.store,
+      threadLog: deps.threadLog,
+      broadcaster: deps.broadcaster,
+      broker,
+      appVersion: deps.appVersion,
+      ...(deps.scratchRoot !== undefined ? { scratchRoot: deps.scratchRoot } : {}),
+      onAgentProblem: deps.onAgentProblem,
+      onTurnEnd: deps.onAcpTurnEnd,
+      ...(deps.acpConnect ? { connect: deps.acpConnect } : {}),
+      ...(deps.acpTimeouts ? { timeouts: deps.acpTimeouts } : {}),
+      now,
+      log,
+    });
+
+  /** Runner per agent kind: the one branch point for new agents (shared/agents.ts, plan 2.2). */
+  const runnerFactories: Record<AgentKind, (threadId: string) => AgentRunner> = {
     'claude-code': (threadId) =>
       new ThreadRunner(threadId, {
         query: deps.query,
@@ -84,10 +118,17 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManagerIm
         onWaiting: (id, waiting) => (waiting ? scheduler.track(id) : scheduler.untrack(id)),
         onCliVersion: deps.onCliVersion,
         onSessionInit: refreshModelsOnce,
-        scanImages: deps.scanImages ?? ((cwd) => snapshotChangedImages(cwd, deps.shellEnv.childEnv({}))),
+        // The ceiling only stops searches from inside the scratch root (a scratch chat never scans a repo above it).
+        scanImages:
+          deps.scanImages ??
+          ((cwd) =>
+            snapshotChangedImages(cwd, deps.shellEnv.childEnv(deps.scratchRoot !== undefined ? { gitCeiling: deps.scratchRoot } : {}))),
+        ...(deps.scratchRoot !== undefined ? { scratchDir: () => deps.scratchRoot as string } : {}),
         now,
         log,
       }),
+    codex: acpRunner('codex'),
+    hermes: acpRunner('hermes'),
   };
 
   /** The first live session of this run refreshes the persisted model list (broadcast as models:updated). */
@@ -109,7 +150,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManagerIm
     log,
   });
 
-  function runner(threadId: string): ThreadRunner {
+  function runner(threadId: string): AgentRunner {
     let r = runners.get(threadId);
     if (!r) {
       const thread = deps.store.getThread(threadId);
@@ -124,10 +165,10 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManagerIm
 
   async function listModels(): Promise<ModelOption[]> {
     for (const r of runners.values()) {
-      const q = r.query();
-      if (!q) continue;
+      const pending = r.supportedModels();
+      if (!pending) continue;
       try {
-        const models = await q.supportedModels();
+        const models = await pending;
         cachedModels = models.map(toModelOption);
         if (cachedModels.length > 0) {
           await deps.models?.update(cachedModels).catch((err: unknown) => log('[session] model cache update failed', err));
@@ -159,6 +200,12 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManagerIm
     },
     setEffort(threadId, effort) {
       return runner(threadId).setEffort(effort);
+    },
+    setAgentMode(threadId, modeId) {
+      return runner(threadId).setAgentMode(modeId);
+    },
+    setAgentConfig(threadId, configId, value) {
+      return runner(threadId).setAgentConfig(configId, value);
     },
     respondPermission(requestId, decision, message) {
       broker.respond(requestId, decision, message);
@@ -213,7 +260,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManagerIm
     async dispose() {
       scheduler.stop();
       broker.cancelAll();
-      await Promise.all([...runners.values()].map((r) => r.close()));
+      await Promise.all([...runners.values()].map((r) => r.close({ dispose: true })));
       runners.clear();
     },
   };

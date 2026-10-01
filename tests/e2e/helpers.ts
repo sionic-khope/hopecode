@@ -49,7 +49,14 @@ export interface Launched {
   page: Page;
 }
 
-export async function launch(sandbox: Sandbox): Promise<Launched> {
+export interface LaunchOptions {
+  /** Extra env for this launch (e.g. HOPECODE_FIXTURE_AGENTS, HOPECODE_FIXTURE_LOCAL_CLAUDE). */
+  env?: Record<string, string>;
+  /** Accounts the statusline pool reports once the first usage poll is done (fixture default 3). */
+  poolSize?: number;
+}
+
+export async function launch(sandbox: Sandbox, opts: LaunchOptions = {}): Promise<Launched> {
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) {
     if (v !== undefined && k !== 'ELECTRON_RENDERER_URL') env[k] = v;
@@ -61,13 +68,15 @@ export async function launch(sandbox: Sandbox): Promise<Launched> {
     // Headless run: main keeps the window hidden (no show/focus, no Dock/menu bar) and never opens native dialogs.
     HOPECODE_E2E: '1',
   });
+  // Extra fixture switches first, then the isolation keys again so a caller cannot drop them.
+  Object.assign(env, opts.env ?? {}, { HOPECODE_HOME: sandbox.home, HOPECODE_FIXTURES: '1', HOPECODE_E2E: '1' });
   const app = await electron.launch({ args: [ROOT], cwd: ROOT, env });
   hardenClose(app);
   const page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
   await expect(page.getByTestId('statusline')).toBeVisible();
   // Bootstrap + first usage poll done: the fixture pool reports 3 accounts.
-  await expect(page.getByTestId('statusline')).toContainText('/3 avail');
+  await expect(page.getByTestId('statusline')).toContainText(`/${opts.poolSize ?? 3} avail`);
   return { app, page };
 }
 
@@ -168,7 +177,7 @@ export interface ThreadState {
   id: string;
   cwd: string;
   title: string;
-  projectId: string;
+  projectId: string | null;
   pinned: boolean;
   archived: boolean;
   effort: string | null;
@@ -237,4 +246,21 @@ export async function screenshotOf(
 /** The shell docked under the conversation (⌘J): inside the chat column, never in the right panel. */
 export function bottomTerminal(page: Page) {
   return page.getByTestId('chat').getByTestId('bottom-panel').getByTestId('terminal');
+}
+
+export type AgentName = 'Claude Code' | 'Codex' | 'Hermes';
+
+/** Draft agent chip -> `name` (the chip resets model / effort to that agent's new-chat defaults). */
+export async function pickAgent(page: Page, name: AgentName): Promise<void> {
+  const chip = page.getByTestId('draft').locator('.hc-chip--agent');
+  if ((await chip.getAttribute('aria-label')) === `에이전트: ${name}`) return;
+  await chip.click();
+  await page.getByRole('menu', { name: '에이전트' }).getByRole('menuitemradio', { name: new RegExp(`^${name}`) }).click();
+  await expect(chip).toHaveAttribute('aria-label', `에이전트: ${name}`);
+}
+
+/** Thread fields beyond ThreadState, read straight from main (agent, model, acp controls). */
+export async function threadById(page: Page, id: string): Promise<Record<string, unknown> | undefined> {
+  const { threads } = (await bootstrapState(page)) as unknown as { threads: Record<string, unknown>[] };
+  return threads.find((t) => t['id'] === id);
 }

@@ -10,14 +10,18 @@ import { fillNewTaskTemplate } from '../../core/newTaskTemplate';
 import type {
   Account,
   AccountPatch,
+  AcpControls,
   AgentKind,
+  AgentUsageSnapshot,
   AppSettings,
   BootstrapPayload,
   ChatEvent,
   ChatItem,
   ChatImage,
   ChatSendResult,
+  CodexEffortLevel,
   EffortLevel,
+  LocalAuthInfo,
   ModelOption,
   PermissionDecision,
   PermissionRequest,
@@ -37,7 +41,8 @@ export interface DraftState {
   agent: AgentKind;
   model: string;
   permissionMode: UiPermissionMode;
-  effort: EffortLevel | null;
+  /** Claude: EffortLevel; Codex drafts: CodexEffortLevel. */
+  effort: EffortLevel | CodexEffortLevel | null;
   pinnedAccountId: string | null;
   /** "이 PR로 새 채팅": the worktree starts from this PR's head branch (cleared when the folder changes). */
   base: DraftBase | null;
@@ -133,7 +138,7 @@ export function defaultDraftProjectId(projects: readonly Project[], threads: rea
   const known = new Set(projects.map((p) => p.id));
   let best: Thread | null = null;
   for (const t of threads) {
-    if (!known.has(t.projectId)) continue;
+    if (t.projectId === null || !known.has(t.projectId)) continue;
     if (!best || t.updatedAt > best.updatedAt) best = t;
   }
   if (best) return best.projectId;
@@ -205,6 +210,16 @@ function patchThreadLocal(threads: Thread[], threadId: string, patch: Partial<Th
   return next;
 }
 
+/** ACP controls of one thread (agent:controls); not a user edit, so updatedAt (sidebar order) is left alone. */
+function withAcpControls(threads: Thread[], threadId: string, controls: AcpControls): Thread[] {
+  const idx = threads.findIndex((t) => t.id === threadId);
+  if (idx === -1) return threads;
+  const next = threads.slice();
+  const prev = next[idx];
+  next[idx] = { ...prev, acp: { ...(prev.acp ?? { sessionId: null }), controls } };
+  return next;
+}
+
 function upsertAccount(accounts: Account[], account: Account): Account[] {
   const idx = accounts.findIndex((a) => a.id === account.id);
   if (idx === -1) return [...accounts, account];
@@ -268,6 +283,10 @@ export interface AppStoreState {
   models: ModelOption[];
   /** User home (bootstrap); paths are displayed with `~`. */
   homeDir: string | null;
+  /** Local agent login detection (bootstrap, `agents:updated`). */
+  localAuth: LocalAuthInfo[];
+  /** Account usage per non-Claude agent (null / absent = hide the meters). */
+  agentUsage: Partial<Record<AgentKind, AgentUsageSnapshot | null>>;
 
   // UI / routing
   /** null (with route 'chat') shows the draft "new chat" screen. */
@@ -342,6 +361,13 @@ export interface AppStoreState {
   setThreadPinned: (threadId: string, pinned: boolean) => Promise<void>;
   setThreadArchived: (threadId: string, archived: boolean) => Promise<void>;
   setThreadEffort: (threadId: string, effort: EffortLevel | null) => Promise<void>;
+  /** ACP threads: session mode (the applied controls arrive via `agent:controls`). */
+  setThreadAgentMode: (threadId: string, modeId: string) => Promise<void>;
+  /** ACP threads: config option (model / effort / agent options). */
+  setThreadAgentConfig: (threadId: string, configId: string, value: string | boolean) => Promise<void>;
+  /** Re-detects local agent logins (one agent or all). */
+  recheckAgents: (agent?: AgentKind) => Promise<LocalAuthInfo[]>;
+  refreshAgentUsage: (agent: AgentKind) => Promise<AgentUsageSnapshot | null>;
   /** Native file picker; resolves `@` mentions relative to the thread (or draft folder). */
   pickFiles: (target: { threadId?: string; projectId?: string }) => Promise<string[]>;
 
@@ -376,6 +402,8 @@ export interface AppStoreState {
   updateAccount: (accountId: string, patch: AccountPatch) => Promise<Account>;
   reorderAccounts: (orderedIds: string[]) => Promise<void>;
   removeAccount: (accountId: string) => Promise<void>;
+  /** Puts this Mac's own Claude login in the pool or takes it out (its config dir / Keychain are never deleted). */
+  setLocalClaudeInPool: (include: boolean) => Promise<void>;
 
   refreshUsage: (accountId?: string) => Promise<PoolSnapshot>;
   fetchUsageHistory: (accountId: string, rangeMs: number) => Promise<UsageSample[]>;
@@ -405,6 +433,9 @@ export interface AppStoreState {
   applyPtyExit: (threadId: string, code: number) => void;
   applySettingsUpdated: (settings: AppSettings) => void;
   applyModelsUpdated: (models: ModelOption[]) => void;
+  applyLocalAuthUpdated: (list: LocalAuthInfo[]) => void;
+  applyAgentControls: (threadId: string, controls: AcpControls) => void;
+  applyAgentUsageUpdated: (agent: AgentKind, snapshot: AgentUsageSnapshot | null) => void;
 }
 
 export const useAppStore = create<AppStoreState>()((set, get) => ({
@@ -417,6 +448,8 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
   settings: EMPTY_SETTINGS,
   models: [],
   homeDir: null,
+  localAuth: [],
+  agentUsage: {},
 
   selectedThreadId: null,
   route: 'chat',
@@ -551,11 +584,11 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
       return { draft: { ...s.draft, ...patch, ...(movedFolder ? { base: null } : {}) } };
     }),
 
+  // No folder = a chat without a project: `projectId` is left out and main runs it in a scratch folder.
   startThread: async (text) => {
     const { draft } = get();
-    if (!draft.projectId) throw new Error('No folder selected for the new chat');
     const result = await invoke('thread:start', {
-      projectId: draft.projectId,
+      ...(draft.projectId ? { projectId: draft.projectId } : {}),
       agent: draft.agent,
       text,
       model: draft.model,
@@ -587,6 +620,26 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
   setThreadEffort: async (threadId, effort) => {
     await invoke('thread:setEffort', { threadId, effort });
     set((s) => ({ threads: patchThreadLocal(s.threads, threadId, { effort }) }));
+  },
+
+  setThreadAgentMode: async (threadId, modeId) => {
+    await invoke('thread:setAgentMode', { threadId, modeId });
+  },
+
+  setThreadAgentConfig: async (threadId, configId, value) => {
+    await invoke('thread:setAgentConfig', { threadId, configId, value });
+  },
+
+  recheckAgents: async (agent) => {
+    const localAuth = await invoke('agents:recheck', agent ? { agent } : {});
+    set({ localAuth });
+    return localAuth;
+  },
+
+  refreshAgentUsage: async (agent) => {
+    const snapshot = await invoke('agentUsage:refresh', { agent });
+    set((s) => ({ agentUsage: { ...s.agentUsage, [agent]: snapshot } }));
+    return snapshot;
   },
 
   pickFiles: async (target) => invoke('dialog:pickFiles', target),
@@ -757,6 +810,12 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
     set((s) => ({ accounts: s.accounts.filter((a) => a.id !== accountId) }));
   },
 
+  // The account list and settings arrive via `account:updated` / `settings:updated`.
+  setLocalClaudeInPool: async (include) => {
+    const result = await invoke('account:setLocalDefault', { include });
+    if (!result.ok) throw new Error(result.error);
+  },
+
   refreshUsage: async (accountId) => {
     const pool = await invoke('usage:refresh', { accountId });
     set({ pool });
@@ -807,6 +866,8 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
       // Permission prompts still waiting in main survive a renderer reload (M7).
       permissionRequests: payload.pendingPermissions ?? [],
       testMode: payload.testMode === true,
+      localAuth: payload.localAuth ?? [],
+      agentUsage: payload.agentUsage ?? {},
       // Launch opens a new chat (draft) in the last used folder; an explicit selection is kept on re-bootstrap.
       selectedThreadId:
         s.selectedThreadId && payload.threads.some((t) => t.id === s.selectedThreadId) ? s.selectedThreadId : null,
@@ -943,6 +1004,12 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
   applySettingsUpdated: (settings) => set({ settings }),
 
   applyModelsUpdated: (models) => set({ models }),
+
+  applyLocalAuthUpdated: (localAuth) => set({ localAuth }),
+
+  applyAgentControls: (threadId, controls) => set((s) => ({ threads: withAcpControls(s.threads, threadId, controls) })),
+
+  applyAgentUsageUpdated: (agent, snapshot) => set((s) => ({ agentUsage: { ...s.agentUsage, [agent]: snapshot } })),
 
   applyPtyExit: (threadId, code) =>
     set((s) => ({

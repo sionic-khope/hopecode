@@ -6,6 +6,7 @@ import { HOUR_MS, DAY_MS } from '../../shared/constants';
 import type { Account } from '../../shared/types';
 import type { PtyLike, RunCommandFn, SpawnPtyFn } from '../accounts/loginFlow';
 import type { Credentials, Dialogs, Store, UsageClient } from '../contracts';
+import type { HermesExec } from '../usage/agentUsage';
 
 interface FixtureAccountSpec {
   id: string;
@@ -55,6 +56,29 @@ export function createFixtureCredentials(): Credentials {
     },
     invalidate() {},
     async deleteKeychainItem() {},
+  };
+}
+
+/** `hermes usage --json` stand-in (never runs hermes): two windows at 25 / 60 %. */
+export function createFixtureHermesExec(now: () => number = Date.now): HermesExec {
+  return async (args) => {
+    if (args[0] !== 'usage') return { code: 1, stdout: '' };
+    const t = now();
+    const iso = (ms: number) => new Date(ms).toISOString();
+    const stdout = JSON.stringify({
+      provider: 'fixture-provider',
+      source: 'fixture',
+      title: 'Fixture usage',
+      plan: 'fixture',
+      fetched_at: iso(t),
+      windows: [
+        { label: 'Current session', used_percent: 25, resets_at: iso(t + 2 * HOUR_MS), detail: null },
+        { label: 'Current week', used_percent: 60, resets_at: iso(t + 3 * DAY_MS), detail: null },
+      ],
+      details: [],
+      unavailable_reason: null,
+    });
+    return { code: 0, stdout };
   };
 }
 
@@ -119,6 +143,11 @@ export function createFixtureRunCommand(): RunCommandFn {
   };
 }
 
+declare global {
+  /** e2e only (`electronApp.evaluate`): the fixture answer to the full-access warning; unset = confirmed. */
+  var __hopecodeFixtureBypassAnswer: boolean | undefined;
+}
+
 /**
  * Native dialog seam for e2e: `project:add` returns HOPECODE_FIXTURE_PROJECT, the trust question answers
  * Trust, the bypassPermissions warning is confirmed, the file picker returns the folder's README.md and a
@@ -133,7 +162,7 @@ export function createFixtureDialogs(projectPath: string | undefined, exportDir?
       return 'trust';
     },
     async confirmBypassPermissions() {
-      return true;
+      return globalThis.__hopecodeFixtureBypassAnswer ?? true;
     },
     async pickFiles(defaultPath) {
       return defaultPath ? [join(defaultPath, 'README.md')] : [];

@@ -6,6 +6,7 @@ import { useAppStore } from '../../store';
 import { Button, Modal } from '../common';
 import { DiffView } from '../Chat/DiffView';
 import { summarizeCounts } from './commitMessage';
+import { SCRATCH_NO_GIT_NOTE, isScratchThread } from './scratchGit';
 import './Changes.css';
 
 // ---------------------------------------------------------------------------
@@ -386,6 +387,41 @@ function RevertModal({ threadId, file, onClose }: { threadId: string; file: GitC
 
 /** Right-panel "변경사항" tab: branch, totals and a per-file list with inline diffs and revert. */
 export function ChangesPanel({ thread }: { thread: Thread }) {
+  if (isScratchThread(thread)) return <ScratchChanges thread={thread} />;
+  return <GitChangesPanel thread={thread} />;
+}
+
+/** Project-less chat: no git calls at all; the folder is the only thing to open. */
+function ScratchChanges({ thread }: { thread: Thread }) {
+  const [error, setError] = useState<string | null>(null);
+  const openFolder = () => {
+    setError(null);
+    invoke('editor:open', { threadId: thread.id, editor: 'finder' }).catch((err: unknown) => setError(ipcErrorMessage(err)));
+  };
+  return (
+    <section className="hc-changes" aria-label="변경사항" data-testid="changes-panel" data-scratch="true">
+      <div className="hc-changes__body">
+        <EmptyState
+          kind="norepo"
+          title="프로젝트 없는 채팅입니다"
+          sub={SCRATCH_NO_GIT_NOTE}
+          action={
+            <Button variant="secondary" size="sm" onClick={openFolder} data-testid="changes-open-folder">
+              폴더 열기
+            </Button>
+          }
+        />
+        {error ? (
+          <p className="hc-changes__error" role="alert">
+            {error}
+          </p>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function GitChangesPanel({ thread }: { thread: Thread }) {
   const { data, loading, error, version, reload } = useGitChanges(thread);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
   const [revertTarget, setRevertTarget] = useState<GitChangedFile | null>(null);

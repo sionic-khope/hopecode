@@ -1,6 +1,8 @@
 // Codex-style shell: draft-first new chat (⌘N), folder chip + thread:start (thread, worktree, auto title),
 // composer chips (permission / model + effort / account), file attach mention, sidebar pin / archive / search /
 // collapse (⌘B), Korean UI copy. Screenshots of each state go to the redesign folder.
+import { realpathSync } from 'node:fs';
+import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import {
   bootstrapState,
@@ -8,6 +10,7 @@ import {
   createSandbox,
   launch,
   menuShortcut,
+  openDraft,
   openFromMore,
   screenshot,
   sendMessage,
@@ -35,15 +38,18 @@ test.afterAll(async () => {
   sandbox?.cleanup();
 });
 
+const SCRATCH = '[text] 프로젝트 없이 간단히 물어볼게요';
 const FIRST = '[text] 로그인 화면에서 비밀번호 재설정 링크가 동작하지 않는 문제를 고쳐 주세요';
 
-test('launch opens a draft; sending without a folder points at the folder chip and keeps the text', async () => {
+test('launch opens a draft; sending without a folder starts a scratch chat (no project)', async () => {
   const { page } = run;
   const draft = page.getByTestId('draft');
   await expect(draft).toBeVisible();
   await expect(draft.getByRole('heading', { name: '무엇을 만들어 볼까요?' })).toBeVisible();
   const chip = draft.locator('.hc-chip--folder');
-  await expect(chip).toHaveText(/폴더 선택/);
+  await expect(chip).toHaveText(/프로젝트 없음/);
+  await expect(chip).not.toHaveClass(/hc-chip--attention/);
+  await expect(draft.getByTestId('draft-scratch')).toHaveText('프로젝트 없이 새 채팅을 시작합니다 (git 기능 없음)');
   const box = page.locator('.hc-composer__textarea');
   await expect(box).toHaveAttribute('placeholder', '무엇이든 요청하세요');
   // Window controls sit in the top-right toolbar; the composer keeps only the chat controls.
@@ -52,23 +58,30 @@ test('launch opens a draft; sending without a folder points at the folder chip a
   await expect(page.locator('.hc-composer').getByRole('button', { name: '터미널 패널' })).toHaveCount(0);
   await screenshot(page, 'v2-draft-empty-no-folder', SHOTS);
 
-  await sendMessage(page, FIRST);
-  await expect(chip).toHaveClass(/hc-chip--attention/);
-  await expect(page.getByRole('menu', { name: '폴더' })).toBeVisible();
-  await expect(draft.getByRole('alert')).toHaveText('먼저 작업할 폴더를 선택하세요');
-  await expect(box).toHaveValue(FIRST);
-  expect((await bootstrapState(page)).threads).toHaveLength(0);
-  await page.keyboard.press('Escape');
+  await sendMessage(page, SCRATCH);
+  await expect(draft.getByRole('alert')).toHaveCount(0);
+  const chats = page.getByTestId('sidebar-chats');
+  await expect(chats.locator('.hc-thread')).toHaveCount(1);
+  await expect(page.locator('.hc-messages .hc-msg-user__bubble')).toHaveText(SCRATCH);
+  // Let the scratch turn finish so the next test starts from an idle app.
+  await expect(page.locator('.hc-messages')).toContainText('Streaming reply from the fixture session.');
+  await expect(page.locator('.hc-composer').getByRole('button', { name: '정지' })).toHaveCount(0);
+  const { threads } = await bootstrapState(page);
+  expect(threads).toHaveLength(1);
+  expect(threads[0].projectId).toBeNull();
+  expect(realpathSync(threads[0].cwd)).toBe(realpathSync(join(sandbox.home, 'home', 'scratch', threads[0].id)));
+  expect(threads[0].worktree).toBeUndefined();
 });
 
 test('folder chip (dialog seam) -> first send creates the thread and its worktree, titled from the message', async () => {
   const { page } = run;
+  await openDraft(page);
   await chooseFixtureFolder(page, sandbox);
   const box = page.locator('.hc-composer__textarea');
-  await expect(box).toHaveValue(FIRST);
+  await box.fill(FIRST);
   await box.press('Enter');
 
-  const rows = page.getByTestId('sidebar').locator('.hc-thread');
+  const rows = page.getByTestId('sidebar').locator('section[aria-label="프로젝트"] .hc-thread');
   await expect(rows).toHaveCount(1);
   const title = '[text] 로그인 화면에서 비밀번호 재설정 링크가 동작하지 않는 문제를…';
   await expect(rows.first().locator('.hc-thread__title')).toHaveText(title);
@@ -78,10 +91,12 @@ test('folder chip (dialog seam) -> first send creates the thread and its worktre
 
   const { threads, projects } = await bootstrapState(page);
   expect(projects.map((p) => p.path)).toEqual([sandbox.project]);
-  expect(threads).toHaveLength(1);
-  expect(threads[0]).toMatchObject({ title, pinned: false, archived: false });
-  expect(threads[0].cwd.startsWith(`${sandbox.home}/home/worktrees/`)).toBe(true);
-  expect(threads[0].worktree?.branch).toMatch(/^hopecode\//);
+  // The scratch chat from the first test plus this project thread.
+  expect(threads).toHaveLength(2);
+  const thread = threads.find((t) => t.projectId !== null)!;
+  expect(thread).toMatchObject({ title, pinned: false, archived: false });
+  expect(thread.cwd.startsWith(`${sandbox.home}/home/worktrees/`)).toBe(true);
+  expect(thread.worktree?.branch).toMatch(/^hopecode\//);
   // A started chat shows its folder read-only; "폴더 변경" is disabled.
   await expect(page.locator('.hc-composer .hc-chip--static:not(.hc-chip--agent)')).toContainText(sandbox.project.split('/').pop()!);
   await page.locator('.hc-composer__plus').click();
@@ -112,12 +127,13 @@ test('⌘N opens a draft at once in the last used folder; nothing is created unt
   await expect(draft.locator('.hc-chip--folder')).toContainText(sandbox.project.split('/').pop()!);
   await expect(page.locator('.hc-composer__textarea')).toBeFocused();
   await expect(page.getByTestId('sidebar').getByRole('button', { name: /^새 채팅/ })).toHaveAttribute('aria-current', 'page');
-  expect((await bootstrapState(page)).threads).toHaveLength(1);
-  // The composer names the concrete model, and so does the statusline before anything is sent.
-  await expect(draft.locator('.hc-chip--model')).toContainText('Fable 5.1');
+  expect((await bootstrapState(page)).threads).toHaveLength(2);
+  // The composer names the concrete model (new-chat default Opus 5.5 · High), and so does the statusline.
+  await expect(draft.locator('.hc-chip--model')).toContainText('Opus 5.5');
+  await expect(draft.locator('.hc-chip--model')).toContainText('High');
   await expect(draft.locator('.hc-chip--model')).not.toContainText('Default');
-  await expect(page.getByTestId('statusline').locator('.hc-statusline__model')).toHaveText('Fable 5.1');
-  await expect(draft.locator('.hc-draft__hint')).toHaveText('');
+  await expect(page.getByTestId('statusline').locator('.hc-statusline__model')).toHaveText('Opus 5.5');
+  await expect(draft.getByRole('alert')).toHaveCount(0);
   const send = page.locator('.hc-send');
   await expect(send).toBeDisabled();
   await screenshot(page, 'v2-draft-empty', SHOTS);
@@ -205,7 +221,7 @@ test('sidebar 검색 opens the palette and finds threads by title', async () => 
   const { page } = run;
   await startThread(page, sandbox, '[text] 두 번째 스레드: 결제 모듈 리팩터링');
   const sidebar = page.getByTestId('sidebar');
-  const rows = sidebar.locator('.hc-thread');
+  const rows = sidebar.locator('.hc-project .hc-thread');
   await expect(rows).toHaveCount(3);
 
   await sidebar.getByRole('button', { name: /^검색/ }).click();

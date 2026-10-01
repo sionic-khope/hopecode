@@ -74,9 +74,10 @@ function setup(store: Store, ptyManager: PtyManager) {
     appVersion: '0.0.0-test',
     isTrustedSender: () => true,
     testMode: true,
-    // registerIpc unconditionally subscribes these two on every call.
+    // registerIpc unconditionally subscribes these on every call.
     accountPool: { onChange: () => () => {} },
     usagePoller: { onUpdate: () => () => {} },
+    localAuth: { onChange: () => () => {} },
   } as unknown as RegisterIpcServices;
   const ipcMain = createFakeIpcMain();
   registerIpc(ipcMain, services);

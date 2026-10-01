@@ -1,16 +1,19 @@
 // AppSettings validation shared by the store migration (whatever state.json holds) and `settings:update`
 // (renderer input). Pure: no fs, no Electron.
 import {
+  CODEX_EFFORT_LEVELS,
+  CODEX_MODEL_PATTERN,
   DEFAULT_NEW_TASK_TEMPLATE,
   DEFAULT_SETTINGS,
   EFFORT_LEVELS,
   IDLE_CLOSE_MAX_MINUTES,
   NEW_TASK_TEMPLATE_MAX_CHARS,
+  SETTINGS_REV,
   UI_PERMISSION_MODES,
   USAGE_POLL_MAX_SEC,
   USAGE_POLL_MIN_SEC,
 } from '../shared/constants';
-import type { AppSettings, EditorId, EffortLevel, SettingsPatch, UiPermissionMode } from '../shared/types';
+import type { AppSettings, CodexEffortLevel, EditorId, EffortLevel, SettingsPatch, UiPermissionMode } from '../shared/types';
 
 export const EDITOR_IDS: readonly EditorId[] = ['vscode', 'cursor', 'zed', 'xcode', 'finder', 'terminal', 'iterm', 'ghostty'];
 
@@ -25,6 +28,10 @@ function isDefaultMode(v: unknown): v is UiPermissionMode {
 
 function isEffort(v: unknown): v is EffortLevel {
   return typeof v === 'string' && (EFFORT_LEVELS as readonly string[]).includes(v);
+}
+
+function isCodexEffort(v: unknown): v is CodexEffortLevel {
+  return typeof v === 'string' && (CODEX_EFFORT_LEVELS as readonly string[]).includes(v);
 }
 
 function isModelValue(v: unknown): v is string {
@@ -87,6 +94,16 @@ export function validateSettingsPatch(raw: unknown): SettingsPatchResult {
         // Blank is not a valid template: it silently falls back to the default instead of being rejected.
         patch.newTaskTemplate = value.trim().length === 0 ? DEFAULT_NEW_TASK_TEMPLATE : value;
         break;
+      case 'codexDefaultModel':
+        if (typeof value !== 'string' || !CODEX_MODEL_PATTERN.test(value)) {
+          return { ok: false, error: 'codexDefaultModel must be a model id (letters, digits, . _ -)' };
+        }
+        patch.codexDefaultModel = value;
+        break;
+      case 'codexDefaultEffort':
+        if (!isCodexEffort(value)) return { ok: false, error: 'codexDefaultEffort must be a Codex effort level' };
+        patch.codexDefaultEffort = value;
+        break;
       default:
         return { ok: false, error: `unknown setting: ${key}` };
     }
@@ -100,13 +117,26 @@ export function sanitizeSettings(raw: unknown): AppSettings {
   const out: AppSettings = { ...DEFAULT_SETTINGS };
   for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof AppSettings)[]) {
     if (!(key in input)) continue;
-    if (key === 'tosNoticeAcknowledged') {
-      out.tosNoticeAcknowledged = input.tosNoticeAcknowledged === true;
+    if (key === 'tosNoticeAcknowledged' || key === 'localClaudeInPool') {
+      if (typeof input[key] === 'boolean') out[key] = input[key];
       continue;
     }
+    if (key === 'settingsRev') continue;
     const checked = validateSettingsPatch({ [key]: input[key] });
     if (checked.ok) Object.assign(out, checked.patch);
   }
+  const rev = isInt(input.settingsRev) ? input.settingsRev : 0;
+  if (rev < 2) {
+    // Rev 1 files: a missing defaultEffort meant "model default" (null), not the new default.
+    if (!('defaultEffort' in input)) out.defaultEffort = null;
+    const oldModel = 'defaultModel' in input ? out.defaultModel : 'default';
+    // Untouched old defaults (Default / model effort) become the new ones; anything the user picked is kept.
+    if (oldModel === 'default' && out.defaultEffort === null) {
+      out.defaultModel = DEFAULT_SETTINGS.defaultModel;
+      out.defaultEffort = DEFAULT_SETTINGS.defaultEffort;
+    }
+  }
+  out.settingsRev = SETTINGS_REV;
   // Older builds could store a bypass default; a new chat never starts in it.
   if (input.defaultPermissionMode === 'bypassPermissions') out.defaultPermissionMode = 'default';
   // idleCloseMinutes saved as a non-integer (older builds did not validate): round into range.

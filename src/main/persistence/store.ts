@@ -5,10 +5,10 @@
 import { randomUUID } from 'node:crypto';
 import { copyFile, open, readFile, rename, rm } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { DEFAULT_SETTINGS, EFFORT_LEVELS } from '../../shared/constants';
+import { CODEX_EFFORT_LEVELS, DEFAULT_SETTINGS, EFFORT_LEVELS } from '../../shared/constants';
 import { isAgentKind } from '../../shared/agents';
 import { sanitizeSettings } from '../../core/settings';
-import type { EffortLevel, PersistedState, Thread } from '../../shared/types';
+import type { PersistedState, Thread } from '../../shared/types';
 import type { Store, Unsubscribe } from '../contracts';
 import { PRIVATE_FILE_MODE, mkdirPrivate } from './jsonl';
 
@@ -22,12 +22,28 @@ function defaultState(): PersistedState {
   return { version: 1, projects: [], threads: [], accounts: [], settings: { ...DEFAULT_SETTINGS } };
 }
 
-/** Fields added after the first release (pinned / archived / effort / agent) get their defaults. */
+/**
+ * Fields added after the first release (pinned / archived / effort / agent / acp) get their defaults. `projectId`
+ * null is a chat without a project; `acp` (ACP session state, no secrets) passes through when it is an object.
+ */
 function migrateThread(raw: Thread): Thread {
   const t = raw as Partial<Thread> & Thread;
-  const effort = (EFFORT_LEVELS as readonly unknown[]).includes(t.effort) ? (t.effort as EffortLevel) : null;
   const agent = isAgentKind(t.agent) ? t.agent : 'claude-code';
-  return { ...t, agent, pinned: t.pinned === true, archived: t.archived === true, effort };
+  // Codex keeps its own set (`ultra`); every other agent takes Claude's.
+  const levels: readonly unknown[] = agent === 'codex' ? CODEX_EFFORT_LEVELS : EFFORT_LEVELS;
+  const effort = levels.includes(t.effort) ? (t.effort as Thread['effort']) : null;
+  const projectId = typeof t.projectId === 'string' ? t.projectId : null;
+  const { acp, ...rest } = t;
+  const keepAcp = typeof acp === 'object' && acp !== null && !Array.isArray(acp);
+  return {
+    ...rest,
+    projectId,
+    agent,
+    pinned: t.pinned === true,
+    archived: t.archived === true,
+    effort,
+    ...(keepAcp ? { acp } : {}),
+  };
 }
 
 /** Best-effort migration: unknown/missing fields fall back to defaults rather than throwing. */

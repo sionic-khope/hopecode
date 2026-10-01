@@ -2,6 +2,9 @@
 import type {
   Account,
   AccountPatch,
+  AcpControls,
+  AgentKind,
+  AgentUsageSnapshot,
   AppInfo,
   AppSettings,
   BootstrapPayload,
@@ -11,12 +14,14 @@ import type {
   GitChanges,
   GitFileDiff,
   GitRemoteInfo,
+  LocalAuthInfo,
   SettingsPatch,
   SharedConfigStatus,
   ChatEvent,
   ChatImage,
   ChatItem,
   ChatSendResult,
+  CodexEffortLevel,
   EffortLevel,
   ModelOption,
   PermissionDecision,
@@ -68,7 +73,7 @@ export interface InvokeMap {
   /** Archived threads are hidden from the project lists; nothing is deleted. */
   'thread:setArchived': { req: { threadId: string; archived: boolean }; res: void };
   /** `null` = the model's default effort. Applied to the live Query (applyFlagSettings) and every later one. */
-  'thread:setEffort': { req: { threadId: string; effort: EffortLevel | null }; res: void };
+  'thread:setEffort': { req: { threadId: string; effort: EffortLevel | CodexEffortLevel | null }; res: void };
   /**
    * `removeWorktree` with a dirty worktree and no `force` deletes nothing and returns `worktree-dirty`;
    * the renderer confirms with the user and re-sends with `force: true`.
@@ -81,6 +86,10 @@ export interface InvokeMap {
   /** `bypassPermissions` needs a native confirm in main; the applied mode always arrives via `thread:updated`. */
   'thread:setPermissionMode': { req: { threadId: string; mode: UiPermissionMode }; res: void };
   'thread:pinAccount': { req: { threadId: string; accountId: string | null }; res: void };
+  /** ACP threads (Hermes mode chip): a mode id the session reported. Full-access-like modes need a native confirm. */
+  'thread:setAgentMode': { req: { threadId: string; modeId: string }; res: void };
+  /** ACP threads: `session/set_config_option` (Codex model / effort chips). */
+  'thread:setAgentConfig': { req: { threadId: string; configId: string; value: string | boolean }; res: void };
   'chat:history': { req: { threadId: string }; res: ChatItem[] };
   /** `images`: composer attachments (image content blocks, at most 8, 5 MB each). */
   'chat:send': { req: { threadId: string; text: string; images?: ChatImage[] }; res: ChatSendResult };
@@ -111,7 +120,20 @@ export interface InvokeMap {
     req: { accountId: string; deleteConfigDir: boolean };
     res: { ok: true } | { ok: false; error: string };
   };
+  /**
+   * Local Claude login in the account pool: `include: false` takes the `account:remove` path with the config dir
+   * and Keychain always kept; `include: true` re-detects and adds it back.
+   */
+  'account:setLocalDefault': { req: { include: boolean }; res: { ok: true } | { ok: false; error: string } };
   'usage:refresh': { req: { accountId?: string }; res: PoolSnapshot };
+  /** Cached local login detection of every agent (no secrets). */
+  'agents:list': { req: void; res: LocalAuthInfo[] };
+  /** Re-detects one agent (or all); the 재확인 button. Also broadcast as `agents:updated`. */
+  'agents:recheck': { req: { agent?: AgentKind }; res: LocalAuthInfo[] };
+  /** Fetches the agent's account usage now (null = unavailable). */
+  'agentUsage:refresh': { req: { agent: AgentKind }; res: AgentUsageSnapshot | null };
+  /** Agent of the selected thread (null = none): its usage is polled every 5 minutes while selected. */
+  'agentUsage:setActive': { req: { agent: AgentKind | null }; res: void };
   'usage:history': { req: { accountId: string; rangeMs: number }; res: UsageSample[] };
   /** `projectId` is only consulted for the draft session (`threadId: 'draft'`): its project's folder becomes
    *  the shell's cwd, falling back to the user's home folder when omitted or unknown. Ignored for a real thread
@@ -202,6 +224,12 @@ export interface EventMap {
   'ui:toggleChanges': void;
   /** Menu File > New Task Start (⌘⇧N). */
   'ui:newTaskStart': void;
+  /** Local agent login detection changed. */
+  'agents:updated': LocalAuthInfo[];
+  /** An ACP thread's session modes / config options changed. */
+  'agent:controls': { threadId: string; controls: AcpControls };
+  /** An agent's account usage changed (null = unavailable, hide the meters). */
+  'agentUsage:updated': { agent: AgentKind; snapshot: AgentUsageSnapshot | null };
 }
 
 export type InvokeChannel = keyof InvokeMap;
@@ -235,6 +263,8 @@ export const INVOKE_CHANNELS = [
   'thread:setModel',
   'thread:setPermissionMode',
   'thread:pinAccount',
+  'thread:setAgentMode',
+  'thread:setAgentConfig',
   'chat:history',
   'chat:send',
   'image:read',
@@ -250,8 +280,13 @@ export const INVOKE_CHANNELS = [
   'account:update',
   'account:reorder',
   'account:remove',
+  'account:setLocalDefault',
   'usage:refresh',
   'usage:history',
+  'agents:list',
+  'agents:recheck',
+  'agentUsage:refresh',
+  'agentUsage:setActive',
   'pty:open',
   'pty:restart',
   'pty:write',
@@ -297,6 +332,9 @@ export const EVENT_CHANNELS = [
   'ui:commandPalette',
   'ui:toggleChanges',
   'ui:newTaskStart',
+  'agents:updated',
+  'agent:controls',
+  'agentUsage:updated',
 ] as const satisfies readonly EventChannel[];
 
 type Missing<All, Listed> = Exclude<All, Listed>;

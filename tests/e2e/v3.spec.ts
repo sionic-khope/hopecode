@@ -143,7 +143,8 @@ test('settings: changes persist in main and apply to the next new chat (worktree
   await expect(settings.getByRole('region', { name: '공유 설정' })).toContainText('CLAUDE.md');
   await screenshot(page, 'v3-settings', SHOTS);
 
-  await settings.getByRole('radiogroup', { name: '기본 effort' }).getByRole('radio', { name: 'High', exact: true }).click();
+  // New chats default to High already (Opus 5.5 · High): pick Medium so the change is observable.
+  await settings.getByRole('radiogroup', { name: '기본 effort', exact: true }).getByRole('radio', { name: 'Medium', exact: true }).click();
   await settings.getByRole('switch', { name: '새 스레드마다 worktree 만들기' }).click();
   await settings.getByRole('switch', { name: '한도 도달 시 자동 전환' }).click();
   const range = settings.getByRole('slider', { name: '사용량 조회 간격 (초)' });
@@ -156,7 +157,7 @@ test('settings: changes persist in main and apply to the next new chat (worktree
       const s = (await page.evaluate(() => window.hopecode.invoke('app:bootstrap'))) as { settings: Record<string, unknown> };
       return s.settings;
     })
-    .toMatchObject({ defaultEffort: 'high', useWorktree: false, autoSwitchAccounts: false, usagePollIntervalSec: 120 });
+    .toMatchObject({ defaultEffort: 'medium', useWorktree: false, autoSwitchAccounts: false, usagePollIntervalSec: 120 });
   // Persisted to state.json (debounced save).
   await expect
     .poll(() => {
@@ -170,7 +171,7 @@ test('settings: changes persist in main and apply to the next new chat (worktree
 
   // The next new chat starts with the defaults, and main creates it in the project folder itself.
   await openDraft(page);
-  await expect(page.getByTestId('draft').locator('.hc-chip--model')).toContainText('High');
+  await expect(page.getByTestId('draft').locator('.hc-chip--model')).toContainText('Medium');
   await chooseFixtureFolder(page, sandbox);
   await sendMessage(page, '[text] worktree 없이 작업');
   await expect(page.locator('.hc-messages')).toContainText('Streaming reply from the fixture session.');
@@ -178,7 +179,7 @@ test('settings: changes persist in main and apply to the next new chat (worktree
   const direct = threads.find((t) => t.title === '[text] worktree 없이 작업');
   expect(direct?.cwd).toBe(sandbox.project);
   expect(direct?.worktree).toBeUndefined();
-  expect(direct?.effort).toBe('high');
+  expect(direct?.effort).toBe('medium');
   expect((direct as unknown as { agent: string }).agent).toBe('claude-code');
   // The agent is saved with the thread.
   await expect
@@ -198,8 +199,8 @@ test('settings: changes persist in main and apply to the next new chat (worktree
   await page.getByTestId('settings').getByRole('switch', { name: '한도 도달 시 자동 전환' }).click();
   await page
     .getByTestId('settings')
-    .getByRole('radiogroup', { name: '기본 effort' })
-    .getByRole('radio', { name: '자동' })
+    .getByRole('radiogroup', { name: '기본 effort', exact: true })
+    .getByRole('radio', { name: 'High', exact: true })
     .click();
   await expect
     .poll(async () => ((await page.evaluate(() => window.hopecode.invoke('app:bootstrap'))) as { settings: { useWorktree: boolean } }).settings.useWorktree)
@@ -365,12 +366,13 @@ test('user message: 편집해서 다시 보내기 puts the text back in the comp
   await expect(page.getByTestId('sidebar').locator('.hc-thread__title').filter({ hasText: '인사말 작업' })).toHaveCount(1);
 });
 
-test('model menu names the current lineup (Fable 5.1)', async () => {
+test('model menu names the current lineup; new chats default to Opus 5.5', async () => {
   const { page } = run;
   await openDraft(page);
   const model = page.getByTestId('draft').locator('.hc-chip--model');
-  await expect(model).toContainText('Fable 5.1');
-  await expect(page.getByTestId('statusline').locator('.hc-statusline__model')).toHaveText('Fable 5.1');
+  await expect(model).toContainText('Opus 5.5');
+  await expect(model).toContainText('High');
+  await expect(page.getByTestId('statusline').locator('.hc-statusline__model')).toHaveText('Opus 5.5');
   await model.click();
   const menu = page.getByRole('menu', { name: '모델' });
   await expect(menu.getByRole('group', { name: '모델' }).locator('.hc-mnu__label')).toHaveText([

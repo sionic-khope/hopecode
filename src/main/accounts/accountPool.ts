@@ -4,10 +4,13 @@
 import { randomUUID } from 'node:crypto';
 import { chmod, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { ACCOUNT_COLORS, LOCAL_CLAUDE_ACCOUNT_ALIAS } from '../../shared/constants';
 import type { Account, AccountPatch } from '../../shared/types';
-import type { AccountPool, Broadcaster, ConfigDirLinks, Credentials, Store, Unsubscribe, UsageHistory } from '../contracts';
+import type { Broadcaster, ConfigDirLinks, Credentials, Store, Unsubscribe, UsageHistory } from '../contracts';
 import { removeConfigDir as defaultRemoveConfigDir } from './configDirLinks';
 import { assertInside } from '../containment';
+import { localClaudeDir as defaultLocalClaudeDir } from '../paths';
+import { assertNotLocalClaudeDir, isLocalDefault, type LocalDefaultAccountPool } from './localDefault';
 import type { LoginResult, LoginSession } from './loginFlow';
 
 export type StartLoginFn = (input: {
@@ -29,6 +32,8 @@ export interface AccountPoolDeps {
   /** Called after a successful login (usagePoller.refresh(accountId)). */
   onAccountAdded?: (account: Account) => void;
   removeConfigDir?: (configDir: string) => Promise<void>;
+  /** paths.localClaudeDir(): configDir of the local-default account and the deletion guard's protected path. */
+  localClaudeDir?: () => string;
   newId?: () => string;
   now?: () => number;
 }
@@ -43,10 +48,11 @@ interface ActiveLogin {
   completion?: Promise<void>;
 }
 
-export function createAccountPool(deps: AccountPoolDeps): AccountPool {
+export function createAccountPool(deps: AccountPoolDeps): LocalDefaultAccountPool {
   const newId = deps.newId ?? randomUUID;
   const now = deps.now ?? Date.now;
   const removeDir = deps.removeConfigDir ?? defaultRemoveConfigDir;
+  const localDir = deps.localClaudeDir ?? defaultLocalClaudeDir;
   const listeners = new Set<(accounts: Account[]) => void>();
   const logins = new Map<string, ActiveLogin>();
 
@@ -60,6 +66,7 @@ export function createAccountPool(deps: AccountPoolDeps): AccountPool {
 
   /** Recursive delete of an account config dir, only below accountsDir (L5). */
   async function removeAccountDir(configDir: string): Promise<void> {
+    assertNotLocalClaudeDir(configDir, localDir());
     assertInside(deps.accountsDir(), configDir, 'account config dir');
     await removeDir(configDir);
   }
@@ -189,7 +196,12 @@ export function createAccountPool(deps: AccountPoolDeps): AccountPool {
     async remove(accountId, deleteConfigDir) {
       const account = deps.store.get().accounts.find((a) => a.id === accountId);
       if (!account) return;
-      if (deleteConfigDir) assertInside(deps.accountsDir(), account.configDir, 'account config dir');
+      // The local account only leaves the pool: ~/.claude and the base Keychain item are never deleted.
+      if (isLocalDefault(account)) deleteConfigDir = false;
+      if (deleteConfigDir) {
+        assertNotLocalClaudeDir(account.configDir, localDir());
+        assertInside(deps.accountsDir(), account.configDir, 'account config dir');
+      }
       deps.store.update((draft) => {
         draft.accounts = draft.accounts.filter((a) => a.id !== accountId);
       });
@@ -200,6 +212,31 @@ export function createAccountPool(deps: AccountPoolDeps): AccountPool {
       }
       await deps.usageHistory?.remove(accountId).catch(() => {});
       changed();
+    },
+
+    addLocalDefault({ email, plan }) {
+      const existing = deps.store.get().accounts.find(isLocalDefault);
+      if (existing) return { ...existing };
+      const accounts = deps.store.get().accounts;
+      const used = new Set(accounts.map((a) => a.color));
+      const account: Account = {
+        id: newId(),
+        alias: LOCAL_CLAUDE_ACCOUNT_ALIAS,
+        color: ACCOUNT_COLORS.find((c) => !used.has(c)) ?? ACCOUNT_COLORS[0]!,
+        email,
+        plan,
+        configDir: localDir(),
+        priority: accounts.reduce((m, a) => Math.max(m, a.priority), -1) + 1,
+        enabled: true,
+        createdAt: now(),
+        source: 'local-default',
+      };
+      deps.store.update((draft) => {
+        draft.accounts.push(account);
+      });
+      changed();
+      deps.onAccountAdded?.(account);
+      return { ...account };
     },
 
     onChange(cb): Unsubscribe {

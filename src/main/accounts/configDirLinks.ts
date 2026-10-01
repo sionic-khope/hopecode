@@ -6,6 +6,8 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { SHARED_CONFIG_ENTRIES } from '../../shared/constants';
 import type { ConfigDirLinks } from '../contracts';
+import { localClaudeDir } from '../paths';
+import { assertNotLocalClaudeDir } from './localDefault';
 import type { SharedConfigEntry, SharedConfigStatus, SharedEntryState } from '../../shared/types';
 
 export function defaultClaudeDir(): string {
@@ -66,9 +68,11 @@ export async function verifyLinks(configDir: string): Promise<{ broken: string[]
 
 /**
  * Delete an account config dir without touching shared originals: every top-level symlink is unlinked
- * first (lstat, never followed), then the remaining real files are removed.
+ * first (lstat, never followed), then the remaining real files are removed. Refuses the local Claude dir
+ * (paths.localClaudeDir()) and its ancestors (plan 2.9.5).
  */
-export async function removeConfigDir(configDir: string): Promise<void> {
+export async function removeConfigDir(configDir: string, localDir: string = localClaudeDir()): Promise<void> {
+  assertNotLocalClaudeDir(configDir, localDir);
   const st = await lstatOrNull(configDir);
   if (!st) return;
   if (st.isSymbolicLink()) {

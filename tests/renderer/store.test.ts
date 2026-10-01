@@ -88,6 +88,8 @@ describe('bootstrap', () => {
       homeDir: '/Users/me',
       pendingPermissions: [],
       testMode: false,
+      localAuth: [],
+      agentUsage: {},
     });
 
     const s = useAppStore.getState();
@@ -134,6 +136,8 @@ describe('bootstrap', () => {
       homeDir: '/Users/me',
       pendingPermissions: [],
       testMode: false,
+      localAuth: [],
+      agentUsage: {},
     });
     expect(useAppStore.getState().selectedThreadId).toBe('t2');
   });
@@ -397,6 +401,8 @@ describe('review fixes', () => {
       homeDir: '/Users/me',
       pendingPermissions: [req],
       testMode: false,
+      localAuth: [],
+      agentUsage: {},
     });
     expect(selectors.selectPendingPermissions(useAppStore.getState(), 't1')).toEqual([req]);
   });
@@ -539,6 +545,8 @@ describe('draft / new chat', () => {
       homeDir: '/Users/me',
       pendingPermissions: [],
       testMode: false,
+      localAuth: [],
+      agentUsage: {},
     });
     useAppStore.getState().setDraft({ model: 'sonnet', effort: 'high', permissionMode: 'plan' });
     const thread = makeThread({ id: 'new', title: 'hello' });
@@ -558,16 +566,26 @@ describe('draft / new chat', () => {
     expect(useAppStore.getState().threads.map((t) => t.id)).toEqual(['new']);
   });
 
-  it('startThread refused by main leaves the draft open; without a folder it never calls main', async () => {
+  it('startThread refused by main leaves the draft open', async () => {
     useAppStore.setState({ draft: { ...useAppStore.getState().draft, projectId: 'p1' } });
     invoke.mockResolvedValueOnce({ ok: false, reason: 'no-accounts' });
     expect(await useAppStore.getState().startThread('hi')).toEqual({ ok: false, reason: 'no-accounts' });
     expect(useAppStore.getState().selectedThreadId).toBeNull();
+  });
 
-    invoke.mockReset();
-    useAppStore.setState({ draft: { ...useAppStore.getState().draft, projectId: null } });
-    await expect(useAppStore.getState().startThread('hi')).rejects.toThrow(/folder/);
-    expect(invoke).not.toHaveBeenCalled();
+  it('startThread without a folder starts a chat without a project (projectId left out)', async () => {
+    useAppStore.setState({
+      draft: { ...useAppStore.getState().draft, projectId: null, agent: 'codex', model: 'gpt-6-sol', effort: 'high' },
+    });
+    const thread = makeThread({ id: 'scratch', title: 'hi', projectId: null, agent: 'codex' });
+    invoke.mockResolvedValueOnce({ ok: true, thread, send: { accepted: true } });
+    const result = await useAppStore.getState().startThread('hi');
+    const req = invoke.mock.calls.at(-1)?.[1] as Record<string, unknown>;
+    expect(invoke.mock.calls.at(-1)?.[0]).toBe('thread:start');
+    expect('projectId' in req).toBe(false);
+    expect(req).toMatchObject({ agent: 'codex', model: 'gpt-6-sol', effort: 'high', text: 'hi' });
+    expect(result.ok).toBe(true);
+    expect(useAppStore.getState().selectedThreadId).toBe('scratch');
   });
 
   it('pin / archive / effort invoke main and patch locally; archiving unpins', async () => {

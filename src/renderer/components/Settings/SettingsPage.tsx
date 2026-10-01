@@ -13,6 +13,7 @@ import type {
   AppSettings,
   EditorId,
   EditorInfo,
+  CodexEffortLevel,
   EffortLevel,
   ModelOption,
   SettingsPatch,
@@ -20,11 +21,16 @@ import type {
   SharedEntryState,
   UiPermissionMode,
 } from '../../../shared/types';
-import { modelMenuLabel } from '../../../core/modelDisplay';
+import { isModelSelected, modelMenuLabel } from '../../../core/modelDisplay';
 import { tildePath } from '../../../core/format';
+import { AGENTS } from '../../../shared/agents';
+import type { AgentKind } from '../../../shared/types';
+import { useAppStore } from '../../store';
+import { AgentIcon } from '../Agent/AgentIcon';
 import { Button, Menu, Modal, Segmented, Switch, type MenuSection } from '../common';
 import { GlyphChevronDown, GlyphFolderOpen, GlyphRefresh } from '../common/glyphs';
 import { EFFORT_LABEL, PERMISSION_MODE_LABEL } from '../Chat/ComposerControls';
+import { SYSTEM_DEFAULT_LABEL, codexEffortChoices, codexModelChoices } from '../Chat/acpChips';
 import './Settings.css';
 
 export interface SettingsPageProps {
@@ -136,6 +142,10 @@ export function SettingsPage({
   };
 
   const modelOptions = models.length > 0 ? models : [{ value: 'default', label: 'Default' }];
+  const threads = useAppStore((s) => s.threads);
+  const codexModels = useMemo(() => codexModelChoices(threads, settings.codexDefaultModel), [threads, settings.codexDefaultModel]);
+  const effortLabel = (e: EffortLevel | CodexEffortLevel) => (e === 'xhigh' ? 'XHigh' : EFFORT_LABEL[e]);
+  const codexEfforts = useMemo(() => codexEffortChoices(threads), [threads]);
 
   return (
     <div className="hc-settings" data-testid="settings">
@@ -156,24 +166,59 @@ export function SettingsPage({
         </div>
       ) : null}
 
-      <Section title="일반" description="새 채팅을 시작할 때 쓰는 값입니다. 이미 시작된 채팅은 바뀌지 않습니다.">
-        <Row label="기본 모델" hint={`기본은 지금 ${defaultModelLabel}로 실행됩니다`}>
+      <Section
+        title="새 채팅 기본 모델"
+        description="새 채팅에서 에이전트를 고르면 그 에이전트의 값으로 시작합니다. 에이전트마다 따로 저장됩니다."
+      >
+        <AgentGroup agent="claude-code" />
+        <Row label="모델" hint={`기본은 지금 ${defaultModelLabel}로 실행됩니다`}>
           <SelectMenu
             label="기본 모델"
             value={settings.defaultModel}
             options={modelOptions.map((m) => ({ value: m.value, label: modelMenuLabel(m.value, modelOptions, defaultModelLabel) }))}
+            isChecked={(value) => {
+              const option = modelOptions.find((m) => m.value === value);
+              return option ? isModelSelected(settings.defaultModel, option, modelOptions) : false;
+            }}
             onChange={(defaultModel) => save({ defaultModel })}
           />
         </Row>
-        <Row label="기본 effort" hint="모델의 추론 깊이">
+        <Row label="effort" hint="모델의 추론 깊이">
           <Segmented<'auto' | EffortLevel>
             aria-label="기본 effort"
             size="sm"
             value={settings.defaultEffort ?? 'auto'}
-            options={[{ value: 'auto', label: '자동' }, ...EFFORT_LEVELS.map((e) => ({ value: e, label: e === 'xhigh' ? 'XHigh' : EFFORT_LABEL[e] }))]}
+            options={[{ value: 'auto', label: '자동' }, ...EFFORT_LEVELS.map((e) => ({ value: e, label: effortLabel(e) }))]}
             onChange={(v) => save({ defaultEffort: v === 'auto' ? null : v })}
           />
         </Row>
+        <AgentGroup agent="codex" />
+        <Row label="모델" hint="Codex가 알려 준 모델 목록 (세션을 연 적이 없으면 기본 목록)">
+          <SelectMenu
+            label="Codex 기본 모델"
+            value={settings.codexDefaultModel}
+            options={codexModels.map((m) => ({ value: m.value, label: m.label }))}
+            onChange={(codexDefaultModel) => save({ codexDefaultModel })}
+          />
+        </Row>
+        <Row label="reasoning effort" hint="~/.codex/config.toml은 바꾸지 않고 이 앱의 세션에만 적용합니다">
+          <Segmented<CodexEffortLevel>
+            aria-label="Codex 기본 effort"
+            size="sm"
+            value={settings.codexDefaultEffort}
+            options={codexEfforts.map((e) => ({ value: e.value, label: effortLabel(e.value) }))}
+            onChange={(codexDefaultEffort) => save({ codexDefaultEffort })}
+          />
+        </Row>
+        <AgentGroup agent="hermes" />
+        <Row label="모델 · effort" hint="Hermes 자신의 설정을 그대로 씁니다. 바꾸려면 Hermes에서 설정하세요">
+          <span className="hc-settings__fixed" data-testid="hermes-default">
+            {SYSTEM_DEFAULT_LABEL}
+          </span>
+        </Row>
+      </Section>
+
+      <Section title="일반" description="새 채팅을 시작할 때 쓰는 값입니다. 이미 시작된 채팅은 바뀌지 않습니다.">
         <Row label="기본 권한 모드" hint="전체 액세스는 채팅마다 확인을 거쳐 켭니다">
           <Segmented
             aria-label="기본 권한 모드"
@@ -383,6 +428,16 @@ export function SettingsPage({
   );
 }
 
+/** Agent sub-header inside a settings card (logo + name). */
+function AgentGroup({ agent }: { agent: AgentKind }) {
+  return (
+    <div className="hc-settings__group" role="heading" aria-level={3}>
+      <AgentIcon kind={agent} size={15} />
+      <span>{AGENTS[agent].name}</span>
+    </div>
+  );
+}
+
 function Section({ title, description, action, children }: { title: string; description?: string; action?: ReactNode; children: ReactNode }) {
   return (
     <section className="hc-settings__section" aria-label={title}>
@@ -429,20 +484,24 @@ function SelectMenu<T extends string>({
   value,
   options,
   onChange,
+  isChecked,
 }: {
   label: string;
   value: T;
   options: { value: T; label: string }[];
   onChange: (value: T) => void;
+  /** Which row stands for `value` (default: exact match); e.g. a stored full model id checks its alias row. */
+  isChecked?: (optionValue: T) => boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLButtonElement>(null);
-  const current = useMemo(() => options.find((o) => o.value === value), [options, value]);
+  const checked = (o: { value: T }) => (isChecked ? isChecked(o.value) : o.value === value);
+  const current = options.find((o) => o.value === value) ?? options.find(checked);
   const sections: MenuSection[] = [
     {
       key: 'options',
       kind: 'radio',
-      items: options.map((o) => ({ key: o.value, label: o.label, checked: o.value === value, onSelect: () => onChange(o.value) })),
+      items: options.map((o) => ({ key: o.value, label: o.label, checked: checked(o), onSelect: () => onChange(o.value) })),
     },
   ];
   return (

@@ -23,6 +23,20 @@ describe('isInvokeChannel / isEventChannel', () => {
     for (const ch of EVENT_CHANNELS) expect(isEventChannel(ch)).toBe(true);
   });
 
+  it('lists the multi-agent channels (local auth, ACP controls, agent usage, local Claude account)', () => {
+    for (const ch of [
+      'agents:list',
+      'agents:recheck',
+      'thread:setAgentMode',
+      'thread:setAgentConfig',
+      'account:setLocalDefault',
+      'agentUsage:refresh',
+    ]) {
+      expect(isInvokeChannel(ch)).toBe(true);
+    }
+    for (const ch of ['agents:updated', 'agent:controls', 'agentUsage:updated']) expect(isEventChannel(ch)).toBe(true);
+  });
+
   it('rejects channels outside the allowlist', () => {
     expect(isInvokeChannel('evil:channel')).toBe(false);
     expect(isInvokeChannel('thread:updated')).toBe(false); // event channel, not invoke
@@ -181,6 +195,8 @@ function makeFakeServices(overrides: Partial<RegisterIpcServices> = {}): { servi
       async setModel() {},
       async setPermissionMode() {},
       async setEffort() {},
+      async setAgentMode() {},
+      async setAgentConfig() {},
       respondPermission() {},
       async listModels() {
         return [];
@@ -213,9 +229,44 @@ function makeFakeServices(overrides: Partial<RegisterIpcServices> = {}): { servi
       },
       reorder() {},
       async remove() {},
+      addLocalDefault(input) {
+        return makeAccount({ ...input, source: 'local-default' });
+      },
       onChange() {
         return () => {};
       },
+    },
+    // Never the real ~/.hopecode/scratch.
+    scratch: {
+      create: (threadId) => `/scratch/${threadId}`,
+      remove: () => true,
+      gitCeiling: () => '/scratch',
+    },
+    localAuth: {
+      list() {
+        return [];
+      },
+      async recheck() {
+        return [];
+      },
+      availability(agent) {
+        return { agent, usable: true, reason: 'ok' };
+      },
+      onChange() {
+        return () => {};
+      },
+    },
+    agentUsage: {
+      get() {
+        return null;
+      },
+      async refresh() {
+        return null;
+      },
+      onUpdate() {
+        return () => {};
+      },
+      setActive() {},
     },
     usagePoller: {
       start() {},
@@ -373,6 +424,7 @@ describe('registerIpc allowlist', () => {
         update: (_id, p) => makeAccount(p),
         reorder: () => {},
         remove: async () => {},
+        addLocalDefault: (input) => makeAccount({ ...input, source: 'local-default' }),
         onChange: () => () => {
           accountUnsubbed = true;
         },
@@ -482,6 +534,7 @@ describe('registerIpc handler validation and orchestration', () => {
         update: (_id, p) => makeAccount(p),
         reorder: () => {},
         remove: async () => {},
+        addLocalDefault: (input) => makeAccount({ ...input, source: 'local-default' }),
         onChange: (cb) => {
           accountCb = cb;
           return () => {};
@@ -872,7 +925,7 @@ describe('thread:start', () => {
     const { ipcMain, created, sent } = setup();
     const bad: unknown[] = [
       undefined,
-      { text: 'x' },
+      { projectId: 42, text: 'x' },
       { projectId: 'p1' },
       { projectId: 'p1', text: '   ' },
       { projectId: 'p1', text: 'x', permissionMode: 'yolo' },
@@ -880,8 +933,8 @@ describe('thread:start', () => {
       { projectId: 'p1', text: 'x', model: 42 },
       { projectId: 'p1', text: 'x', pinnedAccountId: 'ghost' },
       { projectId: 'nope', text: 'x' },
-      // A raw folder path is not accepted: folders only enter through project:add (dialog + trust question).
-      { projectPath: '/etc', text: 'x' },
+      // A base branch needs a project (a chat without a project has no repository).
+      { text: 'x', baseBranch: 'main' },
     ];
     for (const req of bad) {
       await expect(ipcMain.invoke('thread:start', req)).rejects.toBeInstanceOf(InvalidIpcRequestError);

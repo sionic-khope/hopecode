@@ -8,6 +8,7 @@ import { selectChatItems, useAppStore } from '../../store';
 import { Popover } from '../common';
 import { GlyphBranch, GlyphChanges, GlyphCode, GlyphCommit, GlyphFolderOpen } from '../common/glyphs';
 import { summarizeCounts } from '../Changes/commitMessage';
+import { SCRATCH_NO_GIT_NOTE, isScratchThread } from '../Changes/scratchGit';
 import { PixelSprite } from '../Subagents/PixelSprite';
 import { GlyphBranchPlus, GlyphChevronRight, GlyphFile, GlyphPullRequest } from '../Shell/toolbarGlyphs';
 import { collectSources, collectSubagents, countSubagents, type SourceKind, type SubagentStatus } from './collectEnv';
@@ -51,8 +52,10 @@ export function EnvPopover({ open, onClose, anchorRef, thread, project, homeDir,
   const [showAllSources, setShowAllSources] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  const scratch = isScratchThread(thread);
+
   useEffect(() => {
-    if (!open) return;
+    if (!open || scratch) return;
     let alive = true;
     setChangesError(null);
     invoke('git:changes', { threadId: thread.id })
@@ -61,7 +64,7 @@ export function EnvPopover({ open, onClose, anchorRef, thread, project, homeDir,
     return () => {
       alive = false;
     };
-  }, [open, thread.id, rev, thread.status]);
+  }, [open, scratch, thread.id, rev, thread.status]);
 
   useEffect(() => {
     if (open) return;
@@ -97,6 +100,7 @@ export function EnvPopover({ open, onClose, anchorRef, thread, project, homeDir,
   };
 
   const openSourceInEditor = (path: string) => {
+    if (scratch) return openInFinder();
     if (!fileEditor) return;
     setActionError(null);
     invoke('editor:open', { threadId: thread.id, editor: fileEditor.id, path })
@@ -133,6 +137,7 @@ export function EnvPopover({ open, onClose, anchorRef, thread, project, homeDir,
           <h3 className="hc-env__title" id="hc-env-title">
             환경
           </h3>
+          {scratch ? <p className="hc-env__note">{SCRATCH_NO_GIT_NOTE}</p> : null}
           {changes && !isRepo ? <p className="hc-env__note">git 저장소가 아닙니다</p> : null}
           {changesError ? (
             <p className="hc-env__error" role="alert">
@@ -195,6 +200,15 @@ export function EnvPopover({ open, onClose, anchorRef, thread, project, homeDir,
                 Finder에서 열기
               </button>
             </div>
+          ) : null}
+
+          {scratch ? (
+            <button type="button" className="hc-env__row" onClick={openInFinder} data-testid="env-open-folder">
+              <span className="hc-env__icon">
+                <GlyphFolderOpen />
+              </span>
+              <span className="hc-env__label">폴더 열기</span>
+            </button>
           ) : null}
 
           {thread.worktree && isRepo ? (

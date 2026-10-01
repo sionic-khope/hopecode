@@ -556,3 +556,115 @@
   padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--separator);
 }
+
+/* ---------- Agent sections + "이 Mac에서 감지됨" ---------- */
+.hc-agent-section {
+  max-width: 760px;
+  margin-bottom: var(--space-8);
+}
+.hc-agent-section__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.hc-agent-section__title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-title);
+}
+.hc-agent-section__actions {
+  margin-left: auto;
+}
+.hc-agent-section__note {
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-sm);
+  color: var(--label-secondary);
+}
+.hc-agent-section__note code {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  padding: 1px 5px;
+  border-radius: var(--radius-control);
+  background: var(--bg-control);
+}
+.hc-agent-section__error {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--crit-text);
+}
+
+.hc-local-auth {
+  border-radius: var(--radius-card-lg);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-3);
+}
+.hc-local-auth__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.hc-local-auth__title {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--label-secondary);
+  margin-right: auto;
+}
+.hc-local-auth__kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px var(--space-3);
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+}
+.hc-local-auth__kv dt {
+  color: var(--label-tertiary);
+}
+.hc-local-auth__kv dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.hc-local-auth__kv code {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+.hc-local-auth__detail {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--label-secondary);
+}
+.hc-local-auth__detail--error {
+  color: var(--crit-text);
+}
+
+.hc-local-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  border-radius: var(--radius-card-lg);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-3);
+}
+.hc-local-toggle__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--text-sm);
+}
+.hc-local-toggle__sub {
+  color: var(--label-tertiary);
+  font-size: var(--text-xs);
+}
+.hc-acct-row__local-note {
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--label-tertiary);
+}

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { PermissionDecision, PermissionRequest } from '../../../shared/types';
 import { Button } from '../common';
+import { permissionButtons } from './permissionButtons';
 import './Chat.css';
 
 export interface PermissionCardProps {
@@ -19,17 +20,23 @@ function formatInput(input: Record<string, unknown>): string {
   return JSON.stringify(input, null, 2);
 }
 
-/** Allow / Allow for session / Deny card shown before a tool runs (plan 4.4, permissionBroker). */
+/**
+ * Allow / Allow for session / Deny card shown before a tool runs (plan 4.4, permissionBroker). ACP requests carry the
+ * agent's own options: a button the agent offers nothing for is disabled, and the captions say what the agent will
+ * actually do with the choice.
+ */
 export function PermissionCard({ request, onDecide }: PermissionCardProps) {
   const denyRef = useRef<HTMLButtonElement>(null);
   const allowRef = useRef<HTMLButtonElement>(null);
+  const buttons = permissionButtons(request);
 
   useEffect(() => {
-    if (request.defaultToNo) denyRef.current?.focus();
+    if (request.defaultToNo || !buttons.allow.enabled) denyRef.current?.focus();
     else allowRef.current?.focus();
-  }, [request.defaultToNo]);
+  }, [request.defaultToNo, buttons.allow.enabled]);
 
   const inputPreview = formatInput(request.input);
+  const captions = buttons.allowSession.caption || buttons.deny.caption;
 
   return (
     <div className="hc-permission" role="alertdialog" aria-label={request.title ?? request.toolName}>
@@ -37,10 +44,17 @@ export function PermissionCard({ request, onDecide }: PermissionCardProps) {
       {request.description ? <div className="hc-permission__desc">{request.description}</div> : null}
       {inputPreview ? <pre className="hc-permission__input">{inputPreview}</pre> : null}
       <div className="hc-permission__actions">
-        <Button ref={allowRef} variant="primary" size="sm" onClick={() => onDecide(request.requestId, 'allow')}>
+        <Button
+          ref={allowRef}
+          variant="primary"
+          size="sm"
+          disabled={!buttons.allow.enabled}
+          title={buttons.allow.enabled ? undefined : '이 에이전트는 1회 허용 옵션을 주지 않았습니다'}
+          onClick={() => onDecide(request.requestId, 'allow')}
+        >
           허용
         </Button>
-        {request.hasSessionSuggestion ? (
+        {buttons.allowSession.shown ? (
           <Button variant="secondary" size="sm" onClick={() => onDecide(request.requestId, 'allow-session')}>
             이 세션 동안 허용
           </Button>
@@ -49,6 +63,30 @@ export function PermissionCard({ request, onDecide }: PermissionCardProps) {
           거부
         </Button>
       </div>
+      {captions ? (
+        <ul className="hc-permission__notes">
+          {buttons.allowSession.shown && buttons.allowSession.caption ? (
+            <li
+              className={`hc-permission__note${buttons.allowSession.warn ? ' hc-permission__note--warn' : ''}`}
+              data-testid="permission-session-caption"
+            >
+              <span className="hc-permission__note-key">이 세션 동안 허용</span>
+              {buttons.allowSession.caption}
+            </li>
+          ) : null}
+          {buttons.deny.caption ? (
+            <li className="hc-permission__note hc-permission__note--warn" data-testid="permission-deny-caption">
+              <span className="hc-permission__note-key">거부</span>
+              {buttons.deny.caption}
+            </li>
+          ) : null}
+        </ul>
+      ) : null}
+      {buttons.agentOptionNames.length > 0 ? (
+        <div className="hc-permission__agent-options" data-testid="permission-agent-options">
+          에이전트 선택지 · {buttons.agentOptionNames.join(' · ')}
+        </div>
+      ) : null}
     </div>
   );
 }

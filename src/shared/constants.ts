@@ -1,4 +1,4 @@
-import type { AppSettings, EffortLevel, ModelOption, UiPermissionMode } from './types';
+import type { AppSettings, CodexEffortLevel, EffortLevel, ModelOption, UiPermissionMode } from './types';
 
 export const APP_NAME = 'Hopecode';
 /** Value prefix for CLAUDE_AGENT_SDK_CLIENT_APP (`hopecode/<version>`). */
@@ -15,6 +15,9 @@ export const UI_PERMISSION_MODES: readonly UiPermissionMode[] = [
 ];
 
 export const EFFORT_LEVELS: readonly EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max'];
+
+/** Codex reasoning efforts (kept apart from Claude's: Codex also has `ultra`). A session's thought_level option wins. */
+export const CODEX_EFFORT_LEVELS: readonly CodexEffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
 
 /** Title of a thread before its first message names it. */
 export const DEFAULT_THREAD_TITLE = '새 채팅';
@@ -50,11 +53,33 @@ export const USAGE_POLL_DEFAULT_SEC = 90;
 /** idleCloseMinutes bounds (0 = never close). */
 export const IDLE_CLOSE_MAX_MINUTES = 240;
 
+/**
+ * AppSettings schema revision. 2 = per-agent defaults: Claude `claude-opus-5-5` / high replaces the old
+ * `default` / null, Codex defaults added. core/settings.sanitizeSettings migrates older files.
+ */
+export const SETTINGS_REV = 2;
+
+/** Codex model of a new chat (plan 2.11). */
+export const CODEX_DEFAULT_MODEL = 'gpt-6-sol';
+export const CODEX_DEFAULT_EFFORT: CodexEffortLevel = 'high';
+/**
+ * Codex model ids accepted from settings / IPC. They end up inside a TOML `-c model="..."` argument, so quotes,
+ * spaces, `=` and newlines are excluded by construction.
+ */
+export const CODEX_MODEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+/** Codex model labels used until the agent's own config options named them. */
+export const CODEX_MODEL_LABELS: Readonly<Record<string, string>> = {
+  'gpt-6-sol': 'GPT-6-Sol',
+};
+
+/** Alias of the pool account backed by this Mac's own Claude Code login (`Account.source === 'local-default'`). */
+export const LOCAL_CLAUDE_ACCOUNT_ALIAS = '로컬 (기본)';
+
 export const DEFAULT_SETTINGS: AppSettings = {
   idleCloseMinutes: 10,
-  defaultModel: 'default',
+  defaultModel: 'claude-opus-5-5',
   defaultPermissionMode: 'default',
-  defaultEffort: null,
+  defaultEffort: 'high',
   useWorktree: true,
   autoSwitchAccounts: true,
   usagePollIntervalSec: USAGE_POLL_DEFAULT_SEC,
@@ -62,6 +87,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultEditor: null,
   tosNoticeAcknowledged: false,
   newTaskTemplate: DEFAULT_NEW_TASK_TEMPLATE,
+  localClaudeInPool: true,
+  codexDefaultModel: CODEX_DEFAULT_MODEL,
+  codexDefaultEffort: CODEX_DEFAULT_EFFORT,
+  settingsRev: SETTINGS_REV,
 };
 
 /** Startup model probe: give up on `initializationResult()` after this long (the cached / fallback list stays). */
@@ -158,3 +187,15 @@ export const LOGIN_URL_HOSTS: readonly string[] = ['claude.ai', 'claude.com', '*
 
 /** before-quit graceful dispose budget; afterwards Queries are aborted and the app exits. */
 export const QUIT_DISPOSE_TIMEOUT_MS = 5_000;
+
+// ACP (Codex / Hermes over stdio). The SDK has no request timeout; AcpConnection races each request.
+/** `initialize` (Hermes cold start loads plugins). */
+export const ACP_INITIALIZE_TIMEOUT_MS = 20_000;
+/** `session/new`, `session/load`, `session/resume`. */
+export const ACP_SESSION_OPEN_TIMEOUT_MS = 60_000;
+/** `session/set_mode`, `session/set_config_option`, `session/close`. */
+export const ACP_CONTROL_TIMEOUT_MS = 10_000;
+/** After `session/cancel`, wait this long for the prompt to settle before killing the agent process. */
+export const ACP_CANCEL_GRACE_MS = 10_000;
+/** SIGTERM -> SIGKILL grace for the agent process group. */
+export const ACP_KILL_GRACE_MS = 3_000;

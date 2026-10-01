@@ -71,14 +71,14 @@ export interface PtyManagerDeps {
 export function createPtyManager(deps: PtyManagerDeps): PtyManager {
   const sessions = new Map<string, Session>();
 
-  function spawnSession(threadId: string, cwd: string, cols: number, rows: number): Session {
+  function spawnSession(threadId: string, cwd: string, cols: number, rows: number, gitCeiling?: string): Session {
     const shell = deps.shellEnv.baseEnv()['SHELL'] || '/bin/zsh';
     const proc = pty.spawn(shell, ['-l'], {
       name: TERMINAL_TERM,
       cols,
       rows,
       cwd,
-      env: deps.shellEnv.childEnv({ term: TERMINAL_TERM }),
+      env: deps.shellEnv.childEnv({ term: TERMINAL_TERM, ...(gitCeiling !== undefined ? { gitCeiling } : {}) }),
     });
     const session: Session = { proc, buffer: new RingBuffer(PTY_RING_BUFFER_BYTES), cwd };
 
@@ -107,7 +107,7 @@ export function createPtyManager(deps: PtyManagerDeps): PtyManager {
   }
 
   return {
-    open(threadId, cwd, cols, rows) {
+    open(threadId, cwd, cols, rows, opts) {
       const existing = sessions.get(threadId);
       if (existing) {
         if (existing.cwd === cwd) {
@@ -118,7 +118,7 @@ export function createPtyManager(deps: PtyManagerDeps): PtyManager {
         // reopen it in the new folder instead of resizing it in place.
         killSession(threadId);
       }
-      spawnSession(threadId, cwd, cols, rows);
+      spawnSession(threadId, cwd, cols, rows, opts?.gitCeiling);
       return { ptyId: threadId, replay: '' };
     },
     write(threadId, data) {
