@@ -2,11 +2,12 @@
 // States: closed -> starting -> ready <-> prompting, closing. Turns are serialized like ThreadRunner (`work`).
 // The session id lives on the thread (`thread.acp.sessionId`); a new process `session/load`s it.
 import { randomUUID } from 'node:crypto';
-import { RequestError, type ContentBlock, type RequestPermissionResponse, type SessionNotification } from '@agentclientprotocol/sdk';
+import { RequestError, type RequestPermissionResponse, type SessionNotification } from '@agentclientprotocol/sdk';
 import { finalizeAcpTurn, initialAcpReducerState, MAX_LABEL_CHARS, reduceAcpUpdate } from '../../core/acpReducer';
 import type { AcpAgentKind, AcpReducerState, AcpSignal, AcpStopReason } from '../../core/acpTypes';
 import { CODEX_MODE_BY_PERMISSION, isCodexAutoReviewMode, isFullAccessMode, reconcileConfig } from '../../core/agentDefaults';
 import { redact } from '../../core/redact';
+import { acpPromptBlocks, liteCaps } from '../../core/attachments';
 import { AGENTS } from '../../shared/agents';
 import {
   ACP_CANCEL_GRACE_MS,
@@ -23,6 +24,7 @@ import type {
   ChatEvent,
   ChatImage,
   ChatItem,
+  PromptFile,
   ChatSendResult,
   CodexEffortLevel,
   EffortLevel,
@@ -138,7 +140,7 @@ export class AcpRunner implements AgentRunner {
   // AgentRunner
   // -------------------------------------------------------------------------
 
-  async send(text: string, images: ChatImage[] = []): Promise<ChatSendResult> {
+  async send(text: string, images: ChatImage[] = [], files: PromptFile[] = []): Promise<ChatSendResult> {
     if (this.retired) return { accepted: false, reason: 'busy' };
     const thread = this.thread();
     if (this.busy || thread.status === 'running') return { accepted: false, reason: 'busy' };
@@ -155,12 +157,15 @@ export class AcpRunner implements AgentRunner {
 
     this.interrupted = false;
     this.clearIdleTimer();
-    const attached = images.length > 0 ? { images } : {};
+    const attached = {
+      ...(images.length > 0 ? { images } : {}),
+      ...(files.length > 0 ? { files: files.map(({ kind, name, mediaType, size }) => ({ kind, name, mediaType, size })) } : {}),
+    };
     this.emitItem({ type: 'user', id: newId('user'), text, createdAt: this.deps.now(), ...attached });
     this.patch({ status: 'running', ...(thread.sessionStartedAt === null ? { sessionStartedAt: this.deps.now() } : {}) });
     this.emitEvent({ type: 'turn-start' });
     this.enqueue(() =>
-      this.runTurn(text, images, spec).catch((err: unknown) => {
+      this.runTurn(text, images, files, spec).catch((err: unknown) => {
         this.busy = false;
         if (this.retired) return;
         this.deps.log('[acp] turn failed', err);
@@ -321,7 +326,7 @@ export class AcpRunner implements AgentRunner {
   // Turn
   // -------------------------------------------------------------------------
 
-  private async runTurn(text: string, images: ChatImage[], spec: AcpLaunchSpec): Promise<void> {
+  private async runTurn(text: string, images: ChatImage[], files: PromptFile[], spec: AcpLaunchSpec): Promise<void> {
     if (this.retired) {
       this.busy = false;
       return;
@@ -380,15 +385,11 @@ export class AcpRunner implements AgentRunner {
     // Chunks the agent sent between turns are confirmed (and persisted) before the reducer starts over.
     const settledTools = this.flushReducer();
     this.reducer = { ...initialAcpReducerState(this.threadId, this.turnNo), settledTools };
-    const prompt: ContentBlock[] = [];
-    if (images.length > 0) {
-      if (conn.init?.agentCapabilities?.promptCapabilities?.image) {
-        for (const img of images) prompt.push({ type: 'image', mimeType: img.mediaType, data: img.data });
-      } else {
-        this.notice('warn', `${this.label()}은(는) 이미지 입력을 지원하지 않아 이미지를 제외하고 보냈습니다.`);
-      }
+    // Checked again against what this session reported (the composer only knew the agent's defaults).
+    const { blocks: prompt, dropped } = acpPromptBlocks(text, images, files, liteCaps(conn.init?.agentCapabilities?.promptCapabilities));
+    if (dropped.length > 0) {
+      this.notice('warn', `${this.label()}은(는) 이 첨부를 받을 수 없어 제외하고 보냈습니다: ${dropped.join(', ')}`);
     }
-    prompt.push({ type: 'text', text });
 
     this.state = 'prompting';
     let stopReason: AcpStopReason | 'error' = 'error';
@@ -561,7 +562,7 @@ export class AcpRunner implements AgentRunner {
       // Slash commands come in a notification (possibly before this response); the last list stays until replaced.
       const knownCommands = this.controls().commands;
       const controls: AcpControls = { ...controlsFrom(this.threadId, opened.res), ...(knownCommands ? { commands: knownCommands } : {}) };
-      this.patchAcp({ sessionId: opened.sessionId, controls });
+      this.patchAcp({ sessionId: opened.sessionId, controls, promptCapabilities: liteCaps(caps.promptCapabilities) });
       this.broadcastControls(controls);
       await this.applyAfterOpen(conn, abort.signal, spawnedWith);
       await this.leaveUnapprovedFullAccess(conn, abort.signal);

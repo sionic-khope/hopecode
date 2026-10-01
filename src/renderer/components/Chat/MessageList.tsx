@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { AgentKind, ChatItem, PermissionDecision, PermissionRequest } from '../../../shared/types';
 import type { TurnPhase } from '../../store';
 import { AGENTS } from '../../../shared/agents';
@@ -12,9 +12,11 @@ import { SystemNotice } from './SystemNotice';
 import { AgentWarningNotice, ErrorCard, type ErrorCardActions } from './ErrorCard';
 import { TurnActivity } from './TurnActivity';
 import { splitAgentWarning } from './agentIssues';
-import { buildChatTree, type ChatNode, type SubagentSummary } from '../../../core/subagents';
-import { SubagentCard, SubagentRouting } from '../Subagents/SubagentCard';
-import { ImageGalleryCard, ThreadImageContext, UserImages } from '../Images/ChatImages';
+import { buildChatTree, findSubagentNode, type ChatNode, type SubagentSummary } from '../../../core/subagents';
+import { SubagentCard, SubagentNavContext, SubagentRouting } from '../Subagents/SubagentCard';
+import { SubagentDetail } from '../Subagents/SubagentDetail';
+import { ImageGalleryCard, ThreadImageContext, ToolImages, UserImages } from '../Images/ChatImages';
+import { UserFiles } from '../Images/ComposerAttachments';
 import './Chat.css';
 
 export interface MessageListProps {
@@ -76,11 +78,27 @@ function routingByTurn(nodes: readonly ChatNode[]): Map<string, SubagentSummary[
   return out;
 }
 
-/** Item nested in a subagent card (no avatar gutter). */
+/** Images an agent sent as message content (ACP image blocks). */
+function AgentImages({ images }: { images: NonNullable<Extract<ChatItem, { type: 'assistant-text' }>['images']> }) {
+  return (
+    <div className="hc-say-images">
+      <ToolImages images={images} label="에이전트 이미지" />
+    </div>
+  );
+}
+
+/** Item nested in a subagent card / the subagent view (no avatar gutter). */
 function renderSubagentChild(node: ChatNode): ReactNode {
   if (node.kind === 'subagent') return <SubagentCard node={node} renderChild={renderSubagentChild} />;
   const item = node.item;
-  if (item.type === 'assistant-text') return <AssistantText text={item.text} streaming={false} />;
+  if (item.type === 'assistant-text') {
+    return (
+      <>
+        {item.text ? <AssistantText text={item.text} streaming={false} /> : null}
+        {item.images && item.images.length > 0 ? <AgentImages images={item.images} /> : null}
+      </>
+    );
+  }
   if (item.type === 'tool') return <ToolCard item={item} defaultExpanded={item.isError === true} />;
   return null;
 }
@@ -101,6 +119,18 @@ export function MessageList({
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
+  // Subagent view (Codex style): the main area shows one subagent's transcript until "← 메인 대화" / Escape.
+  const [subView, setSubView] = useState<{ threadId: string | undefined; toolUseId: string } | null>(null);
+  const mainScrollTop = useRef(0);
+  const openSubagent = useCallback(
+    (toolUseId: string) => {
+      const el = scrollRef.current;
+      if (el && !subView) mainScrollTop.current = el.scrollTop;
+      setSubView({ threadId, toolUseId });
+    },
+    [threadId, subView],
+  );
+  const closeSubagent = useCallback(() => setSubView(null), []);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -124,11 +154,38 @@ export function MessageList({
   const nodes = useMemo(() => buildChatTree(items), [items]);
   const routing = useMemo(() => routingByTurn(nodes), [nodes]);
   const errorId = useMemo(() => (errorActions ? latestErrorId(items) : null), [errorActions, items]);
+  const subNode = subView && subView.threadId === threadId ? findSubagentNode(nodes, subView.toolUseId) : null;
+  const subKey = subNode?.item.toolUseId ?? null;
+
+  // Entering a subagent view starts at its top; leaving it returns to where the main chat was.
+  const prevSubKey = useRef<string | null>(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    const was = prevSubKey.current;
+    prevSubKey.current = subKey;
+    if (!el || was === subKey) return;
+    if (subKey) {
+      stickToBottom.current = false;
+      el.scrollTop = 0;
+    } else {
+      el.scrollTop = mainScrollTop.current;
+      stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+    }
+  }, [subKey]);
 
   return (
     <ThreadImageContext.Provider value={threadId ?? null}>
+    <SubagentNavContext.Provider value={openSubagent}>
     <div className="hc-messages" ref={scrollRef} onScroll={onScroll}>
-      {items.length === 0 && permissionRequests.length === 0 && !activity ? (
+      {subNode ? (
+        <div className="hc-messages__inner">
+          <SubagentDetail node={subNode} onBack={closeSubagent} renderChild={renderSubagentChild} />
+          {/* Permission prompts stay answerable while a subagent is on screen. */}
+          {permissionRequests.map((r) => (
+            <PermissionCard key={r.requestId} request={r} onDecide={onPermissionDecision} />
+          ))}
+        </div>
+      ) : items.length === 0 && permissionRequests.length === 0 && !activity ? (
         <div className="hc-messages__empty">{emptyLabel}</div>
       ) : (
         <div className="hc-messages__inner">
@@ -177,6 +234,7 @@ export function MessageList({
         </div>
       )}
     </div>
+    </SubagentNavContext.Provider>
     </ThreadImageContext.Provider>
   );
 }
@@ -263,6 +321,7 @@ const MessageItem = memo(function MessageItem({
           </div>
           <div className="hc-msg-user__bubble">
             {item.images && item.images.length > 0 ? <UserImages images={item.images} /> : null}
+            {item.files && item.files.length > 0 ? <UserFiles files={item.files} /> : null}
             {item.text}
           </div>
         </div>
@@ -272,7 +331,13 @@ const MessageItem = memo(function MessageItem({
       const split = splitAgentWarning(item.text);
       const text = split ? split.rest : item.text;
       const answer =
-        text === '' ? null : (
+        text === '' ? (
+          item.images && item.images.length > 0 ? (
+            <AgentRow agent={agent} leadsRun={leadsRun}>
+              <AgentImages images={item.images} />
+            </AgentRow>
+          ) : null
+        ) : (
           <AgentRow agent={agent} leadsRun={leadsRun} nameInBox>
             {/* Dialogue box: white pixel frame, the speaker's name tag on its first line. */}
             <div className={`hc-say${leadsRun ? ' hc-say--lead' : ''}`}>

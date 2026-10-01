@@ -86,14 +86,16 @@ export function CommandPalette({ open, onClose, commands, placeholder = '명령 
   const optionId = (i: number) => `${baseId}-opt-${i}`;
 
   // Fresh query + first row every time it opens; focus returns to its previous owner on close unless the command
-  // that just ran moved focus somewhere on purpose.
+  // that just ran moved focus somewhere on purpose. The query is cleared on close, not on open: the input is
+  // focused (autoFocus) at mount, before this passive effect runs, so an open-time reset could wipe the first
+  // keystrokes typed into the new palette.
   useEffect(() => {
     if (!open) return;
-    setQuery('');
-    setActive(0);
     returnFocus.current = document.activeElement as HTMLElement | null;
     const id = requestAnimationFrame(() => inputRef.current?.focus());
     return () => {
+      setQuery('');
+      setActive(0);
       cancelAnimationFrame(id);
       const now = document.activeElement;
       if (!now || now === document.body || !now.isConnected) {

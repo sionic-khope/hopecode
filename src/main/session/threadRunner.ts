@@ -22,6 +22,8 @@ import type {
   ChatSendResult,
   EffortLevel,
   PendingPrompt,
+  PromptFile,
+  UserItem,
   RateLimitInfoLite,
   SystemNoticeItem,
   Thread,
@@ -43,6 +45,7 @@ import type {
 import { claudeConfigDirFor } from '../accounts/localDefault';
 import { scratchDir as defaultScratchDir } from '../paths';
 import { changedImagesBetween, type ImageSnapshot } from '../images/imageFiles';
+import { claudePromptContent } from '../../core/attachments';
 import type { PermissionBroker } from './permissionBroker';
 import type { SyncTranscriptFn } from './transcriptSync';
 
@@ -191,18 +194,19 @@ export class ThreadRunner implements AgentRunner {
   // Public API
   // -------------------------------------------------------------------------
 
-  async send(text: string, images: ChatImage[] = []): Promise<ChatSendResult> {
+  async send(text: string, images: ChatImage[] = [], files: PromptFile[] = []): Promise<ChatSendResult> {
     const thread = this.thread();
-    const attached = images.length > 0 ? { images } : {};
+    const attached = { ...(images.length > 0 ? { images } : {}), ...(files.length > 0 ? { files } : {}) };
     if (thread.status === 'waiting') {
       const prev = thread.pendingPrompt;
       const merged: PendingPrompt = {
         text: prev?.kind === 'continue' ? `${CONTINUE_PROMPT}\n\n${text}` : text,
         kind: 'original',
         ...(prev?.images || images.length > 0 ? { images: [...(prev?.images ?? []), ...images] } : {}),
+        ...(prev?.files || files.length > 0 ? { files: [...(prev?.files ?? []), ...files] } : {}),
       };
       this.patch({ pendingPrompt: merged });
-      this.emitItem({ type: 'user', id: this.newId('user'), text, createdAt: this.deps.now(), ...attached });
+      this.emitItem({ type: 'user', id: this.newId('user'), text, createdAt: this.deps.now(), ...userAttachments(images, files) });
       return { accepted: true, reason: 'waiting' };
     }
     if (this.busy || thread.status === 'running') return { accepted: false, reason: 'busy' };
@@ -434,8 +438,7 @@ export class ThreadRunner implements AgentRunner {
     }
 
     if (userText !== null) {
-      const attached = prompt.images && prompt.images.length > 0 ? { images: prompt.images } : {};
-      this.emitItem({ type: 'user', id: this.newId('user'), text: userText, createdAt: this.deps.now(), ...attached });
+      this.emitItem({ type: 'user', id: this.newId('user'), text: userText, createdAt: this.deps.now(), ...userAttachments(prompt.images, prompt.files) });
     }
 
     if (decision.type === 'waiting') {
@@ -930,16 +933,17 @@ export class ThreadRunner implements AgentRunner {
   }
 }
 
-/** SDK user content for a prompt: plain text, or image blocks followed by the text. */
+/** SDK user content for a prompt: plain text, or image / document blocks followed by the text. */
 function promptContent(prompt: PendingPrompt): SDKUserMessage['message']['content'] {
-  if (!prompt.images || prompt.images.length === 0) return prompt.text;
-  return [
-    ...prompt.images.map((img) => ({
-      type: 'image' as const,
-      source: { type: 'base64' as const, media_type: img.mediaType, data: img.data },
-    })),
-    { type: 'text' as const, text: prompt.text },
-  ];
+  return claudePromptContent(prompt.text, prompt.images, prompt.files);
+}
+
+/** The user item's attachments: images inline (thumbnails), PDF / text files by name only (no content in the log). */
+function userAttachments(images: ChatImage[] | undefined, files: PromptFile[] | undefined): Pick<UserItem, 'images' | 'files'> {
+  return {
+    ...(images && images.length > 0 ? { images } : {}),
+    ...(files && files.length > 0 ? { files: files.map(({ kind, name, mediaType, size }) => ({ kind, name, mediaType, size })) } : {}),
+  };
 }
 
 function isSubagentMessage(msg: SDKMessage): boolean {

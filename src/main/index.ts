@@ -4,7 +4,8 @@ import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { chmodSync, mkdirSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { app, BrowserWindow, dialog, ipcMain, Menu, powerMonitor, shell, clipboard, ClipboardItem, nativeImage } from 'electron';
 import {
   CLIENT_APP_NAME,
@@ -60,6 +61,7 @@ import { accountsDir, devEnv, hopecodeHome, initPaths, localClaudeDir, userDataD
 import { restrictPrivateModes } from './persistence/jsonl';
 import { createStore } from './persistence/store';
 import { createThreadLog } from './persistence/threadLog';
+import { createMediaStore } from './images/mediaStore';
 import { createUsageHistory } from './persistence/usageHistory';
 import { createPtyManager } from './pty/ptyManager';
 import { createSessionManager } from './session/sessionManager';
@@ -75,6 +77,8 @@ import { createFixturePrSource } from './fixtures/fixturePrs';
 import { PR_URL_HOSTS } from './ipc/navHandlers';
 import { createThreadSearchIndex } from './nav/threadSearchIndex';
 import { readPluginInventory } from './plugins/pluginInventory';
+import { AttachmentStore } from './attachments/attachmentStore';
+import type { ImageMediaType } from '../core/attachments';
 import { createSlashCommandService } from './commands/slashCommands';
 import { createGhPrSource } from './prs/prService';
 import { createScheduler } from './schedule/scheduler';
@@ -189,6 +193,27 @@ async function showMessage(opts: Electron.MessageBoxOptions): Promise<number> {
   return res.response;
 }
 
+/**
+ * Composer image over the API's size limit: scaled down (long edge 2048 -> 1568 -> 1024 px) until its encoding fits;
+ * PNG stays PNG when it can, otherwise JPEG. null when the image cannot be decoded or never fits.
+ */
+function resizeWithNativeImage(bytes: Buffer, mediaType: ImageMediaType, maxBytes: number): { bytes: Buffer; mediaType: ImageMediaType } | null {
+  const image = nativeImage.createFromBuffer(bytes);
+  if (image.isEmpty()) return null;
+  const { width, height } = image.getSize();
+  for (const edge of [2048, 1568, 1024]) {
+    const scale = Math.min(1, edge / Math.max(width, height));
+    const scaled = scale < 1 ? image.resize({ width: Math.round(width * scale), height: Math.round(height * scale), quality: 'best' }) : image;
+    if (mediaType === 'image/png') {
+      const png = scaled.toPNG();
+      if (png.length <= maxBytes) return { bytes: png, mediaType: 'image/png' };
+    }
+    const jpeg = scaled.toJPEG(85);
+    if (jpeg.length <= maxBytes) return { bytes: jpeg, mediaType: 'image/jpeg' };
+  }
+  return null;
+}
+
 const nativeDialogs: Dialogs = {
   async pickProjectFolder() {
     const win = focusedWindow();
@@ -260,8 +285,9 @@ async function startServices(): Promise<Services> {
 
   const dataDir = userDataDir();
   // Files from builds that predate the private modes (L7) are tightened once per start.
-  await restrictPrivateModes(dataDir, ['threads', 'usage']);
-  const threadLog = createThreadLog(join(dataDir, 'threads'));
+  await restrictPrivateModes(dataDir, ['threads', 'usage', 'media']);
+  const media = createMediaStore(join(dataDir, 'media'), (message, err) => console.error(message, err ?? ''));
+  const threadLog = createThreadLog(join(dataDir, 'threads'), { media });
   const store = createStore(join(dataDir, 'state.json'), {
     // Turns cut off by the last quit get a visible notice in their history (L3).
     onInterrupted: (threadIds) => {
@@ -537,6 +563,7 @@ async function startServices(): Promise<Services> {
     appVersion: app.getVersion(),
     isTrustedSender: (url) => isAppUrl(url, urlConfig),
     themeOverlay,
+    attachments: new AttachmentStore({ resizeImage: resizeWithNativeImage }),
     // Composer `/` picker: read-only scan of the shared config (~/.claude, or the fixture folder in test runs);
     // user skills may be links into ~/.agents/skills (skills.sh installs), nothing else outside is read.
     slashCommands: createSlashCommandService({
@@ -573,7 +600,30 @@ async function startServices(): Promise<Services> {
         const png = image.toPNG();
         await clipboard.write([new ClipboardItem({ 'image/png': new Blob([new Uint8Array(png)], { type: 'image/png' }) })]);
       },
+      async save(buffer, name) {
+        let target: string | null;
+        if (fixtures || headless) {
+          // Test runs never open a dialog: the file lands in the exports folder.
+          const dir = join(hopecodeHome(), 'exports');
+          await mkdir(dir, { recursive: true });
+          target = join(dir, basename(name));
+        } else {
+          const win = focusedWindow();
+          const opts: Electron.SaveDialogOptions = {
+            title: '이미지 저장',
+            buttonLabel: '저장',
+            defaultPath: join(app.getPath('downloads'), basename(name)),
+            properties: ['createDirectory', 'showOverwriteConfirmation'],
+          };
+          const res = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts);
+          target = res.canceled ? null : (res.filePath ?? null);
+        }
+        if (!target) return false;
+        await writeFile(target, buffer);
+        return true;
+      },
     },
+    media,
     sharedConfig,
     testMode: fixtures || headless,
     nav: {

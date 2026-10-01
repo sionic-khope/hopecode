@@ -8,7 +8,8 @@
 // (read-only | workspace-write | agent | agent-full-access; default agent), CODEX_PATH (reported, never run).
 // `/mode [modeId]` switches to the next mode (or the given one) from the agent side.
 // Prompt scenarios (first word): /tool /slowtool /diff /permission /plan /slow [delayMs] /crash /warn /mode /image
-// /config; `[whoami]` anywhere.
+// /blocks /config /media /spawn; `[whoami]` anywhere. /media: an image message chunk, an image generation tool and a
+// codex-acp style MCP screenshot (rawOutput.result.content). /spawn: codex-acp legacy collab calls (spawnAgent + wait).
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -23,6 +24,9 @@ const INIT_DELAY_MS = Number(process.env.FAKE_ACP_INIT_DELAY_MS || 0);
 const SET_MODE_FAILS = process.env.FAKE_ACP_SET_MODE_FAIL === '1';
 const IS_HERMES = PROFILE === 'hermes';
 const SEND_COMMANDS = process.env.FAKE_ACP_COMMANDS === '1';
+/** 48x32 PNG (same as the Claude fixture's FIXTURE_PNG_BASE64). */
+const PNG_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAADAAAAAgCAIAAADbtmxLAAAA3ElEQVR42u3OTQqCUBTF8bPh9tAqmrWMtlAUhUWRqWlaZp+0hZMgRKDvPQdefQPhN7yH+0f2oVWQvmkVXF60CpInrYL4wRY4w0HNS0R3ysk7yvQThDcKqawpaFYIMkrQ1BRUQ/hXSjAGqYbwUkowBqmGcC9snLGmULnF/kwJxhrVELuEEoxBqiG2MSUYg1RDbE4UoqnRrLCOKKeyRj+BE7INeUq9S6yOtAqWAa2ChU+j8WTUiDq/MPdY1lSBXuVrzA78aaej7L8BU7ezjrI8BvbUFPqgPqgP6oO69gUorxX43Tn02gAAAABJRU5ErkJggg==';
 /** Slash commands the agent advertises (codex-acp style: `input.hint` when the command takes text). */
 const FIXTURE_COMMANDS = [
   { name: 'review', description: 'Review my current changes and find issues', input: { hint: 'optional custom review instructions' } },
@@ -395,6 +399,77 @@ async function runTurn(s, params, cx, signal) {
     }
     case '/image': {
       await say(`images: ${images}`);
+      return finish();
+    }
+    case '/blocks': {
+      // Attachments: what arrived besides the text (image mime / resource uri + kind / resource_link name).
+      const kinds = (params.prompt ?? []).map((b) => {
+        if (b.type === 'image') return `image:${b.mimeType}`;
+        if (b.type === 'resource') return `resource:${'text' in b.resource ? 'text' : 'blob'}:${b.resource.uri.split('/').pop()}`;
+        if (b.type === 'resource_link') return `resource_link:${b.name}`;
+        return b.type;
+      });
+      await say(`BLOCKS ${kinds.join(' ')}`);
+      return finish();
+    }
+    case '/media': {
+      await say('화면을 보여 드립니다.');
+      await update({ sessionUpdate: 'agent_message_chunk', messageId: randomUUID(), content: { type: 'image', data: PNG_BASE64, mimeType: 'image/png' } });
+      const gen = toolId();
+      await update({ sessionUpdate: 'tool_call', toolCallId: gen, title: 'Image generation', kind: 'other', status: 'in_progress', rawInput: { id: gen } });
+      await update({
+        sessionUpdate: 'tool_call_update',
+        toolCallId: gen,
+        status: 'completed',
+        content: [
+          { type: 'content', content: { type: 'text', text: 'Revised prompt: a tiny landscape' } },
+          { type: 'content', content: { type: 'image', data: PNG_BASE64, mimeType: 'image/png' } },
+        ],
+      });
+      const shot = toolId();
+      const mcpInput = { server: 'playwright', tool: 'browser_take_screenshot', arguments: { type: 'png' } };
+      await update({ sessionUpdate: 'tool_call', toolCallId: shot, title: 'mcp.playwright.browser_take_screenshot', kind: 'execute', status: 'in_progress', rawInput: mcpInput });
+      await update({
+        sessionUpdate: 'tool_call_update',
+        toolCallId: shot,
+        status: 'completed',
+        rawOutput: {
+          result: {
+            content: [
+              { type: 'text', text: '### Page\n- Page URL: https://example.com/acp-capture' },
+              { type: 'image', data: PNG_BASE64, mimeType: 'image/png' },
+            ],
+          },
+          error: null,
+        },
+      });
+      await say(' 캡처 완료.');
+      return finish();
+    }
+    case '/spawn': {
+      // codex-acp 2.x for a client without native subagent sessions: collab tool calls only.
+      const spawn = toolId();
+      const child = `child-${s.turn}`;
+      const input = { prompt: 'README.md를 한 줄로 요약해 줘', senderThreadId: sessionId, model: s.model };
+      await say('서브에이전트에게 맡깁니다.');
+      await update({ sessionUpdate: 'tool_call', toolCallId: spawn, title: 'spawnAgent', kind: 'other', status: 'in_progress', rawInput: { ...input, receiverThreadIds: [], agentsStates: {}, status: 'inProgress' } });
+      await update({
+        sessionUpdate: 'tool_call_update',
+        toolCallId: spawn,
+        status: 'completed',
+        rawInput: { ...input, receiverThreadIds: [child], agentsStates: { [child]: { status: 'running', message: null } }, status: 'completed' },
+      });
+      const wait = toolId();
+      const waitInput = { prompt: null, senderThreadId: sessionId, receiverThreadIds: [child] };
+      await update({ sessionUpdate: 'tool_call', toolCallId: wait, title: 'wait', kind: 'other', status: 'in_progress', rawInput: { ...waitInput, agentsStates: { [child]: { status: 'running', message: null } }, status: 'inProgress' } });
+      await sleep(600, signal);
+      await update({
+        sessionUpdate: 'tool_call_update',
+        toolCallId: wait,
+        status: 'completed',
+        rawInput: { ...waitInput, agentsStates: { [child]: { status: 'completed', message: 'README는 제목과 인사말 한 줄입니다.' } }, status: 'completed' },
+      });
+      await say(' 서브에이전트가 끝났습니다.');
       return finish();
     }
     case '/config': {

@@ -1,9 +1,10 @@
 // `image:*` invoke handlers (inline images, turn-end galleries, lightbox actions) + chat image validation.
 // Paths come from the renderer: every one is resolved inside the thread's own folder (imageFiles.resolveThreadImage).
-import { extname } from 'node:path';
+import { basename, extname } from 'node:path';
 import type { InvokeResponse } from '../../shared/ipc';
 import type { ChatImage, Thread } from '../../shared/types';
 import { MAX_IMAGE_BYTES, readThreadImage, readThreadImageDataUrl, resolveThreadImage } from '../images/imageFiles';
+import type { MediaStore } from '../images/mediaStore';
 import { assertReq, isNonEmptyString, isPlainObject } from './guards';
 
 /** Native side of the lightbox buttons (Electron shell / clipboard), injected so this module stays Node-only. */
@@ -12,6 +13,8 @@ export interface ImageActions {
   reveal(absPath: string): Promise<void> | void;
   /** Puts an encoded PNG / JPEG / GIF / WebP image on the clipboard. */
   copy(buffer: Buffer): Promise<void> | void;
+  /** Save dialog (default `name`) + write; false when cancelled. Test runs write into the exports folder. */
+  save(buffer: Buffer, name: string): Promise<boolean>;
 }
 
 const CHAT_IMAGE_TYPES: ReadonlySet<string> = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
@@ -37,10 +40,16 @@ export function isChatImageList(v: unknown): v is ChatImage[] {
   return Array.isArray(v) && v.length <= MAX_CHAT_IMAGES && v.every((image) => isChatImage(image));
 }
 
-type ImageChannel = 'image:read' | 'image:reveal' | 'image:copy';
+type ImageChannel = 'image:read' | 'image:reveal' | 'image:copy' | 'image:save';
+
+const EXT_BY_TYPE: Readonly<Record<string, string>> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
 type ImageHandlers = { [K in ImageChannel]: (req: unknown) => Promise<InvokeResponse<K>> };
 
-export function imageHandlers(requireThread: (channel: string, threadId: unknown) => Thread, actions: ImageActions): ImageHandlers {
+export function imageHandlers(
+  requireThread: (channel: string, threadId: unknown) => Thread,
+  actions: ImageActions,
+  media?: MediaStore,
+): ImageHandlers {
   const threadOf = (channel: string, req: unknown): Thread => {
     assertReq(channel, isPlainObject(req), 'threadId required');
     return requireThread(channel, (req as { threadId?: unknown }).threadId);
@@ -51,9 +60,38 @@ export function imageHandlers(requireThread: (channel: string, threadId: unknown
     return path as string;
   };
 
+  const refOf = (req: unknown): unknown => (req as { ref?: unknown }).ref;
+  const readRef = async (channel: string, thread: Thread, ref: unknown) => {
+    assertReq(channel, !!media, 'media store unavailable');
+    return media!.read(thread.id, ref);
+  };
+
+  /** Bytes + file name of what a lightbox shows: a media store ref, an inline image or a thread-folder file. */
+  const bitmapOf = async (channel: string, req: unknown): Promise<{ buffer: Buffer; name: string }> => {
+    const thread = threadOf(channel, req);
+    if (refOf(req) !== undefined) {
+      const { buffer } = await readRef(channel, thread, refOf(req));
+      return { buffer, name: `hopecode-${String(refOf(req)).slice(0, 12)}${extname(String(refOf(req)))}` };
+    }
+    const image = (req as { image?: unknown }).image;
+    if (image !== undefined) {
+      // Inline tool images may be as large as any image file main reads (10 MB).
+      assertReq(channel, isChatImage(image, Math.ceil((MAX_IMAGE_BYTES * 4) / 3)), 'invalid image');
+      const { mediaType, data } = image as ChatImage;
+      return { buffer: Buffer.from(data, 'base64'), name: `hopecode-image.${EXT_BY_TYPE[mediaType]}` };
+    }
+    const { abs, buffer } = await readThreadImage(thread.cwd, pathOf(channel, req));
+    assertReq(channel, extname(abs).toLowerCase() !== '.svg', 'SVG images cannot be copied as bitmaps');
+    return { buffer, name: basename(abs) };
+  };
+
   return {
     'image:read': async (req) => {
       const thread = threadOf('image:read', req);
+      if (refOf(req) !== undefined) {
+        const { mediaType, buffer } = await readRef('image:read', thread, refOf(req));
+        return { dataUrl: `data:${mediaType};base64,${buffer.toString('base64')}` };
+      }
       return { dataUrl: await readThreadImageDataUrl(thread.cwd, pathOf('image:read', req)) };
     },
 
@@ -64,17 +102,12 @@ export function imageHandlers(requireThread: (channel: string, threadId: unknown
     },
 
     'image:copy': async (req) => {
-      const thread = threadOf('image:copy', req);
-      const image = (req as { image?: unknown }).image;
-      if (image !== undefined) {
-        // Inline tool images may be as large as any image file main reads (10 MB).
-        assertReq('image:copy', isChatImage(image, Math.ceil((MAX_IMAGE_BYTES * 4) / 3)), 'invalid image');
-        await actions.copy(Buffer.from((image as ChatImage).data, 'base64'));
-        return;
-      }
-      const { abs, buffer } = await readThreadImage(thread.cwd, pathOf('image:copy', req));
-      assertReq('image:copy', extname(abs).toLowerCase() !== '.svg', 'SVG images cannot be copied as bitmaps');
-      await actions.copy(buffer);
+      await actions.copy((await bitmapOf('image:copy', req)).buffer);
+    },
+
+    'image:save': async (req) => {
+      const { buffer, name } = await bitmapOf('image:save', req);
+      return { saved: await actions.save(buffer, name) };
     },
   };
 }

@@ -425,7 +425,7 @@ export interface AppStoreState {
   newDraft: () => void;
   setDraft: (patch: Partial<DraftState>) => void;
   /** Draft -> thread: `thread:start` with the draft settings; selects the thread when it was created. */
-  startThread: (text: string) => Promise<ThreadStartResult>;
+  startThread: (text: string, attachmentIds?: string[]) => Promise<ThreadStartResult>;
   setThreadPinned: (threadId: string, pinned: boolean) => Promise<void>;
   setThreadArchived: (threadId: string, archived: boolean) => Promise<void>;
   setThreadEffort: (threadId: string, effort: EffortLevel | null) => Promise<void>;
@@ -457,7 +457,8 @@ export interface AppStoreState {
   pinAccount: (threadId: string, accountId: string | null) => Promise<void>;
 
   loadChatHistory: (threadId: string) => Promise<void>;
-  sendMessage: (threadId: string, text: string, images?: ChatImage[]) => Promise<ChatSendResult>;
+  /** `images`: inline images (retry); `attachmentIds`: composer attachments main validated (`attach:*`). */
+  sendMessage: (threadId: string, text: string, images?: ChatImage[], attachmentIds?: string[]) => Promise<ChatSendResult>;
   interrupt: (threadId: string) => Promise<void>;
   respondPermission: (requestId: string, decision: PermissionDecision, message?: string) => Promise<void>;
 
@@ -655,7 +656,7 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
     }),
 
   // No folder = a chat without a project: `projectId` is left out and main runs it in a scratch folder.
-  startThread: async (text) => {
+  startThread: async (text, attachmentIds) => {
     const { draft } = get();
     const result = await invoke('thread:start', {
       ...(draft.projectId ? { projectId: draft.projectId } : {}),
@@ -666,6 +667,7 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
       effort: draft.effort,
       pinnedAccountId: draft.pinnedAccountId,
       ...(draft.base ? { baseBranch: draft.base.branch, basePr: draft.base.pr } : {}),
+      ...(attachmentIds && attachmentIds.length > 0 ? { attachmentIds } : {}),
     });
     if (result.ok) {
       get().applyThreadUpdated(result.thread);
@@ -814,8 +816,13 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
     }));
   },
 
-  sendMessage: async (threadId, text, images) =>
-    invoke('chat:send', images && images.length > 0 ? { threadId, text, images } : { threadId, text }),
+  sendMessage: async (threadId, text, images, attachmentIds) =>
+    invoke('chat:send', {
+      threadId,
+      text,
+      ...(images && images.length > 0 ? { images } : {}),
+      ...(attachmentIds && attachmentIds.length > 0 ? { attachmentIds } : {}),
+    }),
 
   interrupt: async (threadId) => {
     await invoke('chat:interrupt', { threadId });

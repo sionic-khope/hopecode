@@ -1,5 +1,5 @@
 // Codex-style shell: draft-first new chat (⌘N), folder chip + thread:start (thread, worktree, auto title),
-// composer chips (permission / model + effort / account), file attach mention, sidebar pin / archive / search /
+// composer chips (permission / model + effort / account), file path mention, sidebar pin / archive / search /
 // collapse (⌘B), Korean UI copy. Screenshots of each state go to the redesign folder.
 import { realpathSync } from 'node:fs';
 import { join } from 'node:path';
@@ -109,12 +109,12 @@ test('folder chip (dialog seam) -> first send creates the thread and its worktre
   await screenshot(page, 'v2-conversation', SHOTS);
 });
 
-test('+ > 파일 첨부 inserts the picked file as an @ mention', async () => {
+test('+ > 파일 경로 멘션 inserts the picked file as an @ mention', async () => {
   const { page } = run;
   const box = page.locator('.hc-composer__textarea');
   await box.fill('이 파일을 요약해 줘');
   await page.locator('.hc-composer__plus').click();
-  await page.getByRole('menuitem', { name: /파일 첨부/ }).click();
+  await page.getByRole('menuitem', { name: /파일 경로 멘션/ }).click();
   await expect(box).toHaveValue('이 파일을 요약해 줘 @README.md ');
   await box.fill('');
 });

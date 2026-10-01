@@ -1,11 +1,11 @@
 import { memo, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type Ref } from 'react';
 import { Menu, type MenuSection } from '../common';
 import { COMPOSER_MENU_WIDTH } from './ComposerControls';
-import { FolderOpenIcon, PaperclipIcon, PlusIcon, SpinnerIcon, StopIcon } from './icons';
+import { AtIcon, FolderOpenIcon, PaperclipIcon, PlusIcon, SpinnerIcon, StopIcon } from './icons';
 import { isSubmitKey } from './composerKeys';
 import { playSfx } from '../../sound/engine';
-import type { ChatImage } from '../../../shared/types';
-import { ComposerImageTray, useComposerImages } from '../Images/ComposerImages';
+import type { AttachmentInfo } from '../../../shared/types';
+import { ComposerAttachmentTray, useComposerAttachments, type AttachTarget } from '../Images/ComposerAttachments';
 import { SlashMenu, slashOptionId, useSlashItems, type SlashSource } from './SlashMenu';
 import { applySlashChoice, expandSlashLabel, filterSlashCommands, sendsOnEnter, slashTokenAt } from './slashCommands';
 import './Chat.css';
@@ -24,9 +24,12 @@ export interface ComposerProps {
    * Returns (or resolves) `true` when the text was taken (the box clears), `false` to keep it — e.g. a draft
    * without a folder, or a start that failed.
    */
-  onSend: (text: string, images?: ChatImage[]) => boolean | Promise<boolean>;
-  /** Paste / drop images to send with the message (image content blocks); off = text only. */
-  acceptImages?: boolean;
+  onSend: (text: string, attachments?: AttachmentInfo[]) => boolean | Promise<boolean>;
+  /**
+   * Attachments ("파일 첨부", paste, drop) for this agent / folder; absent = text only. Main reads and validates the
+   * files; `onSend` gets the validated attachments (ids).
+   */
+  attach?: AttachTarget;
   onInterrupt?: () => void;
   /** A turn is running: the send button becomes Stop. */
   running: boolean;
@@ -39,7 +42,7 @@ export interface ComposerProps {
   leading?: ReactNode;
   /** Controls right of the spacer, before the send button (model picker). */
   trailing?: ReactNode;
-  /** "파일 첨부": resolves `@` mentions to insert (empty when cancelled). */
+  /** "파일 경로 멘션": resolves `@` mentions to insert (empty when cancelled). */
   onAttachFiles?: () => Promise<string[]>;
   /** "폴더 변경": enabled only while the chat has not started. */
   onChangeFolder?: () => void;
@@ -86,7 +89,7 @@ export const Composer = memo(function Composer({
   handleRef,
   prefill = null,
   onPrefillApplied,
-  acceptImages = false,
+  attach,
   slash,
   homeDir = null,
 }: ComposerProps) {
@@ -145,7 +148,7 @@ export const Composer = memo(function Composer({
     if (autoFocus) taRef.current?.focus();
   }, [autoFocus]);
 
-  const attachments = useComposerImages(acceptImages);
+  const attachments = useComposerAttachments(attach ?? null);
 
   // `/` picker: open while the caret sits in a `/query` token; Escape / an outside click hide it until the next edit.
   const cardRef = useRef<HTMLDivElement>(null);
@@ -186,12 +189,16 @@ export const Composer = memo(function Composer({
   const submit = (override?: string) => {
     const trimmed = expandSlashLabel((override ?? text).trim(), slashItems);
     if (!trimmed || disabled || busy) return;
+    if (!attachments.checkBeforeSend()) {
+      playSfx('error');
+      return;
+    }
     playSfx('send');
-    const images = attachments.images;
-    void Promise.resolve(images.length > 0 ? onSend(trimmed, images) : onSend(trimmed)).then((taken) => {
+    const items = attachments.items;
+    void Promise.resolve(items.length > 0 ? onSend(trimmed, items) : onSend(trimmed)).then((taken) => {
       if (!taken) return;
       setText('');
-      if (images.length > 0) attachments.clear();
+      if (items.length > 0) attachments.clear();
     });
   };
 
@@ -248,8 +255,16 @@ export const Composer = memo(function Composer({
         {
           key: 'attach',
           label: '파일 첨부',
-          description: '@경로로 입력창에 추가',
+          description: '사진·PDF·텍스트 파일을 메시지에 첨부',
           icon: <PaperclipIcon />,
+          disabled: !attach,
+          onSelect: attachments.pick,
+        },
+        {
+          key: 'mention',
+          label: '파일 경로 멘션',
+          description: '@경로로 입력창에 추가',
+          icon: <AtIcon />,
           disabled: !onAttachFiles,
           onSelect: () => {
             void onAttachFiles?.()
@@ -279,7 +294,12 @@ export const Composer = memo(function Composer({
         className={`hc-composer__card${disabled ? ' hc-composer__card--disabled' : ''}${attachments.dragging ? ' hc-composer__card--dragging' : ''}`}
         {...attachments.dropProps}
       >
-        <ComposerImageTray images={attachments.images} error={attachments.error} onRemove={attachments.remove} />
+        {attachments.dragging ? (
+          <div className="hc-composer__dropzone" data-testid="composer-dropzone" aria-hidden>
+            여기에 놓으면 첨부됩니다
+          </div>
+        ) : null}
+        <ComposerAttachmentTray items={attachments.items} error={attachments.error} onRemove={attachments.remove} />
         <SlashMenu
           open={slashOpen}
           onClose={closeSlash}
@@ -320,7 +340,7 @@ export const Composer = memo(function Composer({
             aria-label="추가"
             aria-haspopup="menu"
             aria-expanded={plusOpen}
-            title="파일 첨부 · 폴더 변경"
+            title="파일 첨부 · 경로 멘션 · 폴더 변경"
             onClick={() => setPlusOpen((v) => !v)}
           >
             <PlusIcon width={16} height={16} />

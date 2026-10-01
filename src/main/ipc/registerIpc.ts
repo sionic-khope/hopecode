@@ -38,6 +38,9 @@ import { createScratchDir, removeScratchDir, scratchGitCeiling } from '../scratc
 import { draftAgentDefaults, isFullAccessMode, SETTABLE_CONFIG_CATEGORIES } from '../../core/agentDefaults';
 import { NAV_CHANNELS, buildNavHandlers, type NavChannel, type NavHandlers, type NavServices } from './navHandlers';
 import { imageHandlers, isChatImageList, type ImageActions } from './imageHandlers';
+import type { MediaStore } from '../images/mediaStore';
+import { AttachmentStore, type Resolved } from '../attachments/attachmentStore';
+import { MAX_ATTACHMENTS, unsupportedReason } from '../../core/attachments';
 import type { SlashCommandService } from '../commands/slashCommands';
 import {
   CODEX_MODEL_PATTERN,
@@ -156,12 +159,16 @@ export interface RegisterIpcServices {
   nav?: NavServices;
   /** Receives the `thread:start` handler so main-side callers (예약) start threads the way a draft does. */
   provideThreadStart?: (start: (req: ThreadStartRequest) => Promise<ThreadStartResult>) => void;
-  /** Lightbox "Finder에서 보기" / "복사" (Electron shell + clipboard). */
+  /** Lightbox "Finder에서 보기" / "복사" / "저장" (Electron shell + clipboard + save dialog). */
   images?: ImageActions;
+  /** Agent images moved out of the thread log (`image:read` / `image:copy` / `image:save` with `ref`). */
+  media?: MediaStore;
   /** Composer `/` picker (commands/slashCommands.ts); absent = no Claude commands listed. */
   slashCommands?: SlashCommandService;
   /** Local theme folder scan (theme/themeProtocol.ts); absent = no overlay. */
   themeOverlay?: () => Promise<ThemeOverlay>;
+  /** Composer attachments (attach:* reads, chat:send / thread:start ids); absent = a store without image scaling. */
+  attachments?: AttachmentStore;
 }
 
 const NO_IMAGE_ACTIONS: ImageActions = {
@@ -169,6 +176,9 @@ const NO_IMAGE_ACTIONS: ImageActions = {
     throw new Error('image actions unavailable');
   },
   copy() {
+    throw new Error('image actions unavailable');
+  },
+  save() {
     throw new Error('image actions unavailable');
   },
 };
@@ -210,6 +220,7 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
     agentUsage,
   } = s;
   const scratch = s.scratch ?? DEFAULT_SCRATCH;
+  const attachments = s.attachments ?? new AttachmentStore();
   const removalDeps = {
     accountPool,
     store,
@@ -231,6 +242,39 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
     const project = store.get().projects.find((p) => p.id === projectId);
     assertReq(channel, !!project, `project not found: ${String(projectId)}`);
     return project as Project;
+  }
+
+  /** `attachmentIds` of a send request: absent, or at most MAX_ATTACHMENTS non-empty strings. */
+  function attachmentIdsOf(channel: string, req: Record<string, unknown>): string[] {
+    const ids = req.attachmentIds;
+    assertReq(
+      channel,
+      ids === undefined || (isStringArray(ids) && ids.length <= MAX_ATTACHMENTS && ids.every((id) => id.length > 0 && id.length <= 64)),
+      'invalid attachmentIds',
+    );
+    return (ids as string[] | undefined) ?? [];
+  }
+
+  /**
+   * Validated content of `ids` for a thread of `agent` (ACP: the session's reported prompt capabilities, or the
+   * agent's defaults before one opened); null = unknown / expired id, or an attachment the agent cannot take.
+   */
+  function resolveAttachments(ids: string[], agent: AgentKind, acp: Thread['acp']): Resolved | null {
+    if (ids.length === 0) return { images: [], files: [], infos: [] };
+    const resolved = attachments.resolve(ids);
+    if (!resolved) return null;
+    const caps = acp?.promptCapabilities ?? null;
+    return resolved.infos.some((a) => unsupportedReason(agent, caps, a, AGENTS[agent].name) !== null) ? null : resolved;
+  }
+
+  /** Bytes items of `attach:paste` / `attach:drop`. */
+  function blobsOf(channel: string, v: unknown): { name: string; bytes: Uint8Array }[] {
+    assertReq(
+      channel,
+      Array.isArray(v) && v.every((b) => isPlainObject(b) && isString(b.name) && b.bytes instanceof Uint8Array),
+      'files must be { name, bytes } items',
+    );
+    return v as { name: string; bytes: Uint8Array }[];
   }
 
   /**
@@ -533,6 +577,8 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
         return { ok: false, reason: 'agent-unavailable' };
       }
       const text = r.text as string;
+      const files = resolveAttachments(attachmentIdsOf(channel, r), agent, undefined);
+      if (!files) return { ok: false, reason: 'attachment' };
       const pinnedAccountId = (r.pinnedAccountId as string | null | undefined) ?? null;
       assertReq(channel, pinnedAccountId === null || !!accountPool.get(pinnedAccountId), `account not found: ${pinnedAccountId}`);
 
@@ -575,7 +621,8 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
 
       let send: ChatSendResult;
       try {
-        send = await sessionManager.send(thread.id, text);
+        send =
+          files.infos.length > 0 ? await sessionManager.send(thread.id, text, files.images, files.files) : await sessionManager.send(thread.id, text);
       } catch (err) {
         await rollback();
         throw err;
@@ -721,11 +768,54 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
       );
       const images = (req as { images?: unknown }).images;
       assertReq('chat:send', images === undefined || isChatImageList(images), 'invalid images');
+      const ids = attachmentIdsOf('chat:send', req as Record<string, unknown>);
       const { threadId, text } = req as { threadId: string; text: string };
-      return images && images.length > 0 ? sessionManager.send(threadId, text, images) : sessionManager.send(threadId, text);
+      if (ids.length === 0) {
+        return images && images.length > 0 ? sessionManager.send(threadId, text, images) : sessionManager.send(threadId, text);
+      }
+      const thread = requireThread('chat:send', threadId);
+      const resolved = resolveAttachments(ids, thread.agent, thread.acp);
+      if (!resolved) return { accepted: false, reason: 'attachment' };
+      const allImages = [...(images ?? []), ...resolved.images];
+      assertReq('chat:send', allImages.length <= MAX_ATTACHMENTS, 'too many images');
+      return sessionManager.send(threadId, text, allImages, resolved.files);
     },
 
-    ...imageHandlers(requireThread, s.images ?? NO_IMAGE_ACTIONS),
+    'attach:pick': async (req) => {
+      assertReq(
+        'attach:pick',
+        isPlainObject(req) && isOptionalString(req.threadId) && isOptionalString(req.projectId),
+        'threadId/projectId must be strings',
+      );
+      const { threadId, projectId } = req as { threadId?: string; projectId?: string };
+      const base = threadId
+        ? requireThread('attach:pick', threadId).cwd
+        : projectId
+          ? requireProject('attach:pick', projectId).path
+          : homedir();
+      const paths = (await dialogs.pickFiles(base)).filter((p) => typeof p === 'string');
+      return attachments.collect(paths, (p) => p, (p) => attachments.fromPath(p));
+    },
+
+    'attach:paste': async (req) => {
+      assertReq('attach:paste', isPlainObject(req), 'files required');
+      const files = blobsOf('attach:paste', (req as { files?: unknown }).files);
+      return attachments.collect(files, (f) => f.name, (f) => attachments.fromBytes(f.name, f.bytes));
+    },
+
+    'attach:drop': async (req) => {
+      assertReq('attach:drop', isPlainObject(req) && isStringArray(req.paths), 'paths required');
+      const r = req as { paths: string[]; files?: unknown };
+      const files = blobsOf('attach:drop', r.files ?? []);
+      const items = [...r.paths.map((path) => ({ path })), ...files.map((f) => ({ blob: f }))];
+      return attachments.collect(
+        items,
+        (it) => ('path' in it ? it.path : it.blob.name),
+        (it) => ('path' in it ? attachments.fromPath(it.path) : attachments.fromBytes(it.blob.name, it.blob.bytes)),
+      );
+    },
+
+    ...imageHandlers(requireThread, s.images ?? NO_IMAGE_ACTIONS, s.media),
 
     'chat:interrupt': async (req) => {
       assertReq('chat:interrupt', isPlainObject(req) && isNonEmptyString(req.threadId), 'threadId required');

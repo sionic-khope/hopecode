@@ -91,6 +91,8 @@ export interface PendingPrompt {
   kind: 'original' | 'continue';
   /** Composer image attachments sent with `text` (image content blocks). */
   images?: ChatImage[];
+  /** Composer PDF / text attachments sent with `text` (document blocks; ACP resource blocks). */
+  files?: PromptFile[];
 }
 
 export type ThreadStatus = 'idle' | 'running' | 'waiting' | 'error';
@@ -155,6 +157,15 @@ export interface ThreadAcpState {
   controls: AcpControls | null;
   /** Mode chosen while no connection was open; applied right after the next session opens. */
   pendingModeId?: string | null;
+  /** `promptCapabilities` of the last initialize (absent until a session opened: composer uses the agent defaults). */
+  promptCapabilities?: AcpPromptCaps;
+}
+
+/** ACP `PromptCapabilities` (absent fields = false). Decides which composer attachments an ACP agent takes. */
+export interface AcpPromptCaps {
+  image: boolean;
+  audio: boolean;
+  embeddedContext: boolean;
 }
 
 export interface Thread {
@@ -286,8 +297,59 @@ interface ChatItemBase {
 /** Base64 image carried by a chat item (tool_result image block, composer attachment). */
 export interface ChatImage {
   mediaType: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
-  /** Base64 payload without the `data:` prefix. */
+  /** Base64 payload without the `data:` prefix ('' once main moved it to the media store: see `ref`). */
   data: string;
+  /**
+   * Media store file (`<sha256>.<ext>` under the app data folder) holding the image when the thread log keeps only a
+   * reference (agent images are never written into the log as base64). The renderer reads it with `image:read`.
+   */
+  ref?: string;
+}
+
+/** Kind of a composer attachment: image block, PDF document, or a UTF-8 text / code file. */
+export type AttachmentKind = 'image' | 'pdf' | 'text';
+
+/** A PDF / text attachment as the user bubble shows it. The thread log keeps only this (never the content). */
+export interface ChatFileMeta {
+  kind: 'pdf' | 'text';
+  name: string;
+  mediaType: string;
+  /** Bytes. */
+  size: number;
+}
+
+/** PDF / text content main sends with a prompt. Built in main from validated files; never comes from the renderer. */
+export interface PromptFile extends ChatFileMeta {
+  /** `pdf`: base64 payload; `text`: the UTF-8 text. */
+  data: string;
+  /** Real path of a picked / dropped file (ACP resource uri / resource_link); absent for pasted bytes. */
+  path?: string;
+}
+
+/** A validated attachment main holds for the composer (`attach:*`); `chat:send` / `thread:start` refer to it by id. */
+export interface AttachmentInfo {
+  id: string;
+  kind: AttachmentKind;
+  name: string;
+  mediaType: string;
+  /** Bytes (after scaling an image down). */
+  size: number;
+  /** Came from a file on disk (picker / drop): an ACP agent without embeddedContext still gets a resource_link. */
+  linkable: boolean;
+  /** Image attachments: the image itself (thumbnail). */
+  image?: ChatImage;
+  /** The image was scaled down to fit the size limit. */
+  resized?: boolean;
+}
+
+export interface AttachRejection {
+  name: string;
+  reason: string;
+}
+
+export interface AttachResult {
+  attachments: AttachmentInfo[];
+  rejected: AttachRejection[];
 }
 
 export interface UserItem extends ChatItemBase {
@@ -295,6 +357,8 @@ export interface UserItem extends ChatItemBase {
   text: string;
   /** Images pasted / dropped into the composer and sent as image content blocks. */
   images?: ChatImage[];
+  /** PDF / text attachments sent with the message (names only). */
+  files?: ChatFileMeta[];
 }
 
 export interface AssistantTextItem extends ChatItemBase {
@@ -302,6 +366,8 @@ export interface AssistantTextItem extends ChatItemBase {
   text: string;
   /** SDK `parent_tool_use_id`: text written inside the subagent started by that Task/Agent tool_use. */
   parentToolUseId?: string;
+  /** Images the agent sent as message content (ACP `agent_message_chunk` image blocks). */
+  images?: ChatImage[];
 }
 
 /** Whole-file diff reported by an ACP agent (`ToolCallContent` `diff`). */
@@ -514,9 +580,9 @@ export interface ChatSendResult {
   accepted: boolean;
   /**
    * `auth`: every enabled account needs to log in again. `agent-unavailable`: the thread's agent is not installed
-   * or not logged in on this Mac.
+   * or not logged in on this Mac. `attachment`: an attachment id is unknown (expired) or the agent cannot take it.
    */
-  reason?: 'waiting' | 'no-accounts' | 'busy' | 'auth' | 'agent-unavailable';
+  reason?: 'waiting' | 'no-accounts' | 'busy' | 'auth' | 'agent-unavailable' | 'attachment';
 }
 
 // ---------------------------------------------------------------------------
@@ -706,6 +772,8 @@ export interface ThreadStartRequest {
   baseBranch?: string;
   /** PR number of `baseBranch`: fetched as `pull/<n>/head` when the branch is not on the remote (forks). */
   basePr?: number;
+  /** Composer attachments (`attach:*` ids) sent with the first message. */
+  attachmentIds?: string[];
 }
 
 /**

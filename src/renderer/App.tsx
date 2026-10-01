@@ -98,6 +98,8 @@ function sendErrorMessage(result: ChatSendResult | { accepted: false; reason?: C
       return '모든 계정에 다시 로그인해야 합니다. 계정 화면에서 다시 로그인하세요.';
     case 'agent-unavailable':
       return '이 에이전트를 사용할 수 없습니다. 설치·로그인 상태를 계정 화면에서 확인하세요.';
+    case 'attachment':
+      return '첨부를 보낼 수 없습니다: 이 에이전트가 받을 수 없는 형식이거나 첨부가 만료되었습니다. 다시 첨부해 주세요.';
     default:
       return '메시지를 보내지 못했습니다.';
   }
@@ -213,20 +215,20 @@ export function App() {
     s.setRoute('chat');
   }, []);
 
-  const onSend = useCallback((threadId: string, text: string, images?: ChatImage[]) => {
+  const onSend = useCallback((threadId: string, text: string, images?: ChatImage[], attachmentIds?: string[]) => {
     setSendError(null);
     void useAppStore
       .getState()
-      .sendMessage(threadId, text, images)
+      .sendMessage(threadId, text, images, attachmentIds)
       // `{accepted:true, reason:'waiting'}`: queued behind the pool reset; the thread shows its countdown.
       .then((result) => setSendError(sendErrorMessage(result)))
       .catch((err: unknown) => setSendError(`메시지를 보내지 못했습니다: ${ipcErrorMessage(err)}`));
   }, []);
 
-  const onStartThread = useCallback(async (text: string) => {
+  const onStartThread = useCallback(async (text: string, attachmentIds?: string[]) => {
     setSendError(null);
     try {
-      const result = await useAppStore.getState().startThread(text);
+      const result = await useAppStore.getState().startThread(text, attachmentIds);
       if (result.ok) {
         // The thread exists and its history starts with this message (already streamed as chat:event).
         historyRequested.add(result.thread.id);

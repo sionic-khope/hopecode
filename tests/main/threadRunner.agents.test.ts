@@ -123,3 +123,31 @@ describe('ThreadRunner implements AgentRunner', () => {
     expect(r.supportedModels()).toBeNull();
   });
 });
+
+describe('ThreadRunner attachments', () => {
+  it('sends image + PDF + text as image / document blocks; the user item keeps file names, not content', async () => {
+    const h = createSessionHarness({
+      accounts: [makeAccount('a1', { configDir: join(root, 'home', 'accounts', 'a1') })],
+      threads: [makeThread('t1', { cwd: join(root, 'work') })],
+    });
+    const pdf = { kind: 'pdf' as const, name: 'spec.pdf', mediaType: 'application/pdf', size: 4, data: 'JVBE' };
+    const text = { kind: 'text' as const, name: 'notes.md', mediaType: 'text/markdown', size: 6, data: 'secret' };
+    const res = await h.manager.send('t1', 'look', [{ mediaType: 'image/png', data: 'AAAA' }], [pdf, text]);
+    expect(res).toMatchObject({ accepted: true });
+    await h.manager.whenSettled('t1');
+    await h.manager.dispose();
+    expect(h.fake.calls[0]!.promptBlocks).toEqual([['image:image/png', 'document:base64:application/pdf', 'document:text:text/plain', 'text']]);
+    expect(h.fake.calls[0]!.prompts).toEqual(['look']);
+    const user = (await h.threadLog.read('t1')).find((i) => i.type === 'user')!;
+    expect(user).toMatchObject({
+      text: 'look',
+      images: [{ mediaType: 'image/png', data: 'AAAA' }],
+      files: [
+        { kind: 'pdf', name: 'spec.pdf', mediaType: 'application/pdf', size: 4 },
+        { kind: 'text', name: 'notes.md', mediaType: 'text/markdown', size: 6 },
+      ],
+    });
+    expect(JSON.stringify(user)).not.toContain('secret');
+    expect(JSON.stringify(user)).not.toContain('JVBE');
+  });
+});

@@ -7,6 +7,7 @@ import type {
   AgentUsageSnapshot,
   AppInfo,
   AppSettings,
+  AttachResult,
   BootstrapPayload,
   EditorId,
   EditorInfo,
@@ -93,14 +94,35 @@ export interface InvokeMap {
   /** ACP threads: `session/set_config_option` (Codex model / effort chips). */
   'thread:setAgentConfig': { req: { threadId: string; configId: string; value: string | boolean }; res: void };
   'chat:history': { req: { threadId: string }; res: ChatItem[] };
-  /** `images`: composer attachments (image content blocks, at most 8, 5 MB each). */
-  'chat:send': { req: { threadId: string; text: string; images?: ChatImage[] }; res: ChatSendResult };
-  /** Image file inside the thread folder (relative or absolute path, 10 MB max) as a `data:` URL. */
-  'image:read': { req: { threadId: string; path: string }; res: { dataUrl: string } };
+  /**
+   * `images`: inline images (retry of an earlier message; image content blocks, at most 10, 5 MB each).
+   * `attachmentIds`: composer attachments main validated (`attach:*`); unknown ids / ones the agent cannot take are
+   * refused with `reason: 'attachment'`.
+   */
+  'chat:send': { req: { threadId: string; text: string; images?: ChatImage[]; attachmentIds?: string[] }; res: ChatSendResult };
+  /**
+   * Composer "파일 첨부": main opens the native file picker (at the thread / project folder) and reads the chosen
+   * files itself; the renderer never names a path. Empty result when cancelled.
+   */
+  'attach:pick': { req: { threadId?: string; projectId?: string }; res: AttachResult };
+  /** Pasted (⌘V) files: bytes only (no path), checked by extension + magic bytes and size in main. */
+  'attach:paste': { req: { files: { name: string; bytes: Uint8Array }[] }; res: AttachResult };
+  /**
+   * Dropped files. Preload-only (the renderer's `invoke` refuses it): preload resolves each File's path with
+   * webUtils.getPathForFile, so only files the user actually dropped reach main; path-less ones go as bytes.
+   */
+  'attach:drop': { req: { paths: string[]; files: { name: string; bytes: Uint8Array }[] }; res: AttachResult };
+  /**
+   * Image as a `data:` URL: a file inside the thread folder (`path`, relative or absolute, 10 MB max) or an agent
+   * image of the thread's media store (`ref`, see ChatImage.ref).
+   */
+  'image:read': { req: { threadId: string; path?: string; ref?: string }; res: { dataUrl: string } };
   /** Reveals an image file inside the thread folder in Finder. */
   'image:reveal': { req: { threadId: string; path: string }; res: void };
   /** Copies an image to the clipboard: a file inside the thread folder (`path`), or an inline chat image. */
-  'image:copy': { req: { threadId: string; path?: string; image?: ChatImage }; res: void };
+  'image:copy': { req: { threadId: string; path?: string; image?: ChatImage; ref?: string }; res: void };
+  /** Lightbox "저장": save dialog for the same sources as `image:copy`; `saved: false` when cancelled. */
+  'image:save': { req: { threadId: string; path?: string; image?: ChatImage; ref?: string }; res: { saved: boolean } };
   'chat:interrupt': { req: { threadId: string }; res: void };
   'permission:respond': {
     req: { requestId: string; decision: PermissionDecision; message?: string };
@@ -276,9 +298,13 @@ export const INVOKE_CHANNELS = [
   'thread:setAgentConfig',
   'chat:history',
   'chat:send',
+  'attach:pick',
+  'attach:paste',
+  'attach:drop',
   'image:read',
   'image:reveal',
   'image:copy',
+  'image:save',
   'chat:interrupt',
   'permission:respond',
   'models:list',
@@ -355,6 +381,9 @@ const eventExhaustive: Missing<EventChannel, (typeof EVENT_CHANNELS)[number]> ex
 void invokeExhaustive;
 void eventExhaustive;
 
+/** Registered in main but never callable through `window.hopecode.invoke` (preload calls them itself). */
+export const PRELOAD_ONLY_CHANNELS: readonly InvokeChannel[] = ['attach:drop'];
+
 const invokeSet: ReadonlySet<string> = new Set(INVOKE_CHANNELS);
 const eventSet: ReadonlySet<string> = new Set(EVENT_CHANNELS);
 
@@ -373,4 +402,6 @@ export interface HopecodeApi {
     ...req: InvokeRequest<K> extends void ? [] : [InvokeRequest<K>]
   ): Promise<InvokeResponse<K>>;
   on<K extends EventChannel>(channel: K, cb: (payload: EventPayload<K>) => void): () => void;
+  /** Files dropped on the composer -> `attach:drop` (paths resolved in preload with webUtils.getPathForFile). */
+  attachDropped(files: File[]): Promise<AttachResult>;
 }

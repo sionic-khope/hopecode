@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { ChatImage, ChatItem, EffortLevel, ModelOption, PermissionDecision, Project, Thread, UiPermissionMode } from '../../../shared/types';
+import type { AttachmentInfo, ChatImage, ChatItem, EffortLevel, ModelOption, PermissionDecision, Project, Thread, UiPermissionMode } from '../../../shared/types';
 import { formatResetCountdown } from '../../../core/format';
 import { MINUTE_MS } from '../../../shared/constants';
 import { AGENTS } from '../../../shared/agents';
@@ -18,7 +18,8 @@ export interface ChatViewProps {
   thread: Thread;
   project: Project | null;
   models: ModelOption[];
-  onSend: (threadId: string, text: string, images?: ChatImage[]) => void;
+  /** `images`: inline images (error card retry); `attachmentIds`: composer attachments main validated. */
+  onSend: (threadId: string, text: string, images?: ChatImage[], attachmentIds?: string[]) => void;
   onInterrupt: (threadId: string) => void;
   onPermissionDecision: (requestId: string, decision: PermissionDecision) => void;
   onModelChange: (threadId: string, model: string) => void;
@@ -62,8 +63,8 @@ export function ChatView({
   const handleEffort = useCallback((e: EffortLevel | null) => onEffortChange(threadId, e), [onEffortChange, threadId]);
   const handleMode = useCallback((mode: UiPermissionMode) => onPermissionModeChange(threadId, mode), [onPermissionModeChange, threadId]);
   const handleSend = useCallback(
-    (text: string, images?: ChatImage[]) => {
-      if (images && images.length > 0) onSend(threadId, text, images);
+    (text: string, attachments?: AttachmentInfo[]) => {
+      if (attachments && attachments.length > 0) onSend(threadId, text, undefined, attachments.map((a) => a.id));
       else onSend(threadId, text);
       return true;
     },
@@ -129,6 +130,8 @@ export function ChatView({
         : { kind: 'acp', agentName: AGENTS[thread.agent].name, commands: acpCommands },
     [thread.agent, thread.id, acpCommands],
   );
+  const promptCaps = thread.acp?.promptCapabilities ?? null;
+  const attach = useMemo(() => ({ agent: thread.agent, caps: promptCaps, threadId: thread.id }), [thread.agent, promptCaps, thread.id]);
   const codex = thread.agent === 'codex' ? codexThreadChip(thread) : null;
   const modeChip = features.agentModes ? agentModeChip(thread.acp) : null;
 
@@ -189,7 +192,7 @@ export function ChatView({
         onSend={handleSend}
         onInterrupt={handleInterrupt}
         onAttachFiles={handleAttach}
-        acceptImages
+        attach={attach}
         canChangeFolder={false}
         prefill={prefill}
         onPrefillApplied={clearPrefill}

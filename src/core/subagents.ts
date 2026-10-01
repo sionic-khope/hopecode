@@ -135,3 +135,14 @@ export function collectSubagents(items: readonly ChatItem[]): SubagentSummary[] 
   walk(buildChatTree(items));
   return out.sort((a, b) => a.startedAt - b.startedAt);
 }
+
+/** The subagent node started by `toolUseId` anywhere in the tree (nested ones included), or null. */
+export function findSubagentNode(nodes: readonly ChatNode[], toolUseId: string): Extract<ChatNode, { kind: 'subagent' }> | null {
+  for (const node of nodes) {
+    if (node.kind !== 'subagent') continue;
+    if (node.item.toolUseId === toolUseId) return node;
+    const nested = findSubagentNode(node.children, toolUseId);
+    if (nested) return nested;
+  }
+  return null;
+}

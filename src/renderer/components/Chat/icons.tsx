@@ -251,6 +251,16 @@ export function PaperclipIcon(props: IconProps) {
   );
 }
 
+export function AtIcon(props: IconProps) {
+  return ctl(
+    props,
+    <>
+      <circle cx="10" cy="10" r="2.8" />
+      <path d="M12.8 10v1.1a2 2 0 0 0 4 0V10a6.8 6.8 0 1 0-2.7 5.4" />
+    </>,
+  );
+}
+
 export function FolderIcon(props: IconProps) {
   return ctl(props, <path d="M3 6.25a1.5 1.5 0 0 1 1.5-1.5h3.2l1.6 1.9h6.2a1.5 1.5 0 0 1 1.5 1.5v6.6a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 14.75v-8.5Z" />);
 }

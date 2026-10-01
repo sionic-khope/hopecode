@@ -15,7 +15,7 @@ import { AcpConnection } from '../../src/main/acp/acpConnection';
 import type { AcpLauncher } from '../../src/main/contracts';
 import { AcpRunner, type AcpRunnerTimeouts } from '../../src/main/session/acpRunner';
 import { createPermissionBroker } from '../../src/main/session/permissionBroker';
-import type { AssistantTextItem, ChatEvent, ChatItem, Thread, ToolItem } from '../../src/shared/types';
+import type { AssistantTextItem, ChatEvent, ChatItem, PromptFile, Thread, ToolItem } from '../../src/shared/types';
 
 const FAKE_AGENT = resolve(__dirname, '../fixtures/acp/fakeAcpAgent.mjs');
 
@@ -431,6 +431,30 @@ describe('AcpRunner (codex profile)', () => {
     await turn(s.runner, '/image', [{ mediaType: 'image/png', data: 'iVBORw0KGgo=' }]);
     expect(texts(s.events()).at(-1)).toBe('images: 1');
     expect(items(s.events())[0]).toMatchObject({ type: 'user', images: [{ mediaType: 'image/png' }] });
+  });
+
+  it('attachments: image + embedded text resource (codex caps stored on the thread); file names only in the log', async () => {
+    const s = setup();
+    const text: PromptFile = { kind: 'text', name: 'notes.md', mediaType: 'text/markdown', size: 6, data: 'hello\n', path: '/tmp/notes.md' };
+    const res = await s.runner.send('/blocks', [{ mediaType: 'image/png', data: 'iVBORw0KGgo=' }], [text]);
+    expect(res).toEqual({ accepted: true });
+    await s.runner.whenSettled();
+    expect(texts(s.events()).at(-1)).toBe('BLOCKS image:image/png resource:text:notes.md text');
+    expect(s.thread().acp?.promptCapabilities).toEqual({ image: true, audio: false, embeddedContext: true });
+    expect(items(s.events())[0]).toMatchObject({ type: 'user', files: [{ kind: 'text', name: 'notes.md', mediaType: 'text/markdown', size: 6 }] });
+    expect(JSON.stringify(items(s.events())[0])).not.toContain('hello');
+  });
+
+  it('attachments: hermes (image only) gets a resource_link for a file on disk; the rest is dropped with a notice', async () => {
+    const s = setup({ profile: 'hermes' });
+    const onDisk: PromptFile = { kind: 'text', name: 'a.ts', mediaType: 'text/plain', size: 1, data: 'x', path: '/tmp/a.ts' };
+    const pasted: PromptFile = { kind: 'text', name: 'clip.txt', mediaType: 'text/plain', size: 1, data: 'y' };
+    const doc: PromptFile = { kind: 'pdf', name: 'spec.pdf', mediaType: 'application/pdf', size: 4, data: 'JVBE' };
+    await s.runner.send('/blocks', [], [onDisk, pasted, doc]);
+    await s.runner.whenSettled();
+    expect(texts(s.events()).at(-1)).toBe('BLOCKS resource_link:a.ts text');
+    expect(notices(s.events())).toContain('Hermes은(는) 이 첨부를 받을 수 없어 제외하고 보냈습니다: clip.txt, spec.pdf');
+    expect(s.thread().acp?.promptCapabilities).toEqual({ image: true, audio: false, embeddedContext: false });
   });
 
   it('spawn CODEX_CONFIG values already match: no set_config_option; thread model / effort kept', async () => {

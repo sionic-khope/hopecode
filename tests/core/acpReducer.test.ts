@@ -4,6 +4,9 @@ import { finalizeAcpTurn, initialAcpReducerState, reduceAcpUpdate, settledKey, t
 import type { AcpReducerState } from '../../src/core/acpTypes';
 import type { ChatEvent, ToolItem } from '../../src/shared/types';
 
+/** 1x1 PNG (the reducer checks magic bytes). */
+const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
 const text = (t: string, messageId?: string): SessionUpdate => ({
   sessionUpdate: 'agent_message_chunk',
   content: { type: 'text', text: t },
@@ -69,20 +72,26 @@ describe('text streaming', () => {
     expect(ids[2]).not.toBe(ids[0]);
   });
 
-  it('resource_link becomes a markdown link; images are dropped with a single notice', () => {
+  it('resource_link becomes a markdown link; an image chunk becomes its own image item (invalid ones dropped)', () => {
     const link: SessionUpdate = {
       sessionUpdate: 'agent_message_chunk',
       content: { type: 'resource_link', name: 'Doc', uri: 'https://x.test/d' },
     };
     const img: SessionUpdate = {
       sessionUpdate: 'agent_message_chunk',
+      content: { type: 'image', data: PNG, mimeType: 'image/png' },
+    };
+    const bogus: SessionUpdate = {
+      sessionUpdate: 'agent_message_chunk',
       content: { type: 'image', data: 'AAAA', mimeType: 'image/png' },
     };
-    const r = run([link, img, img]);
+    const r = run([link, img, bogus]);
     expect(r.events[0]).toMatchObject({ type: 'text-delta', text: '[Doc](https://x.test/d)' });
-    const notices = r.events.filter((e) => e.type === 'item-upsert' && e.item.type === 'notice');
-    expect(notices).toHaveLength(1);
-    expect(r.state.imageNoticeShown).toBe(true);
+    const items = r.events.flatMap((e) => (e.type === 'item-upsert' ? [e.item] : []));
+    // The link text settles before the image item; the bogus image adds nothing; no notice.
+    expect(items.map((i) => i.type)).toEqual(['assistant-text', 'assistant-text']);
+    expect(items[0]).toMatchObject({ text: '[Doc](https://x.test/d)' });
+    expect(items[1]).toMatchObject({ text: '', images: [{ mediaType: 'image/png', data: PNG }] });
   });
 
   it('ignores thoughts and user chunks (a command list is a signal, never a chat event)', () => {
@@ -472,5 +481,89 @@ describe('available_commands_update', () => {
   it('an empty list is still reported (it replaces the previous one)', () => {
     const { signals } = run([{ sessionUpdate: 'available_commands_update', availableCommands: [] } as SessionUpdate]);
     expect(signals).toEqual([{ type: 'commands', commands: [] }]);
+  });
+});
+
+describe('reduceAcpUpdate: tool images (image generation, MCP screenshots)', () => {
+  it('takes image content of a tool call and keeps the text', () => {
+    const r = run([
+      { sessionUpdate: 'tool_call', toolCallId: 'g', title: 'Image generation', kind: 'other', status: 'in_progress' } as SessionUpdate,
+      {
+        sessionUpdate: 'tool_call_update',
+        toolCallId: 'g',
+        status: 'completed',
+        content: [
+          { type: 'content', content: { type: 'text', text: 'Revised prompt: a hill' } },
+          { type: 'content', content: { type: 'image', data: PNG, mimeType: 'image/png' } },
+        ],
+      } as SessionUpdate,
+    ]);
+    const last = tools(r.events).at(-1)!;
+    expect(last).toMatchObject({ result: 'Revised prompt: a hill', images: [{ mediaType: 'image/png', data: PNG }] });
+  });
+
+  it('reads an MCP result in rawOutput: image block to images, text blocks to the result (no base64 dump)', () => {
+    const r = run([
+      { sessionUpdate: 'tool_call', toolCallId: 'm', title: 'mcp.playwright.browser_take_screenshot', kind: 'execute', status: 'in_progress' } as SessionUpdate,
+      {
+        sessionUpdate: 'tool_call_update',
+        toolCallId: 'm',
+        status: 'completed',
+        rawOutput: { result: { content: [{ type: 'text', text: 'Page URL: https://example.com/x' }, { type: 'image', data: PNG, mimeType: 'image/png' }] }, error: null },
+      } as SessionUpdate,
+    ]);
+    const last = tools(r.events).at(-1)!;
+    expect(last.result).toBe('Page URL: https://example.com/x');
+    expect(last.images).toEqual([{ mediaType: 'image/png', data: PNG }]);
+  });
+
+  it('drops SVG and mislabeled images', () => {
+    const r = run([
+      {
+        sessionUpdate: 'tool_call',
+        toolCallId: 'x',
+        title: 't',
+        status: 'completed',
+        content: [
+          { type: 'content', content: { type: 'image', data: btoa('<svg/>'), mimeType: 'image/svg+xml' } },
+          { type: 'content', content: { type: 'image', data: PNG, mimeType: 'image/gif' } },
+        ],
+      } as SessionUpdate,
+    ]);
+    expect(tools(r.events)[0]).not.toHaveProperty('images');
+  });
+});
+
+describe('reduceAcpUpdate: Codex collab subagents (spawnAgent / wait)', () => {
+  const states = (child: string, status: string, message: string | null = null) => ({ [child]: { status, message } });
+  const spawnStart = { sessionUpdate: 'tool_call', toolCallId: 'sp', title: 'spawnAgent', kind: 'other', status: 'in_progress', rawInput: { prompt: 'Summarize README\nin one line', receiverThreadIds: [], agentsStates: {} } } as SessionUpdate;
+  const spawnDone = { sessionUpdate: 'tool_call_update', toolCallId: 'sp', status: 'completed', rawInput: { receiverThreadIds: ['c1'], agentsStates: states('c1', 'running') } } as SessionUpdate;
+  const waitStart = { sessionUpdate: 'tool_call', toolCallId: 'w', title: 'wait', kind: 'other', status: 'in_progress', rawInput: { receiverThreadIds: ['c1'], agentsStates: states('c1', 'running') } } as SessionUpdate;
+  const waitDone = { sessionUpdate: 'tool_call_update', toolCallId: 'w', status: 'completed', rawInput: { receiverThreadIds: ['c1'], agentsStates: states('c1', 'completed', 'README has one line.') } } as SessionUpdate;
+
+  it('a spawnAgent call is an Agent (subagent) card with type, task label and prompt', () => {
+    const r = run([spawnStart, spawnDone]);
+    const card = tools(r.events).at(-1)!;
+    expect(card.name).toBe('Agent');
+    expect(card.input).toMatchObject({ subagent_type: 'codex-agent', description: 'Summarize README', prompt: 'Summarize README\nin one line' });
+    // Settled once spawned; a running child state alone does not reopen the spawn card.
+    expect(card.taskStatus).toBeUndefined();
+  });
+
+  it('wait reports the spawned agent running, then done with its message as the result', () => {
+    const r = run([spawnStart, spawnDone, waitStart]);
+    const running = tools(r.events).filter((t) => t.toolUseId === 'sp').at(-1)!;
+    expect(running.taskStatus).toBe('running');
+    const done = run([waitDone], r.state);
+    const settled = tools(done.events).find((t) => t.toolUseId === 'sp')!;
+    expect(settled).toMatchObject({ taskStatus: 'completed', result: 'README has one line.' });
+    expect(settled.completedAt).toBeDefined();
+  });
+
+  it('an aborted turn stops a spawned agent still running', () => {
+    const r = run([spawnStart, spawnDone, waitStart]);
+    const fin = finalizeAcpTurn(r.state, 'cancelled', 5000);
+    const stopped = fin.events.flatMap((e) => (e.type === 'item-upsert' && e.item.type === 'tool' && e.item.toolUseId === 'sp' ? [e.item] : []));
+    expect(stopped.at(-1)).toMatchObject({ taskStatus: 'stopped' });
   });
 });

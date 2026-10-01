@@ -25,10 +25,17 @@ function baseName(path: string): string {
   return path.split('/').filter(Boolean).pop() ?? path;
 }
 
+/** Image kept in main's media store (the thread log has only its ref). */
+function storedRef(source: ImageSource): string | null {
+  return source.kind === 'inline' && source.image.ref && !source.image.data ? source.image.ref : null;
+}
+
 /** data: URL of `source` (`null` while a file loads, `undefined` when it could not be read). */
 function useImageUrl(threadId: string | null, source: ImageSource): string | null | undefined {
-  const inline = source.kind === 'inline' ? inlineDataUrl(source.image) : null;
-  const path = source.kind === 'file' ? source.path : null;
+  const ref = storedRef(source);
+  const inline = source.kind === 'inline' && !ref ? inlineDataUrl(source.image) : null;
+  // Media store refs and thread-folder files both load through `image:read` (cache keys kept apart).
+  const path = source.kind === 'file' ? source.path : ref ? `ref:${ref}` : null;
   const cached = threadId && path ? fileCache.get(cacheKey(threadId, path)) : undefined;
   const [loaded, setLoaded] = useState<{ key: string; url: string | undefined } | null>(null);
 
@@ -36,7 +43,7 @@ function useImageUrl(threadId: string | null, source: ImageSource): string | nul
     if (!threadId || !path || cached) return;
     const key = cacheKey(threadId, path);
     let alive = true;
-    invoke('image:read', { threadId, path })
+    invoke('image:read', ref ? { threadId, ref } : { threadId, path })
       .then(({ dataUrl }) => {
         if (fileCache.size >= MAX_CACHED) fileCache.delete(fileCache.keys().next().value as string);
         fileCache.set(key, dataUrl);
@@ -48,7 +55,7 @@ function useImageUrl(threadId: string | null, source: ImageSource): string | nul
     return () => {
       alive = false;
     };
-  }, [threadId, path, cached]);
+  }, [threadId, path, cached, ref]);
 
   if (inline) return inline;
   if (cached) return cached;
@@ -67,10 +74,12 @@ export interface ImageThumbProps {
   size?: 'sm' | 'md';
   /** Caption under the thumbnail (gallery); the whole cell hides with the thumbnail. */
   caption?: string;
+  /** Lightbox subtitle (tool · page URL of a screenshot). */
+  subtitle?: string;
 }
 
 /** Thumbnail button; opens the lightbox. Hidden when the file cannot be read (deleted, too large, outside). */
-export const ImageThumb = memo(function ImageThumb({ source, label, size = 'md', caption }: ImageThumbProps) {
+export const ImageThumb = memo(function ImageThumb({ source, label, size = 'md', caption, subtitle }: ImageThumbProps) {
   const threadId = useContext(ThreadImageContext);
   const url = useImageUrl(threadId, source);
   const [open, setOpen] = useState(false);
@@ -88,7 +97,9 @@ export const ImageThumb = memo(function ImageThumb({ source, label, size = 'md',
       >
         {url ? <img src={url} alt={label} draggable={false} /> : <span className="hc-image-thumb__loading" />}
       </button>
-      {url ? <ImageLightbox open={open} onClose={() => setOpen(false)} url={url} label={label} source={source} threadId={threadId} /> : null}
+      {url ? (
+        <ImageLightbox open={open} onClose={() => setOpen(false)} url={url} label={label} subtitle={subtitle} source={source} threadId={threadId} />
+      ) : null}
     </>
   );
   if (caption === undefined) return thumb;
@@ -107,6 +118,7 @@ function ImageLightbox({
   onClose,
   url,
   label,
+  subtitle,
   source,
   threadId,
 }: {
@@ -114,6 +126,7 @@ function ImageLightbox({
   onClose: () => void;
   url: string;
   label: string;
+  subtitle?: string;
   source: ImageSource;
   threadId: string | null;
 }) {
@@ -127,12 +140,25 @@ function ImageLightbox({
     if (!threadId || !path) return;
     invoke('image:reveal', { threadId, path }).catch(() => setStatus({ ok: false, text: '파일을 찾지 못했습니다' }));
   };
+  /** What main reads for copy / save: the media store ref, the inline image, or the thread-folder file. */
+  const request = (id: string) => {
+    const ref = storedRef(source);
+    if (ref) return { threadId: id, ref };
+    return source.kind === 'inline' ? { threadId: id, image: source.image } : { threadId: id, path: source.path };
+  };
   const copy = () => {
     if (!threadId) return;
-    const req = source.kind === 'inline' ? { threadId, image: source.image } : { threadId, path: source.path };
-    invoke('image:copy', req)
+    invoke('image:copy', request(threadId))
       .then(() => setStatus({ ok: true, text: '이미지를 복사했습니다' }))
       .catch(() => setStatus({ ok: false, text: '이미지를 복사하지 못했습니다' }));
+  };
+  const save = () => {
+    if (!threadId) return;
+    invoke('image:save', request(threadId))
+      .then(({ saved }) => {
+        if (saved) setStatus({ ok: true, text: '이미지를 저장했습니다' });
+      })
+      .catch(() => setStatus({ ok: false, text: '이미지를 저장하지 못했습니다' }));
   };
 
   return (
@@ -140,7 +166,7 @@ function ImageLightbox({
       open={open}
       onClose={onClose}
       title={label}
-      subtitle={path && path !== label ? path : undefined}
+      subtitle={subtitle ?? (path && path !== label ? path : undefined)}
       width={760}
       className="hc-lightbox"
       actions={
@@ -153,6 +179,11 @@ function ImageLightbox({
           {threadId && path ? (
             <Button variant="secondary" onClick={reveal}>
               Finder에서 보기
+            </Button>
+          ) : null}
+          {threadId && !isSvg(source) ? (
+            <Button variant="secondary" onClick={save}>
+              저장
             </Button>
           ) : null}
           {threadId && !isSvg(source) ? (
@@ -170,15 +201,30 @@ function ImageLightbox({
   );
 }
 
-/** Inline images of a tool_result (Read of an image file keeps its path for Finder). */
-export function ToolImages({ images, path }: { images: ChatImage[]; path?: string }) {
-  const label = path ? baseName(path) : '도구 결과 이미지';
+/**
+ * Inline images of a tool_result / agent message (Read of an image file keeps its path for Finder). `caption`
+ * (screenshots: tool · page URL) shows under the strip and as the lightbox subtitle.
+ */
+export function ToolImages({ images, path, caption, label: name }: { images: ChatImage[]; path?: string; caption?: string | null; label?: string }) {
+  const label = name ?? (path ? baseName(path) : '도구 결과 이미지');
   return (
-    <div className="hc-image-strip" data-testid="tool-images">
-      {images.map((image, i) => (
-        <ImageThumb key={i} source={{ kind: 'inline', image, path }} label={images.length > 1 ? `${label} ${i + 1}` : label} />
-      ))}
-    </div>
+    <figure className="hc-image-figure" data-testid="tool-images">
+      <div className="hc-image-strip">
+        {images.map((image, i) => (
+          <ImageThumb
+            key={image.ref ?? i}
+            source={{ kind: 'inline', image, path }}
+            label={images.length > 1 ? `${label} ${i + 1}` : label}
+            subtitle={caption ?? undefined}
+          />
+        ))}
+      </div>
+      {caption ? (
+        <figcaption className="hc-image-figure__caption" data-testid="tool-images-caption" title={caption}>
+          {caption}
+        </figcaption>
+      ) : null}
+    </figure>
   );
 }
 

@@ -61,6 +61,8 @@ export interface FakeTurnContext {
   /** Turn index within this Query. */
   turnIndex: number;
   prompt: string;
+  /** Content blocks of the user message (`text`, `image:<media_type>`, `document:<source type>:<media_type>`). */
+  blocks: string[];
   configDir: string | undefined;
   options: Options;
   /** Model in effect for this turn (`options.model`, updated by `setModel()`); undefined = default. */
@@ -83,6 +85,8 @@ export interface FakeCall {
   resumeMissing: boolean;
   sessionId: string;
   prompts: string[];
+  /** Content block kinds of each prompt (see FakeTurnContext.blocks). */
+  promptBlocks: string[][];
   permissionModes: string[];
   models: (string | undefined)[];
   /** `applyFlagSettings({effortLevel})` values, in order (null = back to the model default). */
@@ -203,6 +207,20 @@ function promptText(msg: SDKUserMessage): string {
     .join('\n');
 }
 
+/** Kind of each content block of a user message (`[blocks]` echoes them; tests read FakeCall.promptBlocks). */
+function blockKinds(msg: SDKUserMessage): string[] {
+  const content = msg.message.content;
+  if (typeof content === 'string') return ['text'];
+  return content.map((block) => {
+    if (block.type === 'image') return `image:${'media_type' in block.source ? block.source.media_type : block.source.type}`;
+    if (block.type === 'document') {
+      const source = block.source as { type: string; media_type?: string };
+      return `document:${source.type}:${source.media_type ?? ''}`;
+    }
+    return block.type;
+  });
+}
+
 /** Microtask-only delay so close() -> stream end is observably asynchronous even under fake timers. */
 async function ticks(n: number): Promise<void> {
   for (let i = 0; i < n; i++) await Promise.resolve();
@@ -283,6 +301,7 @@ export function createFakeQuery(opts: FakeQueryOptions = {}): FakeQueryControlle
       resumeMissing,
       sessionId,
       prompts: [],
+      promptBlocks: [],
       permissionModes: [],
       models: [],
       efforts: [],
@@ -318,7 +337,7 @@ export function createFakeQuery(opts: FakeQueryOptions = {}): FakeQueryControlle
     let interruptTurn: (() => void) | null = null;
     let finished = false;
 
-    async function runTurn(text: string): Promise<void> {
+    async function runTurn(text: string, blocks: string[]): Promise<void> {
       if (!initSent) {
         initSent = true;
         emit({
@@ -338,6 +357,7 @@ export function createFakeQuery(opts: FakeQueryOptions = {}): FakeQueryControlle
         callIndex: index,
         turnIndex: turnIndex++,
         prompt: text,
+        blocks,
         configDir,
         options,
         model: currentModel,
@@ -496,8 +516,9 @@ export function createFakeQuery(opts: FakeQueryOptions = {}): FakeQueryControlle
     void (async () => {
       if (typeof params.prompt === 'string') {
         call.prompts.push(params.prompt);
+        call.promptBlocks.push(['text']);
         timeline.push(`prompt:${index}`);
-        await runTurn(params.prompt);
+        await runTurn(params.prompt, ['text']);
         await finish();
         return;
       }
@@ -506,9 +527,11 @@ export function createFakeQuery(opts: FakeQueryOptions = {}): FakeQueryControlle
         const next = await iterator.next();
         if (next.done || call.closed) break;
         const text = promptText(next.value);
+        const blocks = blockKinds(next.value);
         call.prompts.push(text);
+        call.promptBlocks.push(blocks);
         timeline.push(`prompt:${index}`);
-        await runTurn(text);
+        await runTurn(text, blocks);
       }
       await finish();
     })();
@@ -607,6 +630,7 @@ export const FIXTURE_EDIT_PATCH: StructuredPatchHunk[] = [
  * - `[ratelimit]`: first attempt is rejected (five_hour, no output), the retry on the next account succeeds.
  * - `[overage]`: allowed event with `isUsingOverage` (account blocked from the next turn), then normal text.
  * - `[text]`: streaming text only.
+ * - `[blocks]`: replies with the content block kinds of the prompt (`Blocks received: image:image/png, ...`).
  * - `[code]`: text with a fenced TypeScript block (code block label / copy).
  * - `[exhaust]`: the first two attempts are rejected (five_hour, resets in 10s, no output) so a pool with one
  *   exhausted account ends up waiting; the attempt after the reset succeeds.
@@ -615,6 +639,8 @@ export const FIXTURE_EDIT_PATCH: StructuredPatchHunk[] = [
  *   with `parent_tool_use_id`, the second one finishes first, then closing text.
  * - `[image]`: writes FIXTURE_PNG_PATH into the cwd, Reads it (tool_result image block), then text; the new file
  *   also makes the turn-end image gallery.
+ * - `[screenshot]`: web captures as MCP tool results — Playwright `browser_take_screenshot` (text with the page URL +
+ *   image block) and Claude in Chrome `computer` screenshot (image only) — then text.
  * - `[whoami]`: replies `model=<model> resume=<sid|none> account=<config dir name> permissionMode=<mode>
  *   effort=<level|default>` (e2e assertions).
  * - otherwise: streaming text, an Edit tool_use that asks for permission (structuredPatch), closing text.
@@ -719,11 +745,39 @@ function imageSteps(cwd: string, id: string): FakeStep[] {
   ];
 }
 
+/** Page the `[screenshot]` captures report. */
+export const FIXTURE_SCREENSHOT_URL = 'https://example.com/hopecode-preview';
+
+/** `[screenshot]`: MCP browser screenshots (tool_result content = text + image blocks, as the MCP servers return). */
+function screenshotSteps(prefix: string): FakeStep[] {
+  const image = { type: 'image', source: { type: 'base64', media_type: 'image/png', data: FIXTURE_PNG_BASE64 } };
+  const call = (id: string, name: string, input: Record<string, unknown>, content: unknown[]): FakeStep[] => [
+    {
+      type: 'emit',
+      message: { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id, name, input }] }, parent_tool_use_id: null },
+    },
+    {
+      type: 'emit',
+      delayMs: 100,
+      message: { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content }] }, parent_tool_use_id: null },
+    },
+  ];
+  return [
+    { type: 'text', text: '페이지를 열어 화면을 캡처합니다.', chunks: 2 },
+    ...call(`${prefix}_pw`, 'mcp__playwright__browser_take_screenshot', { type: 'png', filename: 'page.png' }, [
+      { type: 'text', text: `Took the viewport screenshot.\n\n### Page\n- Page URL: ${FIXTURE_SCREENSHOT_URL}\n- Page Title: Hopecode preview` },
+      image,
+    ]),
+    ...call(`${prefix}_chrome`, 'mcp__claude-in-chrome__computer', { action: 'screenshot', tabId: 1 }, [image]),
+    { type: 'text', text: '두 화면 캡처를 확인했습니다.', chunks: 2 },
+  ];
+}
+
 export function createFixtureScenario(): FakeScenario {
   let fixtureIds = 0;
   const rejectedOnce = new Set<string>();
   const exhaustRejections = new Map<string, number>();
-  return ({ prompt, options, configDir, model, permissionMode, effort }) => {
+  return ({ prompt, blocks, options, configDir, model, permissionMode, effort }) => {
     const resetsAt = Math.floor(Date.now() / 1000) + 3600;
     if (prompt.includes('[exhaust]') && (exhaustRejections.get(prompt) ?? 0) < 2) {
       exhaustRejections.set(prompt, (exhaustRejections.get(prompt) ?? 0) + 1);
@@ -790,9 +844,16 @@ export function createFixtureScenario(): FakeScenario {
     if (prompt.includes('[image]')) {
       return imageSteps(options.cwd ?? '', `toolu_fixture_img_${++fixtureIds}`);
     }
+    if (prompt.includes('[screenshot]')) {
+      return screenshotSteps(`toolu_fixture_shot_${++fixtureIds}`);
+    }
     // A slash command reaches the CLI as the prompt text itself; the fixture echoes what it received.
     if (prompt.startsWith('/')) {
       return [{ type: 'text', text: `Slash command received: ${prompt}`, chunks: 2 }];
+    }
+    // Attachments: echoes the content block kinds the CLI received with this prompt.
+    if (prompt.includes('[blocks]')) {
+      return [{ type: 'text', text: `Blocks received: ${blocks.join(', ')}`, chunks: 2 }];
     }
     if (prompt.includes('[text]')) {
       return [{ type: 'text', text: 'Streaming reply from the fixture session.', chunks: 4 }];

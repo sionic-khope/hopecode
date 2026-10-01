@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import type { CodexEffortLevel, EffortLevel, ModelOption, Project, UiPermissionMode } from '../../../shared/types';
+import type { AttachmentInfo, CodexEffortLevel, EffortLevel, ModelOption, Project, UiPermissionMode } from '../../../shared/types';
 import { AGENTS } from '../../../shared/agents';
 import { draftAgentDefaults } from '../../../core/agentDefaults';
 import { useAppStore, type DraftState } from '../../store';
@@ -19,8 +19,8 @@ export interface DraftViewProps {
   onDraftChange: (patch: Partial<DraftState>) => void;
   /** "다른 폴더 선택…" (project:add). Resolves the chosen project, or null when cancelled. */
   onPickFolder: () => Promise<Project | null>;
-  /** thread:start. Resolves true when the thread was created (the composer clears). */
-  onStart: (text: string) => Promise<boolean>;
+  /** thread:start (with the composer attachments' ids). Resolves true when the thread was created (the composer clears). */
+  onStart: (text: string, attachmentIds?: string[]) => Promise<boolean>;
   onAttachFiles: (projectId: string) => Promise<string[]>;
   /** What the `default` model runs as (e.g. "Fable 5"). */
   defaultModelLabel: string;
@@ -100,10 +100,10 @@ export function DraftView({
 
   // No folder is not an error: the thread starts as a chat without a project (scratch folder, plan 2.12).
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, attachments?: AttachmentInfo[]) => {
       setStarting(true);
       try {
-        return await onStart(text);
+        return await onStart(text, attachments?.map((a) => a.id));
       } finally {
         setStarting(false);
       }
@@ -112,6 +112,11 @@ export function DraftView({
   );
 
   const attach = useCallback(async () => (draft.projectId ? onAttachFiles(draft.projectId) : []), [draft.projectId, onAttachFiles]);
+  // No session yet: ACP agents are judged by their default prompt capabilities until the thread's session reports.
+  const attachTarget = useMemo(
+    () => ({ agent: draft.agent, caps: null, ...(draft.projectId ? { projectId: draft.projectId } : {}) }),
+    [draft.agent, draft.projectId],
+  );
   const setMode = useCallback((permissionMode: UiPermissionMode) => onDraftChange({ permissionMode }), [onDraftChange]);
   const setModel = useCallback((model: string) => onDraftChange({ model }), [onDraftChange]);
   const setEffort = useCallback((effort: EffortLevel | null) => onDraftChange({ effort }), [onDraftChange]);
@@ -192,6 +197,7 @@ export function DraftView({
         disabled={starting}
         onSend={send}
         onAttachFiles={draft.projectId ? attach : undefined}
+        attach={attachTarget}
         canChangeFolder
         onChangeFolder={() => setFolderOpen(true)}
         prefill={prefill}

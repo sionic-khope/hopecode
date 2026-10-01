@@ -146,12 +146,15 @@ export function createFixtureRunCommand(): RunCommandFn {
 declare global {
   /** e2e only (`electronApp.evaluate`): the fixture answer to the full-access warning; unset = confirmed. */
   var __hopecodeFixtureBypassAnswer: boolean | undefined;
+  /** e2e only (`electronApp.evaluate`): what the file picker returns; unset = the folder's README.md. */
+  var __hopecodeFixturePickFiles: string[] | undefined;
 }
 
 /**
  * Native dialog seam for e2e: `project:add` returns HOPECODE_FIXTURE_PROJECT, the trust question answers
- * Trust, the bypassPermissions warning is confirmed, the file picker returns the folder's README.md and a
- * Markdown export is saved under `exportDir` (inside HOPECODE_HOME), so no native dialog ever blocks a test.
+ * Trust, the bypassPermissions warning is confirmed, the file picker returns the folder's README.md (or the files an
+ * e2e set in `__hopecodeFixturePickFiles`) and a Markdown export is saved under `exportDir` (inside HOPECODE_HOME),
+ * so no native dialog ever blocks a test.
  */
 export function createFixtureDialogs(projectPath: string | undefined, exportDir?: string): Dialogs {
   return {
@@ -165,6 +168,7 @@ export function createFixtureDialogs(projectPath: string | undefined, exportDir?
       return globalThis.__hopecodeFixtureBypassAnswer ?? true;
     },
     async pickFiles(defaultPath) {
+      if (globalThis.__hopecodeFixturePickFiles) return [...globalThis.__hopecodeFixturePickFiles];
       return defaultPath ? [join(defaultPath, 'README.md')] : [];
     },
     async saveMarkdown(defaultName) {

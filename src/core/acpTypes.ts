@@ -43,8 +43,6 @@ export interface AcpReducerState {
    * `tool_call_update` merges into the settled card instead of reopening or duplicating it.
    */
   settledTools: Record<string, ToolItem>; // keyed by settledKey(toolCallId)
-  /** The info notice about unsupported agent images was shown this connection. */
-  imageNoticeShown: boolean;
   /** Monotonic counter for deterministic ids. */
   seq: number;
 }

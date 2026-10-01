@@ -186,8 +186,8 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManagerIm
     broker,
     scheduler,
 
-    send(threadId, text, images) {
-      return runner(threadId).send(text, images);
+    send(threadId, text, images, files) {
+      return runner(threadId).send(text, images, files);
     },
     interrupt(threadId) {
       return runner(threadId).interrupt();

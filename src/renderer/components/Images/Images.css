@@ -134,9 +134,13 @@
   position: relative;
   width: 56px;
   height: 56px;
+  padding: var(--frame-w-sm);
   border-radius: var(--radius-control);
   background: var(--bg-card-muted);
-  box-shadow: inset 0 0 0 2px var(--separator);
+  box-shadow: inset 0 0 0 var(--frame-w-sm) var(--frame);
+}
+.hc-composer-image:hover {
+  box-shadow: inset 0 0 0 var(--frame-w-sm) var(--line-accent);
 }
 .hc-composer-image img {
   width: 100%;
@@ -179,4 +183,137 @@
 }
 .hc-tool__images .hc-image-strip {
   margin-top: 0;
+}
+
+/* File attachment chips (composer tray + user bubble): white pixel frame, type badge, name, size. */
+.hc-attach-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 260px;
+  height: 32px;
+  padding: 0 var(--space-3) 0 var(--space-2);
+  background: var(--bg-card);
+  box-shadow: inset 0 0 0 var(--frame-w-sm) var(--frame);
+  color: var(--label);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  line-height: var(--lh-sm);
+  white-space: nowrap;
+}
+.hc-attach-chip:hover {
+  box-shadow: inset 0 0 0 var(--frame-w-sm) var(--line-accent);
+}
+.hc-attach-chip__badge {
+  flex: none;
+  min-width: 30px;
+  padding: 1px 4px;
+  background: var(--cyan);
+  color: var(--black);
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  line-height: 14px;
+  text-align: center;
+  -webkit-font-smoothing: var(--font-smoothing-pixel);
+}
+.hc-attach-chip__badge--pdf {
+  background: var(--soul);
+  color: var(--white);
+}
+.hc-attach-chip__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hc-attach-chip__size {
+  flex: none;
+  color: var(--label-secondary);
+  font-size: var(--text-2xs);
+}
+.hc-attach-chip__remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: var(--label);
+  color: var(--black);
+  cursor: pointer;
+}
+.hc-attach-chip__remove:hover,
+.hc-composer-image__remove:hover {
+  background: var(--select);
+}
+.hc-attach-chip__remove:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.hc-composer-images .hc-attach-chip {
+  height: 56px;
+  padding-right: var(--space-4);
+}
+
+/* Sent files in the user bubble (above the text, like the image strip). */
+.hc-attach-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.hc-attach-row--user {
+  justify-content: flex-end;
+  margin: 0 0 var(--space-2);
+  white-space: normal;
+}
+.hc-attach-chip--sent {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Drop zone: shown while files are dragged over the composer card. */
+.hc-composer__card {
+  position: relative;
+}
+.hc-composer__dropzone {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.88);
+  box-shadow: inset 0 0 0 var(--frame-w) var(--line-accent);
+  color: var(--select);
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  letter-spacing: var(--tracking-tag);
+  pointer-events: none;
+}
+.hc-composer__dropzone::before {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border: 2px dashed var(--line-accent);
+}
+
+/* Agent images (tool results, screenshots, ACP message images): thumbnails + "tool · page URL" caption. */
+.hc-image-figure {
+  margin: 0;
+  min-width: 0;
+}
+.hc-image-figure__caption {
+  margin-top: var(--space-1);
+  font-size: 11px;
+  color: var(--label-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hc-say-images {
+  margin-top: var(--space-1);
 }

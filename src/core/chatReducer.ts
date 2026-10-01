@@ -9,6 +9,7 @@ import type {
   ToolItem,
   TurnEndReason,
 } from '../shared/types';
+import { MAX_AGENT_IMAGE_BASE64, toAgentImage } from './agentImages';
 
 /** SDK messages are consumed structurally; type-only import keeps core free of runtime SDK deps. */
 export type SdkMessageLike = SDKMessage;
@@ -43,16 +44,8 @@ function extractToolResultText(content: unknown): string {
   return '';
 }
 
-const IMAGE_MEDIA_TYPES: ReadonlySet<string> = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
-
 /** Largest base64 payload kept on a chat item (10 MB decoded); bigger images are dropped. */
-export const MAX_INLINE_IMAGE_BASE64 = Math.ceil((10 * 1024 * 1024 * 4) / 3);
-
-function toChatImage(mediaType: unknown, data: unknown): ChatImage | null {
-  if (typeof mediaType !== 'string' || !IMAGE_MEDIA_TYPES.has(mediaType)) return null;
-  if (typeof data !== 'string' || data.length === 0 || data.length > MAX_INLINE_IMAGE_BASE64) return null;
-  return { mediaType: mediaType as ChatImage['mediaType'], data };
-}
+export const MAX_INLINE_IMAGE_BASE64 = MAX_AGENT_IMAGE_BASE64;
 
 /**
  * Base64 image blocks of a tool_result (`{type:'image', source:{type:'base64', media_type, data}}`), falling back
@@ -65,14 +58,14 @@ export function extractToolResultImages(content: unknown, toolUseResult: unknown
       if (!block || typeof block !== 'object' || (block as { type?: unknown }).type !== 'image') continue;
       const source = (block as { source?: Record<string, unknown> }).source;
       if (!source || source.type !== 'base64') continue;
-      const image = toChatImage(source.media_type, source.data);
+      const image = toAgentImage(source.media_type, source.data);
       if (image) images.push(image);
     }
   }
   if (images.length === 0 && toolUseResult && typeof toolUseResult === 'object') {
     const r = toolUseResult as { type?: unknown; file?: { base64?: unknown; type?: unknown } };
     if (r.type === 'image' && r.file) {
-      const image = toChatImage(r.file.type, r.file.base64);
+      const image = toAgentImage(r.file.type, r.file.base64);
       if (image) images.push(image);
     }
   }

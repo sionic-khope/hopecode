@@ -6,6 +6,7 @@ import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ChatItem } from '../../shared/types';
 import type { ThreadLog } from '../contracts';
+import type { MediaStore } from '../images/mediaStore';
 import { appendJsonl, readAllJsonl } from './jsonl';
 import { assertSafeId } from './safeId';
 
@@ -13,7 +14,9 @@ function isEnoent(err: unknown): boolean {
   return typeof err === 'object' && err !== null && (err as { code?: string }).code === 'ENOENT';
 }
 
-export function createThreadLog(dir: string): ThreadLog {
+/** `media`: agent images go to the media store and the log keeps references only (images/mediaStore). */
+export function createThreadLog(dir: string, opts: { media?: MediaStore } = {}): ThreadLog {
+  const { media } = opts;
   const fileFor = (threadId: string): string => join(dir, `${assertSafeId(threadId, 'threadId')}.jsonl`);
   const chains = new Map<string, Promise<void>>();
 
@@ -32,7 +35,7 @@ export function createThreadLog(dir: string): ThreadLog {
   return {
     async append(threadId, item) {
       const file = fileFor(threadId);
-      return enqueue(threadId, () => appendJsonl(file, item));
+      return enqueue(threadId, async () => appendJsonl(file, media ? await media.externalize(threadId, item) : item));
     },
     async read(threadId) {
       const file = fileFor(threadId);
@@ -51,6 +54,7 @@ export function createThreadLog(dir: string): ThreadLog {
         } catch (err) {
           if (!isEnoent(err)) throw err;
         }
+        await media?.removeThread(threadId);
       });
     },
   };

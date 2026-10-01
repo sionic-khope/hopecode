@@ -5,6 +5,7 @@ import { Collapse } from '../common';
 import { CheckCircleIcon, ChevronIcon, ErrorCircleIcon, SpinnerIcon, iconForTool } from './icons';
 import { DiffView } from './DiffView';
 import { ToolImages } from '../Images/ChatImages';
+import { imageCaption } from '../../../core/agentImages';
 import { useTicker } from './TurnActivity';
 import { formatElapsed } from './agentIssues';
 import './Chat.css';
@@ -149,7 +150,11 @@ export const ToolCard = memo(function ToolCard({ item, defaultExpanded = false }
       </Collapse>
       {item.images && item.images.length > 0 ? (
         <div className="hc-tool__images">
-          <ToolImages images={item.images} path={typeof item.input.file_path === 'string' ? item.input.file_path : undefined} />
+          <ToolImages
+            images={item.images}
+            path={typeof item.input.file_path === 'string' ? item.input.file_path : undefined}
+            caption={imageCaption(item)}
+          />
         </div>
       ) : null}
     </div>

@@ -3,6 +3,9 @@ import { createChatReducerState, reduceSdkMessage, type SdkMessageLike } from '.
 import type { ChatReducerState } from '../../src/shared/types';
 
 const NOW = 1_000_000_000_000;
+/** Real image headers: the reducer checks magic bytes (core/agentImages). */
+const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+const WEBP = 'UklGRhoAAABXRUJQVlA4IA==';
 
 function msg(partial: Record<string, unknown>): SdkMessageLike {
   return partial as unknown as SdkMessageLike;
@@ -327,18 +330,18 @@ describe('reduceSdkMessage: subagents (parent_tool_use_id) and images', () => {
     state = reduceSdkMessage(state, assistantToolUse('img', 'Read', { file_path: 'a.png' }), NOW).state;
     const blockResult = reduceSdkMessage(
       state,
-      msg({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'img', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AAAA' } }, { type: 'text', text: 'caption' }] }] } }),
+      msg({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'img', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: PNG } }, { type: 'text', text: 'caption' }] }] } }),
       NOW,
     );
-    expect((blockResult.events[0] as any).item).toMatchObject({ result: 'caption', images: [{ mediaType: 'image/png', data: 'AAAA' }] });
+    expect((blockResult.events[0] as any).item).toMatchObject({ result: 'caption', images: [{ mediaType: 'image/png', data: PNG }] });
 
     let s2 = createChatReducerState('t1');
     s2 = reduceSdkMessage(s2, assistantToolUse('img2', 'Read', { file_path: 'b.webp' }), NOW).state;
-    const fallback = reduceSdkMessage(s2, userToolResult('img2', '', { toolUseResult: { type: 'image', file: { base64: 'BBBB', type: 'image/webp', originalSize: 3 } } }), NOW);
-    expect((fallback.events[0] as any).item.images).toEqual([{ mediaType: 'image/webp', data: 'BBBB' }]);
+    const fallback = reduceSdkMessage(s2, userToolResult('img2', '', { toolUseResult: { type: 'image', file: { base64: WEBP, type: 'image/webp', originalSize: 3 } } }), NOW);
+    expect((fallback.events[0] as any).item.images).toEqual([{ mediaType: 'image/webp', data: WEBP }]);
   });
 
-  it('drops images of unknown media types or over the size cap', () => {
+  it('drops images of unknown media types, SVG, or bytes that are not the declared type', () => {
     let state = createChatReducerState('t1');
     state = reduceSdkMessage(state, assistantToolUse('x', 'Read', {}), NOW).state;
     const r = reduceSdkMessage(
@@ -346,6 +349,9 @@ describe('reduceSdkMessage: subagents (parent_tool_use_id) and images', () => {
       msg({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'x', content: [
         { type: 'image', source: { type: 'base64', media_type: 'image/bmp', data: 'AAAA' } },
         { type: 'image', source: { type: 'url', url: 'https://example.com/a.png' } },
+        { type: 'image', source: { type: 'base64', media_type: 'image/svg+xml', data: btoa('<svg xmlns="http://www.w3.org/2000/svg"/>') } },
+        { type: 'image', source: { type: 'base64', media_type: 'image/png', data: btoa('<svg xmlns="http://www.w3.org/2000/svg"/>') } },
+        { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: PNG } },
       ] }] } }),
       NOW,
     );

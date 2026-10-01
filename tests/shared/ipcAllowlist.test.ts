@@ -12,6 +12,11 @@ import { InvalidIpcRequestError } from '../../src/main/ipc/guards';
 import { mentionPath } from '../../src/main/ipc/registerIpc';
 import type { Account, PermissionRequest, PersistedState, PoolSnapshot, Project, Thread, ThreadStartResult } from '../../src/shared/types';
 import { DEFAULT_SETTINGS } from '../../src/shared/constants';
+import { AttachmentStore } from '../../src/main/attachments/attachmentStore';
+import type { AttachResult } from '../../src/shared/types';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 // ---------------------------------------------------------------------------
 // Core allowlist predicates (no Electron involved)
@@ -1353,5 +1358,125 @@ describe('toolbar channels: git:createBranch, thread:exportMarkdown, editor:open
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Composer attachments: main reads files (picker / drop / paste), sends refer to ids
+// ---------------------------------------------------------------------------
+
+describe('attach:* and attachment sends', () => {
+  const PNG_B64 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  const png = () => new Uint8Array(Buffer.from(PNG_B64, 'base64'));
+  const pdf = () => new TextEncoder().encode('%PDF-1.4\n%%EOF\n');
+
+  function setup(thread: Partial<Thread> = {}) {
+    const ipcMain = new FakeIpcMain();
+    const attachments = new AttachmentStore();
+    const picked: string[][] = [];
+    const sent: unknown[][] = [];
+    const { services } = makeFakeServices({ attachments });
+    services.store.get().threads[0] = makeThread(thread);
+    services.dialogs.pickFiles = async (base) => {
+      picked.push([base]);
+      return pickResult;
+    };
+    services.sessionManager.send = async (...args: unknown[]) => {
+      sent.push(args);
+      return { accepted: true };
+    };
+    let pickResult: string[] = [];
+    registerIpc(ipcMain, services);
+    return { ipcMain, attachments, picked, sent, setPick: (paths: string[]) => (pickResult = paths), services };
+  }
+
+  it('attach:pick opens the picker at the thread folder and reads the chosen files in main', async () => {
+    const { ipcMain, picked, setPick } = setup();
+    const dir = mkdtempSync(join(tmpdir(), 'hopecode-ipc-attach-'));
+    try {
+      writeFileSync(join(dir, 'a.png'), png());
+      writeFileSync(join(dir, 'tool.exe'), 'MZ');
+      setPick([join(dir, 'a.png'), join(dir, 'tool.exe')]);
+      const res = (await ipcMain.invoke('attach:pick', { threadId: 't1' })) as AttachResult;
+      expect(picked).toEqual([['/tmp/project']]);
+      expect(res.attachments).toEqual([expect.objectContaining({ kind: 'image', name: 'a.png', linkable: true })]);
+      expect(res.rejected).toEqual([{ name: 'tool.exe', reason: '.exe 파일은 첨부할 수 없습니다' }]);
+      await expect(ipcMain.invoke('attach:pick', { threadId: 'ghost' })).rejects.toBeInstanceOf(InvalidIpcRequestError);
+      expect(() => ipcMain.invoke('attach:pick', { threadId: 't1' }, 'https://evil.example/')).toThrow(UntrustedSenderError);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('attach:paste / attach:drop validate the payload shape', async () => {
+    const { ipcMain } = setup();
+    await expect(ipcMain.invoke('attach:paste', { files: [{ name: 'a.png', bytes: 'AAAA' }] })).rejects.toBeInstanceOf(InvalidIpcRequestError);
+    await expect(ipcMain.invoke('attach:drop', { paths: [1], files: [] })).rejects.toBeInstanceOf(InvalidIpcRequestError);
+    const res = (await ipcMain.invoke('attach:paste', { files: [{ name: 'image.png', bytes: png() }] })) as AttachResult;
+    expect(res.attachments[0]).toMatchObject({ kind: 'image', linkable: false });
+    const dropped = (await ipcMain.invoke('attach:drop', { paths: ['relative.png'], files: [{ name: 'x.pdf', bytes: pdf() }] })) as AttachResult;
+    expect(dropped.attachments.map((a) => a.kind)).toEqual(['pdf']);
+    expect(dropped.rejected).toEqual([{ name: 'relative.png', reason: '잘못된 경로입니다' }]);
+  });
+
+  it('chat:send resolves ids to validated content; unknown ids are refused', async () => {
+    const { ipcMain, attachments, sent } = setup();
+    const img = attachments.fromBytes('image.png', png());
+    const doc = attachments.fromBytes('spec.pdf', pdf());
+    expect(await ipcMain.invoke('chat:send', { threadId: 't1', text: 'look', attachmentIds: [img.id, doc.id] })).toEqual({ accepted: true });
+    expect(sent[0]).toEqual([
+      't1',
+      'look',
+      [{ mediaType: 'image/png', data: PNG_B64 }],
+      [expect.objectContaining({ kind: 'pdf', name: 'spec.pdf', data: Buffer.from(pdf()).toString('base64') })],
+    ]);
+    expect(await ipcMain.invoke('chat:send', { threadId: 't1', text: 'x', attachmentIds: ['gone'] })).toEqual({ accepted: false, reason: 'attachment' });
+    await expect(ipcMain.invoke('chat:send', { threadId: 't1', text: 'x', attachmentIds: 'nope' })).rejects.toBeInstanceOf(InvalidIpcRequestError);
+    expect(sent).toHaveLength(1);
+  });
+
+  it('ACP threads: PDFs never, images only with the image capability (defaults, then the session’s)', async () => {
+    const codex = setup({ agent: 'codex' });
+    const doc = codex.attachments.fromBytes('spec.pdf', pdf());
+    const img = codex.attachments.fromBytes('image.png', png());
+    expect(await codex.ipcMain.invoke('chat:send', { threadId: 't1', text: 'x', attachmentIds: [doc.id] })).toEqual({ accepted: false, reason: 'attachment' });
+    expect(await codex.ipcMain.invoke('chat:send', { threadId: 't1', text: 'x', attachmentIds: [img.id] })).toEqual({ accepted: true });
+
+    const noImages = setup({ agent: 'codex', acp: { sessionId: 's', controls: null, promptCapabilities: { image: false, audio: false, embeddedContext: true } } });
+    const img2 = noImages.attachments.fromBytes('image.png', png());
+    expect(await noImages.ipcMain.invoke('chat:send', { threadId: 't1', text: 'x', attachmentIds: [img2.id] })).toEqual({ accepted: false, reason: 'attachment' });
+    expect(noImages.sent).toHaveLength(0);
+  });
+
+  it('thread:start with an unknown attachment creates nothing', async () => {
+    const { ipcMain, services } = setup();
+    const before = services.store.get().threads.length;
+    expect(await ipcMain.invoke('thread:start', { text: 'hi', attachmentIds: ['gone'] })).toEqual({ ok: false, reason: 'attachment' });
+    expect(services.store.get().threads).toHaveLength(before);
+  });
+});
+
+describe('preload: attach:drop is only reachable through attachDropped', () => {
+  it('the generic invoke refuses it; attachDropped sends dropped paths and path-less bytes', async () => {
+    vi.resetModules();
+    const ipcRendererInvoke = vi.fn(async (_channel: string, ..._args: unknown[]) => ({ attachments: [], rejected: [] }));
+    let exposedApi: any;
+    vi.doMock('electron', () => ({
+      contextBridge: { exposeInMainWorld: (_key: string, api: unknown) => (exposedApi = api) },
+      ipcRenderer: { invoke: ipcRendererInvoke, on: vi.fn(), removeListener: vi.fn() },
+      webUtils: { getPathForFile: (f: File) => (f.name === 'disk.png' ? '/Users/me/disk.png' : '') },
+    }));
+    await import('../../src/preload/index');
+
+    await expect(exposedApi.invoke('attach:drop', { paths: ['/etc/passwd'], files: [] })).rejects.toThrow(/not allowed/);
+    expect(ipcRendererInvoke).not.toHaveBeenCalled();
+
+    await exposedApi.attachDropped([new File(['x'], 'disk.png'), new File(['hello'], 'clip.txt')]);
+    expect(ipcRendererInvoke).toHaveBeenCalledWith('attach:drop', {
+      paths: ['/Users/me/disk.png'],
+      files: [{ name: 'clip.txt', bytes: new Uint8Array(Buffer.from('hello')) }],
+    });
+    vi.doUnmock('electron');
   });
 });

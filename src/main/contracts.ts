@@ -11,6 +11,7 @@ import type {
   AgentUsageSnapshot,
   ChatItem,
   ChatImage,
+  PromptFile,
   ChatSendResult,
   ChildEnvInject,
   EditorId,
@@ -215,7 +216,8 @@ export type SlashCommandLite = SlashCommand;
  */
 export interface AgentRunner {
   readonly agent: AgentKind;
-  send(text: string, images?: ChatImage[]): Promise<ChatSendResult>;
+  /** `files`: validated PDF / text attachments (main's AttachmentStore); never renderer-supplied content. */
+  send(text: string, images?: ChatImage[], files?: PromptFile[]): Promise<ChatSendResult>;
   /** Claude: Query.interrupt. ACP: session/cancel + pending permissions answered `cancelled`. */
   interrupt(): Promise<void>;
   /** Re-evaluate a waiting thread (Claude rate limits). ACP: no-op. */
@@ -293,7 +295,7 @@ export interface AgentUsageService {
 }
 
 export interface SessionManager {
-  send(threadId: string, text: string, images?: ChatImage[]): Promise<ChatSendResult>;
+  send(threadId: string, text: string, images?: ChatImage[], files?: PromptFile[]): Promise<ChatSendResult>;
   interrupt(threadId: string): Promise<void>;
   setModel(threadId: string, model: string): Promise<void>;
   setPermissionMode(threadId: string, mode: UiPermissionMode): Promise<void>;

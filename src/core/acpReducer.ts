@@ -1,6 +1,7 @@
 // ACP `session/update` -> ChatEvent mapping (plan 2.4). Pure: the SDK is imported for types only.
 import type { SessionUpdate, StopReason } from '@agentclientprotocol/sdk';
-import type { AcpCommandLite, ChatEvent, ChatItem, ToolFileDiff, ToolItem } from '../shared/types';
+import type { AcpCommandLite, ChatEvent, ChatImage, ChatItem, ToolFileDiff, ToolItem } from '../shared/types';
+import { acpToolImages, mcpBlocks, mcpText, toAgentImage } from './agentImages';
 import type {
   AcpReducerState,
   AcpReduceResult,
@@ -23,7 +24,10 @@ const MAX_SETTLED_TOOLS = 200;
 const INTERRUPTED_TEXT = '중단됨';
 const FAILED_TEXT = '실패';
 const TERMINAL_TEXT = '(terminal 출력은 지원되지 않음)';
-const IMAGE_NOTICE_TEXT = '에이전트가 보낸 이미지는 아직 표시되지 않습니다.';
+/** codex-acp collab tool that starts a subagent (`collabAgentToolCall`, tool `spawnAgent`). */
+const CODEX_SPAWN_TITLE = 'spawnAgent';
+/** Subagent type the card / sprite shows for a Codex-spawned agent. */
+export const CODEX_SUBAGENT_TYPE = 'codex-agent';
 
 export const initialAcpReducerState: InitialAcpReducerStateFn = (threadId, turn) => ({
   threadId,
@@ -33,7 +37,6 @@ export const initialAcpReducerState: InitialAcpReducerStateFn = (threadId, turn)
   streamingText: '',
   pendingTools: {},
   settledTools: {},
-  imageNoticeShown: false,
   seq: 0,
 });
 
@@ -49,7 +52,8 @@ const TOOL_NAMES: Readonly<Record<string, string>> = {
   switch_mode: 'Mode',
 };
 
-export const toolNameFor: ToolNameForFn = (kind, title) => (kind && TOOL_NAMES[kind]) || title.slice(0, 40);
+export const toolNameFor: ToolNameForFn = (kind, title) =>
+  title === CODEX_SPAWN_TITLE ? 'Agent' : (kind && TOOL_NAMES[kind]) || title.slice(0, 40);
 
 const cap = (text: string, max: number) => (text.length > max ? text.slice(0, max) : text);
 
@@ -100,6 +104,8 @@ function contentDiffs(content: ToolContentLike[]): ToolFileDiff[] {
 
 function rawOutputText(rawOutput: unknown): string {
   if (rawOutput === undefined || rawOutput === null) return '';
+  // An MCP result (screenshots): its text blocks, never a JSON dump with the base64 image inside.
+  if (mcpBlocks(rawOutput).length > 0) return cap(mcpText(rawOutput), MAX_RESULT_CHARS);
   if (typeof rawOutput === 'string') return cap(rawOutput, MAX_RESULT_CHARS);
   try {
     return cap(JSON.stringify(rawOutput) ?? '', MAX_RESULT_CHARS);
@@ -128,7 +134,41 @@ function buildInput(
   if (typeof src.title === 'string') input.title = cap(src.title, MAX_LABEL_CHARS);
   if (typeof src.kind === 'string') input.kind = cap(src.kind, MAX_LABEL_CHARS);
   if (Array.isArray(src.locations)) input.locations = src.locations.slice(0, MAX_LIST_ITEMS);
+  if (input.title === CODEX_SPAWN_TITLE) {
+    // Subagent card fields (core/subagents): type, short task label, the full prompt for the detail view.
+    const prompt = typeof input.prompt === 'string' ? input.prompt : '';
+    input.subagent_type = CODEX_SUBAGENT_TYPE;
+    input.description = cap(prompt.split('\n')[0]?.trim() ?? '', 80);
+  }
   return input;
+}
+
+/** codex `agentsStates` entry -> chat state of the spawned agent (null: not a state we know). */
+function collabState(state: unknown): { taskStatus: NonNullable<ToolItem['taskStatus']>; message: string } | null {
+  if (!isRecord(state) || typeof state.status !== 'string') return null;
+  const message = typeof state.message === 'string' ? cap(state.message, MAX_RESULT_CHARS) : '';
+  switch (state.status) {
+    case 'pendingInit':
+    case 'running':
+      return { taskStatus: 'running', message };
+    case 'completed':
+    case 'shutdown':
+      return { taskStatus: 'completed', message };
+    case 'errored':
+    case 'notFound':
+      return { taskStatus: 'failed', message };
+    case 'interrupted':
+      return { taskStatus: 'stopped', message };
+    default:
+      return null;
+  }
+}
+
+/** Images of a tool call update, falling back to the card's earlier ones. */
+function toolImages(content: unknown, rawOutput: unknown, prev: ChatImage[] | undefined): { images?: ChatImage[] } {
+  const images = acpToolImages(content, rawOutput);
+  if (images.length > 0) return { images };
+  return prev ? { images: prev } : {};
 }
 
 const MAX_COMMAND_NAME_CHARS = 64;
@@ -240,6 +280,32 @@ export const reduceAcpUpdate: ReduceAcpUpdateFn = (state, update, now): AcpReduc
     if (item) events.push({ type: 'item-upsert', item });
   };
 
+  /**
+   * Codex collab calls report every agent they touch in `agentsStates` (`{<threadId>: {status, message}}`): the card
+   * of the `spawnAgent` call that started that agent follows it (running / done with its last message / failed).
+   * The spawn card itself only takes terminal states (it settles as soon as the agent was started).
+   */
+  const syncSpawned = (source: ToolItem) => {
+    const states = source.input.agentsStates;
+    if (!isRecord(states)) return;
+    const isSpawn = source.input.title === CODEX_SPAWN_TITLE;
+    for (const [childId, raw] of Object.entries(states)) {
+      const state = collabState(raw);
+      if (!state || (isSpawn && state.taskStatus === 'running')) continue;
+      const spawn = isSpawn ? source : findSpawn(next, childId);
+      if (!spawn || spawn.result === undefined) continue;
+      const updated: ToolItem = {
+        ...spawn,
+        taskStatus: state.taskStatus,
+        ...(state.message ? { result: state.message } : {}),
+        ...(state.taskStatus === 'running' ? {} : { completedAt: now }),
+      };
+      if (spawn.taskStatus === updated.taskStatus && spawn.result === updated.result) continue;
+      next = { ...next, settledTools: withSettled(next.settledTools, spawn.toolUseId, updated) };
+      events.push({ type: 'item-upsert', item: updated });
+    }
+  };
+
   const u = update as Record<string, any>;
 
   switch (u.sessionUpdate) {
@@ -250,9 +316,13 @@ export const reduceAcpUpdate: ReduceAcpUpdateFn = (state, update, now): AcpReduc
       } else if (block?.type === 'resource_link' && typeof block.uri === 'string') {
         const name = typeof block.name === 'string' && block.name ? block.name : block.uri;
         appendText(`[${name}](${block.uri})`, u.messageId);
-      } else if (block?.type === 'image' && !next.imageNoticeShown) {
-        next = { ...next, imageNoticeShown: true };
-        pushNotice('info', IMAGE_NOTICE_TEXT);
+      } else if (block?.type === 'image') {
+        // An image the agent sends as message content: its own item between the text runs around it.
+        const image = toAgentImage(block.mimeType, block.data);
+        if (image) {
+          settleText();
+          events.push({ type: 'item-upsert', item: { type: 'assistant-text', id: allocId('image'), text: '', images: [image], createdAt: now } });
+        }
       }
       break;
     }
@@ -269,6 +339,7 @@ export const reduceAcpUpdate: ReduceAcpUpdateFn = (state, update, now): AcpReduc
         name: toolNameFor(u.kind, typeof u.title === 'string' ? u.title : ''),
         input: buildInput(undefined, u),
         ...(diffs.length > 0 ? { diffs } : {}),
+        ...toolImages(u.content, u.rawOutput, undefined),
         createdAt: now,
       };
       // A tool_call that already reports its end state settles right away.
@@ -279,6 +350,7 @@ export const reduceAcpUpdate: ReduceAcpUpdateFn = (state, update, now): AcpReduc
         next = { ...next, pendingTools: { ...next.pendingTools, [toolCallId]: item } };
       }
       events.push({ type: 'item-upsert', item });
+      syncSpawned(item);
       break;
     }
 
@@ -293,6 +365,7 @@ export const reduceAcpUpdate: ReduceAcpUpdateFn = (state, update, now): AcpReduc
           ...settled,
           input: buildInput(settled.input, u),
           ...(diffs.length > 0 ? { diffs } : {}),
+          ...toolImages(u.content, u.rawOutput, settled.images),
         };
         if (u.status === 'completed' || u.status === 'failed') {
           const text = contentText(content) || rawOutputText(u.rawOutput);
@@ -304,6 +377,7 @@ export const reduceAcpUpdate: ReduceAcpUpdateFn = (state, update, now): AcpReduc
         }
         next = { ...next, settledTools: withSettled(next.settledTools, toolCallId, item) };
         events.push({ type: 'item-upsert', item });
+        syncSpawned(item);
         break;
       }
       const prev = next.pendingTools[toolCallId];
@@ -318,6 +392,7 @@ export const reduceAcpUpdate: ReduceAcpUpdateFn = (state, update, now): AcpReduc
         name: prev && !u.kind && !u.title ? prev.name : toolNameFor(kind as never, title),
         input: buildInput(prev?.input, u),
         ...(diffs.length > 0 ? { diffs } : prev?.diffs ? { diffs: prev.diffs } : {}),
+        ...toolImages(u.content, u.rawOutput, prev?.images),
         createdAt: prev?.createdAt ?? now,
       };
       if (u.status === 'completed' || u.status === 'failed') {
@@ -328,6 +403,7 @@ export const reduceAcpUpdate: ReduceAcpUpdateFn = (state, update, now): AcpReduc
         next = { ...next, pendingTools: { ...next.pendingTools, [toolCallId]: item } };
       }
       events.push({ type: 'item-upsert', item });
+      syncSpawned(item);
       break;
     }
 
@@ -416,6 +492,16 @@ function flattenSelect(
   return out;
 }
 
+/** The settled `spawnAgent` card that started Codex agent `childId`. */
+function findSpawn(state: AcpReducerState, childId: string): ToolItem | undefined {
+  for (const tool of Object.values(state.settledTools)) {
+    if (tool.input.title !== CODEX_SPAWN_TITLE) continue;
+    const ids = tool.input.receiverThreadIds;
+    if (Array.isArray(ids) && ids.includes(childId)) return tool;
+  }
+  return undefined;
+}
+
 function applyEnd(item: ToolItem, failed: boolean, text: string, now: number): void {
   item.result = text || (failed ? FAILED_TEXT : '');
   if (failed) item.isError = true;
@@ -442,6 +528,15 @@ export const finalizeAcpTurn: FinalizeAcpTurnFn = (state, stopReason: StopReason
     }
     settledTools = withSettled(settledTools, toolCallId, settled);
     events.push({ type: 'item-upsert', item: settled });
+  }
+  if (aborted) {
+    // Codex agents still running when the turn was cut off: their cards stop with it.
+    for (const tool of Object.values(settledTools)) {
+      if (tool.input.title !== CODEX_SPAWN_TITLE || tool.taskStatus !== 'running') continue;
+      const stopped: ToolItem = { ...tool, taskStatus: 'stopped', completedAt: now };
+      settledTools = withSettled(settledTools, tool.toolUseId, stopped);
+      events.push({ type: 'item-upsert', item: stopped });
+    }
   }
   return {
     state: { ...state, streamingItemId: null, streamingMessageId: null, streamingText: '', pendingTools: {}, settledTools },

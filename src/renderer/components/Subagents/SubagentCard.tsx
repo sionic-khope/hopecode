@@ -1,11 +1,14 @@
-import { memo, useEffect, useState, type ReactNode } from 'react';
+import { createContext, memo, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { ChatNode, SubagentState, SubagentSummary } from '../../../core/subagents';
 import { Collapse } from '../common';
 import { ChevronIcon } from '../Chat/icons';
 import { PixelSprite } from './PixelSprite';
 import './Subagents.css';
 
-const STATE_LABEL: Record<SubagentState, string> = { running: '실행 중', done: '완료', failed: '실패' };
+export const STATE_LABEL: Record<SubagentState, string> = { running: '실행 중', done: '완료', failed: '실패' };
+
+/** Opens a subagent's own transcript in the main area (MessageList provides it; absent = no detail view). */
+export const SubagentNavContext = createContext<((toolUseId: string) => void) | null>(null);
 
 /** "8초", "1분 5초", "1시간 2분". */
 export function formatElapsed(ms: number): string {
@@ -18,7 +21,7 @@ export function formatElapsed(ms: number): string {
 }
 
 /** Wall clock that ticks every second while `live`. */
-function useNow(live: boolean): number {
+export function useNow(live: boolean): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!live) return;
@@ -42,6 +45,7 @@ export interface SubagentCardProps {
 export const SubagentCard = memo(function SubagentCard({ node, renderChild }: SubagentCardProps) {
   const { summary, children, item } = node;
   const [open, setOpen] = useState(false);
+  const openDetail = useContext(SubagentNavContext);
   const running = summary.state === 'running';
   const now = useNow(running);
   const elapsed = (summary.endedAt ?? now) - summary.startedAt;
@@ -55,20 +59,35 @@ export const SubagentCard = memo(function SubagentCard({ node, renderChild }: Su
       data-state={summary.state}
       data-tool-id={item.toolUseId}
     >
-      <button type="button" className="hc-subagent__header" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-        <PixelSprite type={summary.subagentType} size={24} running={running} state={settled} />
-        <span className="hc-subagent__type">{summary.subagentType}</span>
-        {summary.description ? <span className="hc-subagent__desc">{summary.description}</span> : null}
-        <span className="hc-subagent__spacer" />
-        <span className={`hc-subagent__state hc-subagent__state--${summary.state}`}>{STATE_LABEL[summary.state]}</span>
-        <span className="hc-subagent__meta">{formatElapsed(elapsed)}</span>
-        <span className="hc-subagent__meta" data-testid="subagent-tool-count">
-          도구 {summary.childToolCount}
-        </span>
-        <span className="hc-subagent__chevron">
-          <ChevronIcon width={13} height={13} />
-        </span>
-      </button>
+      <div className="hc-subagent__bar">
+        <button type="button" className="hc-subagent__header" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+          <PixelSprite type={summary.subagentType} size={24} running={running} state={settled} />
+          <span className="hc-subagent__type">{summary.subagentType}</span>
+          {summary.description ? <span className="hc-subagent__desc">{summary.description}</span> : null}
+          <span className="hc-subagent__spacer" />
+          <span className={`hc-subagent__state hc-subagent__state--${summary.state}`}>{STATE_LABEL[summary.state]}</span>
+          <span className="hc-subagent__meta">{formatElapsed(elapsed)}</span>
+          <span className="hc-subagent__meta" data-testid="subagent-tool-count">
+            도구 {summary.childToolCount}
+          </span>
+          <span className="hc-subagent__chevron">
+            <ChevronIcon width={13} height={13} />
+          </span>
+        </button>
+        {openDetail ? (
+          <button
+            type="button"
+            className="hc-subagent__open"
+            data-testid="subagent-open"
+            aria-label={`${summary.subagentType} 서브에이전트 대화 보기`}
+            title="서브에이전트 대화 보기"
+            onClick={() => openDetail(item.toolUseId)}
+          >
+            보기
+            <ChevronIcon width={11} height={11} className="hc-subagent__open-icon" />
+          </button>
+        ) : null}
+      </div>
       <Collapse open={open}>
         <div className="hc-subagent__body">
           {children.length === 0 && !report ? <div className="hc-subagent__empty">아직 하위 작업이 없습니다</div> : null}
@@ -91,6 +110,7 @@ export const SubagentCard = memo(function SubagentCard({ node, renderChild }: Su
 
 /** PARTY line over a turn's subagent cards: their characters in a row and "서브에이전트 N개 실행 중". */
 export function SubagentRouting({ subagents }: { subagents: SubagentSummary[] }) {
+  const openDetail = useContext(SubagentNavContext);
   if (subagents.length === 0) return null;
   const running = subagents.filter((s) => s.state === 'running').length;
   const failed = subagents.filter((s) => s.state === 'failed').length;
@@ -104,14 +124,23 @@ export function SubagentRouting({ subagents }: { subagents: SubagentSummary[] })
         PARTY
       </span>
       <span className="hc-subagent-routing__sprites">
-        {subagents.map((s) => (
-          <PixelSprite
-            key={s.toolUseId}
-            type={s.subagentType}
-            size={24}
-            running={s.state === 'running'}
-          />
-        ))}
+        {subagents.map((s) =>
+          openDetail ? (
+            <button
+              key={s.toolUseId}
+              type="button"
+              className="hc-subagent-routing__member"
+              data-testid="subagent-party-member"
+              aria-label={`${s.subagentType}${s.description ? ` · ${s.description}` : ''} 대화 보기`}
+              title={s.description || s.subagentType}
+              onClick={() => openDetail(s.toolUseId)}
+            >
+              <PixelSprite type={s.subagentType} size={24} running={s.state === 'running'} />
+            </button>
+          ) : (
+            <PixelSprite key={s.toolUseId} type={s.subagentType} size={24} running={s.state === 'running'} />
+          ),
+        )}
       </span>
       <span className="hc-subagent-routing__label">{label}</span>
       <span className="hc-subagent-routing__types">{[...new Set(subagents.map((s) => s.subagentType))].join(' · ')}</span>
