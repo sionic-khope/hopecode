@@ -117,7 +117,7 @@ export function buildNoteUserPrompt(input: NotePromptInput): string {
   const doc = input.document.trim() ? clipDocument(input.document) : '(빈 문서)';
   parts.push('## 현재 문서', '<document>', doc, '</document>');
   if (input.mode === 'section') {
-    parts.push('', '## 대상 범위', '<target>', input.target ?? '', '</target>');
+    parts.push('', '## 대상 범위', '<target>', clipDocument(input.target ?? ''), '</target>');
   }
   parts.push('', '마크다운 본문만 출력한다.');
   return parts.join('\n');

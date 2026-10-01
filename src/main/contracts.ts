@@ -265,6 +265,8 @@ export interface AcpLaunchOptions {
   permissionMode: UiPermissionMode;
   /** Scratch thread: GIT_CEILING_DIRECTORIES for the agent. */
   gitCeiling?: string;
+  /** Codex 노트 모드 session: tools switched off through CODEX_CONFIG. Hermes ignores it. */
+  noTools?: { mcpServers: readonly string[] };
 }
 
 export type AcpLaunchResult = { ok: true; spec: AcpLaunchSpec } | { ok: false; reason: 'not-installed' | 'not-logged-in' };

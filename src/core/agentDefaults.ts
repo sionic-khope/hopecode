@@ -44,12 +44,56 @@ export function isCodexAutoReviewMode(mode: Pick<AcpModeLite, 'id' | 'name'>): b
   return mode.id === 'agent' || /auto[-_ ]?review/i.test(mode.id) || /auto[-_ ]?review/i.test(mode.name);
 }
 
-export const codexLaunchEnv: CodexLaunchEnvFn = ({ model, effort, permissionMode }) => {
+/**
+ * Codex config of a 노트 모드 session (`noTools`): every tool family Codex 0.159 can switch off by config. Keys were
+ * read from the installed `codex-cli 0.159.2` binary (feature table, `ConfigToml.web_search`, `WebSearchMode`
+ * `disabled|cached|indexed|live`, `McpServerConfig.enabled`). There is no key that removes apply_patch for every model
+ * (`apply_patch_freeform` only turns off the freeform variant), and MCP servers can only be disabled by name: the
+ * runner (noteAi.ts) also cancels the turn on the first tool call, whatever these keys leave on.
+ */
+export const NOTE_CODEX_FEATURES_OFF: readonly string[] = [
+  'shell_tool',
+  'unified_exec',
+  'js_repl',
+  'code_mode',
+  'apply_patch_freeform',
+  'view_image',
+  'web_search_request',
+  'web_search_cached',
+  'standalone_web_search',
+  'apps',
+  'plugins',
+];
+
+/** MCP server names Codex accepts as a config key (anything else is never passed on). */
+const MCP_SERVER_NAME = /^[A-Za-z0-9_-]{1,64}$/;
+
+/**
+ * Names of `[mcp_servers.<name>]` tables in a Codex `config.toml` (bare or quoted names; sub-tables such as
+ * `[mcp_servers.<name>.env]` count once). Inline-table / dotted-key definitions are not recognized.
+ */
+export function codexMcpServerNames(toml: string): string[] {
+  const out: string[] = [];
+  const header = /^\s*\[\s*mcp_servers\s*\.\s*(?:"([^"\\\n]*)"|'([^'\n]*)'|([A-Za-z0-9_-]+))/gm;
+  for (const m of toml.matchAll(header)) {
+    const name = m[1] ?? m[2] ?? m[3] ?? '';
+    if (MCP_SERVER_NAME.test(name) && !out.includes(name)) out.push(name);
+  }
+  return out;
+}
+
+export const codexLaunchEnv: CodexLaunchEnvFn = ({ model, effort, permissionMode, noTools }) => {
   if (model !== null && !CODEX_MODEL_PATTERN.test(model)) return { ok: false, error: 'invalid-model' };
   if (effort !== null && !CODEX_EFFORTS.has(effort)) return { ok: false, error: 'invalid-effort' };
-  const config: Record<string, string> = {};
+  const config: Record<string, unknown> = {};
   if (model !== null) config.model = model;
   if (effort !== null) config.model_reasoning_effort = effort;
+  if (noTools) {
+    config.web_search = 'disabled';
+    config.features = Object.fromEntries(NOTE_CODEX_FEATURES_OFF.map((k) => [k, false]));
+    const servers = noTools.mcpServers.filter((n) => MCP_SERVER_NAME.test(n));
+    if (servers.length > 0) config.mcp_servers = Object.fromEntries(servers.map((n) => [n, { enabled: false }]));
+  }
   const mode = CODEX_MODE_BY_PERMISSION[permissionMode] ?? CODEX_MODE_BY_PERMISSION.default;
   return { ok: true, env: { CODEX_CONFIG: JSON.stringify(config), INITIAL_AGENT_MODE: mode } };
 };

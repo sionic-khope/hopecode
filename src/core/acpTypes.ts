@@ -132,6 +132,8 @@ export interface CodexLaunchInput {
   model: string | null;
   effort: EffortLevel | CodexEffortLevel | null;
   permissionMode: UiPermissionMode;
+  /** 노트 모드: tools switched off in CODEX_CONFIG (agentDefaults NOTE_CODEX_FEATURES_OFF); `mcpServers` = names to disable. */
+  noTools?: { mcpServers: readonly string[] };
 }
 
 /**

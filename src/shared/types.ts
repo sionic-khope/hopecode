@@ -275,13 +275,15 @@ export interface AppSettings {
   noteVaults: string[];
   /** The vault the notes page shows ('' = none); always one of `noteVaults`. Changed only through `notes:*`. */
   activeNoteVault: string;
+  /** Vaults the user turned git on for (a subset of `noteVaults`): no git process runs for any other. Changed only through `notes:*`. */
+  noteGitVaults: string[];
   /** Settings schema revision (SETTINGS_REV); drives one-time default migrations. Not user-editable. */
   settingsRev: number;
 }
 
 /** Fields `settings:update` may change (ToS acknowledgement, pool membership and the revision have their own flows). */
 export type SettingsPatch = Partial<
-  Omit<AppSettings, 'tosNoticeAcknowledged' | 'localClaudeInPool' | 'settingsRev' | 'noteVaults' | 'activeNoteVault'>
+  Omit<AppSettings, 'tosNoticeAcknowledged' | 'localClaudeInPool' | 'settingsRev' | 'noteVaults' | 'activeNoteVault' | 'noteGitVaults'>
 >;
 
 export interface PersistedState {

@@ -1,8 +1,12 @@
 // 노트 모드 file operations, all inside one vault root. Every renderer path is normalized (notePaths.ts), joined to the
 // vault's realpath and its realpath (or, for a new entry, its parent's realpath) must stay strictly inside the vault:
-// `..`, absolute paths and symlinks that lead outside are refused. Only `.md` files are read or written.
+// `..`, absolute paths and symlinks that lead outside are refused. Only `.md` files are read or written (the real file
+// too, not just the name the renderer used), never through a hard link; a write re-checks its folder right before it
+// lands. Rename and trash act on the entry itself (a link is renamed / trashed, not what it points at), and a rename
+// never replaces an existing entry.
 import { randomBytes } from 'node:crypto';
-import { lstat, mkdir, open, readdir, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { link, lstat, mkdir, open, opendir, readFile, readdir, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, relative, sep } from 'node:path';
 import type { NoteDirListing, NoteEntry, NoteFile, NoteSearchResult } from '../../shared/notes';
 import {
@@ -19,6 +23,8 @@ import { isStrictlyInside } from '../containment';
 
 /** Entries of one listed folder at most. */
 export const LIST_DIR_MAX = 5_000;
+/** Directory entries one listing reads at most (hidden / non-note entries included). */
+export const LIST_DIR_VISIT_MAX = 50_000;
 /** Entries a name search visits at most (vaults of several thousand notes stay well below). */
 export const SEARCH_VISIT_MAX = 50_000;
 export const SEARCH_RESULTS_MAX = 200;
@@ -32,6 +38,18 @@ export class NoteFsError extends Error {
 
 function refuse(message: string): never {
   throw new NoteFsError(message);
+}
+
+/**
+ * A folder too broad to register as a vault: `/`, a top-level folder (`/Users`, `/Volumes`, `/private`, …), a volume
+ * root (`/Volumes/<disk>`), the home folder or anything above it.
+ */
+export async function isTooBroadVault(real: string): Promise<boolean> {
+  const parts = real.split('/').filter(Boolean);
+  if (parts.length <= 1) return true;
+  if (parts[0] === 'Volumes' && parts.length === 2) return true;
+  const home = await realpath(homedir()).catch(() => homedir());
+  return real === home || isStrictlyInside(real, home);
 }
 
 /** Vault root as a realpath; refused when it is not a folder. */
@@ -97,16 +115,40 @@ function needMarkdown(rel: string): void {
   if (!isMarkdownName(baseName(rel))) refuse('.md 파일만 열고 저장할 수 있습니다');
 }
 
+/** The resolved file itself is a `.md` file (a `note.md` link to `secret.txt` is refused). */
+function needMarkdownReal(real: string): void {
+  if (!isMarkdownName(basename(real))) refuse('.md 파일만 열고 저장할 수 있습니다');
+}
+
+/**
+ * The entry itself (a link is not followed): its folder resolved and contained, the last segment kept as is. The
+ * entry must also resolve inside the vault (resolveExisting) like every other operation.
+ */
+async function resolveEntry(root: string, rel: string): Promise<{ entry: string; real: string; isLink: boolean; isDir: boolean }> {
+  const real = await resolveExisting(root, rel);
+  const parent = parentOf(rel);
+  const realParent = parent === '' ? root : await resolveExisting(root, parent);
+  const entry = join(realParent, baseName(rel));
+  const st = await lstat(entry);
+  return { entry, real, isLink: st.isSymbolicLink(), isDir: st.isDirectory() };
+}
+
 const collator = new Intl.Collator('ko', { numeric: true, sensitivity: 'base' });
 
 export async function listDir(vault: string, dir: unknown): Promise<NoteDirListing> {
   const root = await vaultRoot(vault);
   const rel = needPath(dir, { allowRoot: true });
   const abs = rel === '' ? root : await resolveExisting(root, rel);
-  const dirents = await readdir(abs, { withFileTypes: true });
+  // Streamed: a huge folder is read only up to the caps, never into one array.
+  const handle = await opendir(abs, { bufferSize: 256 });
   const entries: NoteEntry[] = [];
   let truncated = false;
-  for (const d of dirents) {
+  let visited = 0;
+  for await (const d of handle) {
+    if (++visited > LIST_DIR_VISIT_MAX) {
+      truncated = true;
+      break;
+    }
     if (isHiddenNoteName(d.name)) continue;
     let kind: 'dir' | 'file' | null = d.isDirectory() ? 'dir' : d.isFile() ? 'file' : null;
     if (d.isSymbolicLink()) {
@@ -168,6 +210,7 @@ export async function readNote(vault: string, path: unknown): Promise<NoteFile> 
   const rel = needPath(path);
   needMarkdown(rel);
   const abs = await resolveExisting(root, rel);
+  needMarkdownReal(abs);
   const st = await stat(abs);
   if (!st.isFile()) refuse('파일이 아닙니다');
   if (st.size > NOTE_MAX_BYTES) refuse('2 MB보다 큰 노트는 열 수 없습니다');
@@ -199,10 +242,16 @@ export async function writeNote(vault: string, path: unknown, text: unknown): Pr
   const rel = needPath(path);
   needMarkdown(rel);
   const target = (await exists(join(root, rel))) ? await resolveExisting(root, rel) : await resolveNew(root, rel);
+  needMarkdownReal(target);
   if (await exists(target)) {
-    const st = await stat(target);
+    const st = await lstat(target);
     if (!st.isFile()) refuse('파일이 아닙니다');
+    if (st.nlink > 1) refuse('하드 링크된 파일에는 저장할 수 없습니다');
   }
+  // The folder may have been swapped for a link since it was resolved: checked again right before the write.
+  const folder = dirname(target);
+  const realFolder = await realpath(folder).catch(() => null);
+  if (realFolder !== folder || !inside(root, realFolder)) refuse('노트 폴더 밖의 경로입니다');
   await atomicWrite(target, text);
   return { mtimeMs: (await stat(target)).mtimeMs };
 }
@@ -227,9 +276,10 @@ export async function renameEntry(vault: string, path: unknown, name: unknown): 
   if (typeof name !== 'string') refuse('이름이 필요합니다');
   const root = await vaultRoot(vault);
   const rel = needPath(path);
-  const source = await resolveExisting(root, rel);
-  if (source === root) refuse('노트 폴더 자체는 바꿀 수 없습니다');
-  const isDir = (await stat(source)).isDirectory();
+  const { entry: source, real, isLink, isDir: isDirEntry } = await resolveEntry(root, rel);
+  if (real === root) refuse('노트 폴더 자체는 바꿀 수 없습니다');
+  // A link keeps the kind of what it points at (the tree shows it that way).
+  const isDir = isDirEntry || (isLink && (await stat(real)).isDirectory());
   if (!isDir) needMarkdown(rel);
   const nameError = noteNameError(name);
   if (nameError) refuse(nameError);
@@ -238,20 +288,40 @@ export async function renameEntry(vault: string, path: unknown, name: unknown): 
   const nextRel = parent ? `${parent}/${finalName}` : finalName;
   if (nextRel === rel) return { name: finalName, path: rel, kind: isDir ? 'dir' : 'file' };
   const target = join(dirname(source), finalName);
-  // Case-only renames on a case-insensitive volume resolve to the source itself.
-  if ((await exists(target)) && (await realpath(target)) !== source) refuse('같은 이름이 이미 있습니다');
-  await rename(source, target);
-  return { name: finalName, path: nextRel, kind: isDir ? 'dir' : 'file' };
+  const kind = isDir ? 'dir' : 'file';
+  const existing = await lstat(target).catch(() => null);
+  if (existing) {
+    // Case-only renames on a case-insensitive volume find the source itself under the new name.
+    const src = await lstat(source);
+    if (existing.ino !== src.ino || existing.dev !== src.dev) refuse('같은 이름이 이미 있습니다');
+    await rename(source, target);
+    return { name: finalName, path: nextRel, kind };
+  }
+  if (!isDirEntry && !isLink) {
+    // A file: link + unlink never replaces an entry that appeared in the meantime (link fails with EEXIST).
+    try {
+      await link(source, target);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'EEXIST') refuse('같은 이름이 이미 있습니다');
+      throw err;
+    }
+    await unlink(source);
+  } else {
+    // A folder or a link: rename(2) has no no-replace flag here; the name was checked just above.
+    await rename(source, target);
+  }
+  return { name: finalName, path: nextRel, kind };
 }
 
 export async function trashEntry(vault: string, path: unknown, trash: (abs: string) => Promise<void>): Promise<void> {
   const root = await vaultRoot(vault);
   const rel = needPath(path);
-  const abs = await resolveExisting(root, rel);
-  if (abs === root) refuse('노트 폴더 자체는 지울 수 없습니다');
-  const isDir = (await stat(abs)).isDirectory();
+  const { entry, real, isLink, isDir: isDirEntry } = await resolveEntry(root, rel);
+  if (real === root || entry === root) refuse('노트 폴더 자체는 지울 수 없습니다');
+  const isDir = isDirEntry || (isLink && (await stat(real)).isDirectory());
   if (!isDir) needMarkdown(rel);
-  await trash(abs);
+  // The entry itself: a link goes to the Trash, not what it points at.
+  await trash(entry);
 }
 
 /**

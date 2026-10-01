@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { chmodSync, mkdirSync, readFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
+import { homedir } from 'node:os';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { app, BrowserWindow, dialog, ipcMain, Menu, powerMonitor, shell, clipboard, ClipboardItem, nativeImage } from 'electron';
 import {
@@ -31,6 +32,7 @@ import { createAgentBinaries, type AgentBinariesDeps } from './agents/agentBinar
 import { codexAcpSmoke } from './agents/codexSmoke';
 import { detectClaude } from './agents/localAuth/claudeDetector';
 import { detectCodex } from './agents/localAuth/codexDetector';
+import { codexMcpServerNames } from '../core/agentDefaults';
 import { defaultDetectorDeps } from './agents/localAuth/detectorDeps';
 import { detectHermes } from './agents/localAuth/hermesDetector';
 import { createLocalAuthService } from './agents/localAuth/localAuthService';
@@ -689,6 +691,18 @@ async function startServices(): Promise<Services> {
             appVersion: app.getVersion(),
             codexLauncher: acpLaunchers.codex,
             codexUsable: () => localAuth.availability('codex').usable,
+            // Read-only look at the user's Codex config (`$CODEX_HOME/config.toml`) for MCP server names; never in
+            // fixture runs (the fake agent has none).
+            codexMcpServers: () => {
+              if (fixtures) return [];
+              const env = shellEnv.baseEnv();
+              const home = env.CODEX_HOME ? env.CODEX_HOME : join(homedir(), '.codex');
+              try {
+                return codexMcpServerNames(readFileSync(join(home, 'config.toml'), 'utf8'));
+              } catch {
+                return [];
+              }
+            },
             runDir: join(hopecodeHome(), 'run', 'notes'),
             now: Date.now,
             log: (message, err) => console.error(message, err ?? ''),

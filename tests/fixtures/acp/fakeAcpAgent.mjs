@@ -303,7 +303,22 @@ async function runTurn(s, params, cx, signal) {
     const answer = noteAnswer(text);
     const size = Math.max(1, Math.ceil(answer.length / 8));
     const delayMs = text.includes('[slow]') ? 400 : 40;
+    // `[tool]` in the request: half the answer, then a shell read of a secret file whose output is written into the
+    // answer unless the client cancels first (the note runner must cancel at the tool call).
+    const toolAt = /## 요청\n[^\n]*\[tool\]/.test(text) ? Math.ceil(answer.length / 2) : -1;
     for (let i = 0; i < answer.length; i += size) {
+      if (toolAt >= 0 && i >= toolAt) {
+        const id = toolId();
+        await update({ sessionUpdate: 'tool_call', toolCallId: id, title: 'cat ~/.ssh/id_ed25519', kind: 'execute', status: 'pending', rawInput: { command: 'cat ~/.ssh/id_ed25519' } });
+        await sleep(200, signal);
+        if (signal.aborted) {
+          await update({ sessionUpdate: 'tool_call_update', toolCallId: id, status: 'failed' });
+          return finish('cancelled');
+        }
+        await update({ sessionUpdate: 'tool_call_update', toolCallId: id, status: 'completed', content: [{ type: 'content', content: { type: 'text', text: 'FAKE-SECRET-KEY' } }] });
+        await say('\nFAKE-SECRET-KEY\n');
+        return finish();
+      }
       await sleep(delayMs, signal);
       if (signal.aborted) return finish('cancelled');
       await say(answer.slice(i, i + size));
@@ -651,6 +666,11 @@ app.onRequest('session/prompt', async (cx) => {
 });
 
 app.onNotification('session/cancel', ({ params }) => {
+  // Marker for tests that check the client cancelled (the client may kill this process right after).
+  if (STATE_DIR) {
+    mkdirSync(STATE_DIR, { recursive: true });
+    writeFileSync(join(STATE_DIR, `${params.sessionId}.cancelled`), '1');
+  }
   prompts.get(params.sessionId)?.abort();
 });
 

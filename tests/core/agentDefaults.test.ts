@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   CODEX_MODE_BY_PERMISSION,
+  NOTE_CODEX_FEATURES_OFF,
   codexLaunchEnv,
+  codexMcpServerNames,
   draftAgentDefaults,
   isCodexAutoReviewMode,
   isFullAccessMode,
@@ -143,5 +145,46 @@ describe('isFullAccessMode / SETTABLE_CONFIG_CATEGORIES', () => {
 
   it('only model and thought_level config options are settable', () => {
     expect([...SETTABLE_CONFIG_CATEGORIES].sort()).toEqual(['model', 'thought_level']);
+  });
+});
+
+describe('codexLaunchEnv noTools (노트 모드)', () => {
+  it('turns off web search, the tool features and the named MCP servers', () => {
+    const r = codexLaunchEnv({ model: 'gpt-6.1-sol', effort: null, permissionMode: 'plan', noTools: { mcpServers: ['docs', 'a b', 'x"y'] } });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.env.INITIAL_AGENT_MODE).toBe('read-only');
+    const config = JSON.parse(r.env.CODEX_CONFIG);
+    expect(config).toEqual({
+      model: 'gpt-6.1-sol',
+      web_search: 'disabled',
+      features: Object.fromEntries(NOTE_CODEX_FEATURES_OFF.map((k) => [k, false])),
+      mcp_servers: { docs: { enabled: false } },
+    });
+    for (const key of ['shell_tool', 'unified_exec', 'apply_patch_freeform', 'view_image', 'web_search_request', 'apps', 'plugins']) {
+      expect(NOTE_CODEX_FEATURES_OFF).toContain(key);
+    }
+  });
+
+  it('threads keep their config unchanged', () => {
+    expect(codexLaunchEnv({ model: null, effort: null, permissionMode: 'plan' })).toEqual({ ok: true, env: { CODEX_CONFIG: '{}', INITIAL_AGENT_MODE: 'read-only' } });
+    const none = codexLaunchEnv({ model: null, effort: null, permissionMode: 'plan', noTools: { mcpServers: [] } });
+    expect(none.ok && JSON.parse(none.env.CODEX_CONFIG).mcp_servers).toBeUndefined();
+  });
+
+  it('reads MCP server names from config.toml table headers', () => {
+    const toml = [
+      'model = "x"',
+      '[mcp_servers.docs]',
+      'command = "npx"',
+      '[mcp_servers.docs.env]',
+      'A = "1"',
+      '  [ mcp_servers."quoted-name" ]',
+      "[mcp_servers.'single']",
+      '[mcp_servers."has space"]',
+      '[other.mcp_servers.nope]',
+      '# [mcp_servers.commented]',
+    ].join('\n');
+    expect(codexMcpServerNames(toml)).toEqual(['docs', 'quoted-name', 'single']);
   });
 });

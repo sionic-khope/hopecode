@@ -68,6 +68,8 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir }: Note
   const [commitMsg, setCommitMsg] = useState('');
   const [commitBusy, setCommitBusy] = useState(false);
   const [commitNote, setCommitNote] = useState<string | null>(null);
+  /** First 커밋 in a vault: the user confirms turning git on for it first. */
+  const [gitOptIn, setGitOptIn] = useState(false);
   const [vaultMenu, setVaultMenu] = useState(false);
   const vaultRef = useRef<HTMLButtonElement>(null);
   const [chat, setChat] = useState<NoteChatItem[]>([]);
@@ -234,7 +236,8 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir }: Note
           setRunning({ mode: active.mode, chars: active.stream.streamed.length });
           return;
         }
-        const answer = cleanNoteOutput(active.stream.streamed);
+        // A failed request (an error, or a Codex turn cancelled at a tool call) puts the note back as it was.
+        const answer = event.type === 'error' ? '' : cleanNoteOutput(active.stream.streamed);
         const final = answer ? fitAnswer(answer, active.mode, { original: active.stream.original, before: active.stream.before, after: active.stream.after }) : null;
         run.current = null;
         active.stream.finish(final);
@@ -348,6 +351,22 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir }: Note
     }
   };
 
+  /** The user confirmed git for the vault: stored, then the status (now git) and the commit dialog. */
+  const enableGit = async () => {
+    setCommitBusy(true);
+    try {
+      await invoke('notes:enableGit');
+      setGit(await invoke('notes:gitStatus'));
+      setGitOptIn(false);
+      setCommitOpen(true);
+    } catch (err) {
+      setGitOptIn(false);
+      setCommitNote(noteError(err));
+    } finally {
+      setCommitBusy(false);
+    }
+  };
+
   const addVault = () =>
     void saveNow()
       .then(() => invoke('notes:addVault')).catch((err: unknown) => setPageError(`노트 폴더를 등록하지 못했습니다: ${noteError(err)}`));
@@ -432,7 +451,7 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir }: Note
     },
   ];
 
-  const changed = git?.isRepo ? git.changed.length : 0;
+  const changed = git?.isRepo && git.enabled ? git.changed.length : 0;
   const gridCols = `${ui.treeOpen ? `${ui.treeW}px 6px` : ''} minmax(0, 1fr) ${ui.chatOpen ? `6px ${ui.chatW}px` : ''}`.trim();
 
   return (
@@ -469,12 +488,20 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir }: Note
           </span>
         ) : null}
         {git?.isRepo ? (
-          <Button size="sm" disabled={changed === 0} onClick={() => setCommitOpen(true)} data-testid="notes-commit" title="변경된 .md 파일만 커밋합니다 (push 없음)">
+          <Button
+            size="sm"
+            disabled={git.enabled && changed === 0}
+            onClick={() => (git.enabled ? setCommitOpen(true) : setGitOptIn(true))}
+            data-testid="notes-commit"
+            title="변경된 .md 파일만 커밋합니다 (push 없음)"
+          >
             <GlyphCommit width={14} height={14} />
             커밋
-            <span className="hc-notes__count" data-testid="notes-changed-count">
-              {changed}
-            </span>
+            {git.enabled ? (
+              <span className="hc-notes__count" data-testid="notes-changed-count">
+                {changed}
+              </span>
+            ) : null}
           </Button>
         ) : null}
         <Segmented options={VIEW_OPTIONS} value={ui.view} onChange={setView} size="sm" aria-label="보기" />
@@ -534,6 +561,28 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir }: Note
           </>
         ) : null}
       </div>
+      <Modal
+        open={gitOptIn}
+        onClose={() => setGitOptIn(false)}
+        title="이 노트 폴더에서 git 사용"
+        subtitle={tildePath(vault, homeDir)}
+        width={460}
+        dismissible={!commitBusy}
+        actions={
+          <>
+            <Button onClick={() => setGitOptIn(false)} disabled={commitBusy}>
+              취소
+            </Button>
+            <Button variant="primary" onClick={() => void enableGit()} disabled={commitBusy} data-testid="notes-git-optin-confirm">
+              git 켜기
+            </Button>
+          </>
+        }
+      >
+        <p className="hc-notes__optin" data-testid="notes-git-optin">
+          켜면 이 폴더에서 git을 실행해 바뀐 노트를 확인하고 커밋합니다. 커밋할 때는 저장소에 설정된 hook과 filter가 실행됩니다. 직접 만들었거나 믿을 수 있는 저장소에서만 켜세요. 이 설정은 폴더마다 한 번만 묻습니다.
+        </p>
+      </Modal>
       <Modal
         open={commitOpen}
         onClose={() => setCommitOpen(false)}

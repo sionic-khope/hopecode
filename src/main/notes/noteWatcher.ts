@@ -8,7 +8,7 @@ import { isHiddenNoteName } from '../../core/notes/notePaths';
 
 export const NOTE_WATCH_DEBOUNCE_MS = 300;
 /** Paths reported per event at most; more = `all: true`. */
-const MAX_REPORTED = 200;
+export const MAX_REPORTED = 200;
 
 export interface NoteWatcher {
   /** Watches `vault` (null = stop). Watching the same folder again is a no-op. */
@@ -49,11 +49,14 @@ export function createNoteWatcher(onChange: (change: NoteChange) => void, log: (
       try {
         const watcher = watch(vault, { recursive: true, persistent: false }, (_event, filename) => {
           if (filename === null) all = true;
-          else {
+          else if (!all) {
             const rel = String(filename).split(sep).join('/');
             if (rel.split('/').some(isHiddenNoteName)) return;
             pending.add(rel);
+            // A burst (checkout, sync) is reported as one full refresh; the set never grows past the cap.
+            if (pending.size > MAX_REPORTED) all = true;
           }
+          if (all) pending.clear();
           if (!timer) timer = setTimeout(flush, NOTE_WATCH_DEBOUNCE_MS);
         });
         watcher.on('error', (err) => {

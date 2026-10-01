@@ -256,7 +256,10 @@ export interface InvokeMap {
   'notes:trash': { req: { path: string }; res: void };
   /** A link in a note: opened in the browser (https only); false when refused. */
   'notes:openLink': { req: { url: string }; res: boolean };
+  /** No git process runs until the user turned git on for the active vault (`notes:enableGit`). */
   'notes:gitStatus': { req: void; res: NoteGitStatus };
+  /** The user confirmed git for the active vault (first 커밋): stored in settings.noteGitVaults. */
+  'notes:enableGit': { req: void; res: AppSettings };
   /** `git add` + `git commit` of the changed `.md` files of the active vault only. Never pushes. */
   'notes:commit': { req: { message: string }; res: GitActionResult<{ sha: string; files: number }> };
   /** The note's AI conversation summary (stored in the app data folder, never in the vault). */
@@ -409,6 +412,7 @@ export const INVOKE_CHANNELS = [
   'notes:chat',
   'notes:aiStart',
   'notes:aiStop',
+  'notes:enableGit',
 ] as const satisfies readonly InvokeChannel[];
 
 export const EVENT_CHANNELS = [

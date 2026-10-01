@@ -39,7 +39,13 @@ export interface NoteFile {
 }
 
 export interface NoteGitStatus {
+  /**
+   * The vault is its own git repository. Before the user turned git on for the vault (`enabled: false`) this comes
+   * from file checks only (no git process ran) and `changed` is empty.
+   */
   isRepo: boolean;
+  /** The user turned git on for this vault (settings.noteGitVaults). */
+  enabled: boolean;
   /** Changed `.md` files (vault-relative), untracked included. */
   changed: string[];
 }

@@ -141,7 +141,7 @@ export function sanitizeSettings(raw: unknown): AppSettings {
       if (typeof input[key] === 'boolean') out[key] = input[key];
       continue;
     }
-    if (key === 'settingsRev' || key === 'noteVaults' || key === 'activeNoteVault') continue;
+    if (key === 'settingsRev' || key === 'noteVaults' || key === 'activeNoteVault' || key === 'noteGitVaults') continue;
     const checked = validateSettingsPatch({ [key]: input[key] });
     if (checked.ok) Object.assign(out, checked.patch);
   }
@@ -160,6 +160,7 @@ export function sanitizeSettings(raw: unknown): AppSettings {
   if (rev < 3 && out.codexDefaultModel === CODEX_PREVIOUS_DEFAULT_MODEL) out.codexDefaultModel = DEFAULT_SETTINGS.codexDefaultModel;
   out.noteVaults = sanitizeNoteVaults(input.noteVaults);
   out.activeNoteVault = typeof input.activeNoteVault === 'string' && out.noteVaults.includes(input.activeNoteVault) ? input.activeNoteVault : (out.noteVaults[0] ?? '');
+  out.noteGitVaults = sanitizeNoteVaults(input.noteGitVaults).filter((v) => out.noteVaults.includes(v));
   out.settingsRev = SETTINGS_REV;
   // Older builds could store a bypass default; a new chat never starts in it.
   if (input.defaultPermissionMode === 'bypassPermissions') out.defaultPermissionMode = 'default';

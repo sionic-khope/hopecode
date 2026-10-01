@@ -22,6 +22,7 @@ import type { NoteWatcher } from '../notes/noteWatcher';
 import type { NoteAiResult, NoteAiRun } from '../notes/noteAi';
 import {
   createEntry,
+  isTooBroadVault,
   listDir,
   readNote,
   renameEntry,
@@ -50,6 +51,7 @@ export const NOTES_CHANNELS = [
   'notes:chat',
   'notes:aiStart',
   'notes:aiStop',
+  'notes:enableGit',
 ] as const;
 
 export type NotesChannel = (typeof NOTES_CHANNELS)[number];
@@ -93,10 +95,11 @@ export function buildNotesHandlers(store: Pick<Store, 'get' | 'update'>, broadca
     return vault;
   };
 
-  const saveVaults = (vaults: string[], active: string): AppSettings => {
+  const saveVaults = (vaults: string[], active: string, gitVaults = store.get().settings.noteGitVaults): AppSettings => {
     store.update((draft) => {
       draft.settings.noteVaults = vaults;
       draft.settings.activeNoteVault = active;
+      draft.settings.noteGitVaults = gitVaults.filter((v) => vaults.includes(v));
     });
     const next = store.get().settings;
     notes.watcher.set(next.activeNoteVault || null);
@@ -119,6 +122,7 @@ export function buildNotesHandlers(store: Pick<Store, 'get' | 'update'>, broadca
       if (!picked) return store.get().settings;
       const real = await vaultRoot(picked);
       assertReq('notes:addVault', isNoteVaultPath(real), 'invalid folder');
+      assertReq('notes:addVault', !(await isTooBroadVault(real)), '홈 폴더나 디스크 최상위 폴더는 노트 폴더로 쓸 수 없습니다');
       if (noteVaults.includes(real)) return saveVaults(noteVaults, real);
       assertReq('notes:addVault', noteVaults.length < NOTE_VAULTS_MAX, `노트 폴더는 ${NOTE_VAULTS_MAX}개까지 등록할 수 있습니다`);
       return saveVaults([...noteVaults, real], real);
@@ -190,13 +194,25 @@ export function buildNotesHandlers(store: Pick<Store, 'get' | 'update'>, broadca
     },
 
     'notes:gitStatus': async () => {
-      const vault = store.get().settings.activeNoteVault;
-      return vault ? notes.git.status(vault) : { isRepo: false, changed: [] };
+      const { activeNoteVault: vault, noteGitVaults } = store.get().settings;
+      if (!vault) return { isRepo: false, enabled: false, changed: [] };
+      // Before the user turned git on for the vault, only file checks run (no git process).
+      if (!noteGitVaults.includes(vault)) return { isRepo: await notes.git.detect(vault).catch(() => false), enabled: false, changed: [] };
+      return { ...(await notes.git.status(vault)), enabled: true };
+    },
+
+    'notes:enableGit': async () => {
+      const vault = activeVault('notes:enableGit');
+      const { noteVaults, noteGitVaults } = store.get().settings;
+      if (noteGitVaults.includes(vault)) return store.get().settings;
+      return saveVaults(noteVaults, vault, [...noteGitVaults, vault]);
     },
 
     'notes:commit': async (req) => {
       assertReq('notes:commit', isPlainObject(req) && isString(req.message), 'message required');
-      return notes.git.commit(activeVault('notes:commit'), (req as { message: string }).message);
+      const vault = activeVault('notes:commit');
+      assertReq('notes:commit', store.get().settings.noteGitVaults.includes(vault), '이 노트 폴더는 git 기능이 꺼져 있습니다');
+      return notes.git.commit(vault, (req as { message: string }).message);
     },
 
     'notes:chat': async (req) => {

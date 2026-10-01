@@ -155,4 +155,11 @@ describe('note vault settings', () => {
     expect(validateSettingsPatch({ noteVaults: ['/x'] }).ok).toBe(false);
     expect(validateSettingsPatch({ activeNoteVault: '/x' }).ok).toBe(false);
   });
+
+  it('git opt-ins are a subset of the registered vaults and never accepted from settings:update', () => {
+    const s = sanitizeSettings({ noteVaults: ['/a', '/c'], noteGitVaults: ['/c', '/zzz', 'rel', '/c'] });
+    expect(s.noteGitVaults).toEqual(['/c']);
+    expect(sanitizeSettings({}).noteGitVaults).toEqual([]);
+    expect(validateSettingsPatch({ noteGitVaults: ['/a'] }).ok).toBe(false);
+  });
 });

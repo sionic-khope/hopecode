@@ -1,10 +1,25 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import {
+  existsSync,
+  linkSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  LIST_DIR_MAX,
   createEntry,
+  isTooBroadVault,
   listDir,
   readNote,
   renameEntry,
@@ -13,15 +28,18 @@ import {
   trashEntry,
   writeNote,
 } from '../../src/main/notes/vaultFs';
-import { createNoteGit } from '../../src/main/notes/noteGit';
+import { NOTE_GIT_BASE_ARGS, NOTE_GIT_TIMEOUT_MS, createNoteGit, type GitRunner } from '../../src/main/notes/noteGit';
+import { MAX_REPORTED, createNoteWatcher } from '../../src/main/notes/noteWatcher';
+import { createAcpFixtureLauncher } from '../../src/main/fixtures/acpFixtureLaunchers';
+import type { AcpLaunchSpec } from '../../src/main/contracts';
 import { createNoteChats } from '../../src/main/notes/noteChats';
-import { runNoteAi, type NoteAiDeps } from '../../src/main/notes/noteAi';
+import { TOOL_BLOCKED_ERROR, runNoteAi, type NoteAiDeps } from '../../src/main/notes/noteAi';
 import { buildNotesHandlers, type NotesServices } from '../../src/main/ipc/notesHandlers';
 import { createFakeQuery, createFixtureScenario } from '../../src/main/fixtures/fakeQuery';
-import { buildNoteSystemPrompt } from '../../src/core/notes/notePrompt';
+import { buildNoteSystemPrompt, buildNoteUserPrompt } from '../../src/core/notes/notePrompt';
 import { DEFAULT_SETTINGS } from '../../src/shared/constants';
 import type { Account, AppSettings } from '../../src/shared/types';
-import type { NoteAiEvent } from '../../src/shared/notes';
+import type { NoteAiEvent, NoteChange } from '../../src/shared/notes';
 
 let root: string;
 let vault: string;
@@ -142,6 +160,7 @@ function aiDeps(query: NoteAiDeps['query']): NoteAiDeps {
     appVersion: '0.0.0',
     codexLauncher: { resolve: () => ({ ok: false, reason: 'not-installed' }) },
     codexUsable: () => false,
+    codexMcpServers: () => [],
     runDir: join(root, 'run'),
     now: Date.now,
     log: () => {},
@@ -165,6 +184,9 @@ describe('runNoteAi (Claude)', () => {
     expect(opts.maxTurns).toBe(1);
     expect(opts.persistSession).toBe(false);
     expect(opts.settingSources).toEqual([]);
+    // No MCP server reaches a note request: none passed, none loaded from user / project config.
+    expect(opts.mcpServers).toEqual({});
+    expect(opts.strictMcpConfig).toBe(true);
     expect(opts.model).toBe('opus');
     expect(await opts.canUseTool!('Write', {}, { signal: new AbortController().signal, toolUseID: 't' } as never)).toMatchObject({ behavior: 'deny' });
   });
@@ -195,7 +217,7 @@ describe('runNoteAi (Claude)', () => {
 });
 
 describe('notes handlers', () => {
-  function setup() {
+  function setup(git: NotesServices['git'] = createNoteGit(() => ({}))) {
     let settings: AppSettings = { ...DEFAULT_SETTINGS };
     const store = {
       get: () => ({ settings }) as never,
@@ -215,7 +237,7 @@ describe('notes handlers', () => {
       pickFolder: async () => vault,
       trash: async () => {},
       openExternal: () => true,
-      git: createNoteGit(() => ({})),
+      git,
       chats: createNoteChats(join(root, 'chats')),
       watcher: { set: () => {}, dispose: () => {} },
       runAi,
@@ -263,5 +285,302 @@ describe('notes handlers', () => {
     expect(chat[1].text).toContain('커서 위치에');
     // Nothing was written into the vault by the request.
     expect(readFileSync(join(vault, 'Back-End', 'distlock.md'), 'utf8')).toBe('# Lock\n\nbody\n');
+  });
+});
+
+describe('runNoteAi (Codex, fake ACP agent)', () => {
+  const FAKE_AGENT = resolve(__dirname, '../fixtures/acp/fakeAcpAgent.mjs');
+
+  function codexDeps() {
+    const stateDir = join(root, 'state');
+    const inner = createAcpFixtureLauncher({ profile: 'codex', scriptPath: FAKE_AGENT, stateDir });
+    const specs: AcpLaunchSpec[] = [];
+    const deps: NoteAiDeps = {
+      ...aiDeps(createFakeQuery().query),
+      codexUsable: () => true,
+      codexMcpServers: () => ['docs', 'bad name'],
+      codexLauncher: {
+        async resolve(cwd, opts) {
+          const res = await inner.resolve(cwd, opts);
+          if (res.ok) specs.push(res.spec);
+          return res;
+        },
+      },
+    };
+    return { deps, specs, stateDir };
+  }
+
+  it('runs read-only with every tool family Codex can switch off disabled in CODEX_CONFIG', async () => {
+    const { deps, specs } = codexDeps();
+    const deltas: string[] = [];
+    const res = await runNoteAi(deps, { agent: 'codex', model: null, effort: null, system: buildNoteSystemPrompt(), prompt: '## 작업 (전체 수정)\n\n## 요청\n정리\n' }, (t) => deltas.push(t), new AbortController().signal);
+    expect(res).toEqual({ ok: true, stopped: false });
+    expect(deltas.join('')).toContain('CODEX-REWRITE: 정리');
+    const env = specs[0].env;
+    expect(env.INITIAL_AGENT_MODE).toBe('read-only');
+    const config = JSON.parse(env.CODEX_CONFIG) as { web_search: string; features: Record<string, boolean>; mcp_servers: Record<string, unknown> };
+    expect(config.web_search).toBe('disabled');
+    for (const key of ['shell_tool', 'unified_exec', 'apply_patch_freeform', 'view_image', 'web_search_request', 'web_search_cached', 'standalone_web_search', 'apps', 'plugins']) {
+      expect(config.features[key]).toBe(false);
+    }
+    // Only valid server names reach the config.
+    expect(config.mcp_servers).toEqual({ docs: { enabled: false } });
+  });
+
+  it('a tool call cancels the turn, drops what followed and ends in an error', async () => {
+    const { deps, stateDir } = codexDeps();
+    const deltas: string[] = [];
+    const res = await runNoteAi(
+      deps,
+      { agent: 'codex', model: null, effort: null, system: buildNoteSystemPrompt(), prompt: '## 작업 (전체 수정)\n\n## 요청\n[tool] 정리\n' },
+      (t) => deltas.push(t),
+      new AbortController().signal,
+    );
+    expect(res).toEqual({ ok: false, stopped: false, error: TOOL_BLOCKED_ERROR });
+    // Text before the tool call streamed (the renderer rolls it back on the error); nothing after it did.
+    expect(deltas.join('')).not.toContain('FAKE-SECRET-KEY');
+    await vi.waitFor(() => expect(readdirSync(stateDir).some((f) => f.endsWith('.cancelled'))).toBe(true));
+  });
+});
+
+describe('noteGit hardening', () => {
+  const g = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8' });
+  const env = () => ({ PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '' });
+
+  function initRepo(dir: string) {
+    rmSync(join(dir, '.git'), { recursive: true, force: true });
+    g(dir, 'init', '-q');
+    g(dir, 'config', 'user.name', 'T');
+    g(dir, 'config', 'user.email', 't@example.com');
+    g(dir, 'config', 'commit.gpgsign', 'false');
+  }
+
+  it('every call carries the common options and a timeout; status / rev-parse skip hooks, commit keeps them', async () => {
+    initRepo(vault);
+    g(vault, 'add', 'Back-End/distlock.md');
+    g(vault, 'commit', '-q', '-m', 'init');
+    writeFileSync(join(vault, 'Back-End', 'distlock.md'), '# changed\n');
+    const calls: { args: string[]; timeout?: number }[] = [];
+    const exec: GitRunner = async (cmd, args, cwd, e, timeout) => {
+      calls.push({ args, timeout });
+      const { run } = await import('../../src/main/git/gitService');
+      return run(cmd, args, cwd, e, timeout);
+    };
+    const noteGit = createNoteGit(env, exec);
+    await noteGit.status(vault);
+    expect(await noteGit.commit(vault, 'notes')).toMatchObject({ ok: true });
+    expect(calls.length).toBeGreaterThan(3);
+    for (const c of calls) {
+      expect(c.args.slice(0, NOTE_GIT_BASE_ARGS.length)).toEqual([...NOTE_GIT_BASE_ARGS]);
+      expect(c.timeout).toBe(NOTE_GIT_TIMEOUT_MS);
+    }
+    const sub = (c: { args: string[] }) => c.args.find((a) => ['status', 'rev-parse', 'config', 'add', 'commit'].includes(a));
+    for (const c of calls) {
+      const hooksOff = c.args.includes('core.hooksPath=/dev/null');
+      expect(hooksOff).toBe(['status', 'rev-parse', 'config'].includes(sub(c) ?? ''));
+    }
+  });
+
+  it('status never runs a filter driver from the repository config', async () => {
+    initRepo(vault);
+    g(vault, 'add', 'Back-End/distlock.md');
+    g(vault, 'commit', '-q', '-m', 'init');
+    writeFileSync(join(vault, '.gitattributes'), '*.md filter=evil\n');
+    const marker = join(root, 'filter-ran');
+    g(vault, 'config', 'filter.evil.clean', `touch ${marker}; cat`);
+    g(vault, 'config', 'filter.evil.required', 'true');
+    const later = new Date(Date.now() + 5_000);
+    const touchNote = () => utimesSync(join(vault, 'Back-End', 'distlock.md'), later, later);
+    touchNote();
+    const status = await createNoteGit(env).status(vault);
+    expect(status.isRepo).toBe(true);
+    expect(existsSync(marker)).toBe(false);
+    // Sanity: a plain status does run it.
+    touchNote();
+    g(vault, 'status', '--porcelain');
+    expect(existsSync(marker)).toBe(true);
+  });
+
+  it('a repository above the vault, a linked or gitfile .git turn git off (no git process)', async () => {
+    rmSync(join(vault, '.git'), { recursive: true });
+    initRepo(root);
+    const exec = vi.fn<GitRunner>(async () => ({ ok: true, code: 0, stdout: `${root}\n`, stderr: '' }));
+    const noteGit = createNoteGit(env, exec);
+    expect(await noteGit.status(vault)).toEqual({ isRepo: false, changed: [] });
+    expect(await noteGit.detect(vault)).toBe(false);
+    expect(exec).not.toHaveBeenCalled();
+    // A .git link (to the parent's) and a gitfile are refused as well.
+    symlinkSync(join(root, '.git'), join(vault, '.git'));
+    expect(await noteGit.detect(vault)).toBe(false);
+    rmSync(join(vault, '.git'));
+    writeFileSync(join(vault, '.git'), `gitdir: ${join(root, '.git')}\n`);
+    expect(await noteGit.detect(vault)).toBe(false);
+    expect(await noteGit.status(vault)).toEqual({ isRepo: false, changed: [] });
+    expect(exec).not.toHaveBeenCalled();
+  });
+
+  it('a top level other than the vault turns git off', async () => {
+    const exec = vi.fn<GitRunner>(async () => ({ ok: true, code: 0, stdout: `${root}\n`, stderr: '' }));
+    const noteGit = createNoteGit(env, exec);
+    // beforeEach made vault/.git an (owned) folder: rev-parse runs and reports the parent.
+    expect(await noteGit.detect(vault)).toBe(true);
+    expect(await noteGit.status(vault)).toEqual({ isRepo: false, changed: [] });
+    expect(exec).toHaveBeenCalledTimes(1);
+  });
+
+  it('commits a file named *.md literally (no glob over other notes)', async () => {
+    initRepo(vault);
+    mkdirSync(join(vault, 'node_modules'), { recursive: true });
+    writeFileSync(join(vault, 'node_modules', 'pkg.md'), 'v1\n');
+    g(vault, 'add', '-f', 'node_modules/pkg.md', 'Back-End/distlock.md', 'Back-End/cache.md');
+    g(vault, 'commit', '-q', '-m', 'init');
+    writeFileSync(join(vault, '*.md'), '# star\n');
+    writeFileSync(join(vault, 'node_modules', 'pkg.md'), 'v2\n');
+    const res = await createNoteGit(env).commit(vault, 'star');
+    expect(res).toMatchObject({ ok: true, files: 1 });
+    expect(g(vault, 'show', '--name-only', '--format=', 'HEAD').trim()).toBe('*.md');
+    expect(g(vault, 'status', '--porcelain')).toContain('node_modules/pkg.md');
+  });
+});
+
+describe('notes handlers: git opt-in', () => {
+  function fakeGit() {
+    return {
+      detect: vi.fn(async () => true),
+      status: vi.fn(async () => ({ isRepo: true, changed: ['a.md'] })),
+      commit: vi.fn(async () => ({ ok: true as const, sha: 'abc', files: 1 })),
+    };
+  }
+
+  function make(git: ReturnType<typeof fakeGit>) {
+    let settings: AppSettings = { ...DEFAULT_SETTINGS };
+    const store = {
+      get: () => ({ settings }) as never,
+      update: (fn: (d: { settings: AppSettings }) => void) => {
+        const draft = { settings: { ...settings } };
+        fn(draft);
+        settings = draft.settings;
+      },
+    };
+    const services: NotesServices = {
+      pickFolder: async () => vault,
+      trash: async () => {},
+      openExternal: () => true,
+      git,
+      chats: createNoteChats(join(root, 'chats')),
+      watcher: { set: () => {}, dispose: () => {} },
+      runAi: async () => ({ ok: true, stopped: false }),
+    };
+    return { h: buildNotesHandlers(store as never, { emit: () => {} } as never, services), settings: () => settings };
+  }
+
+  it('runs no git status before the user turned git on; commit is refused until then', async () => {
+    const git = fakeGit();
+    const { h, settings } = make(git);
+    await h['notes:addVault'](undefined);
+    expect(await h['notes:gitStatus'](undefined)).toEqual({ isRepo: true, enabled: false, changed: [] });
+    expect(git.status).not.toHaveBeenCalled();
+    await expect(h['notes:commit']({ message: 'm' })).rejects.toThrow(/git 기능/);
+    expect(git.commit).not.toHaveBeenCalled();
+    await h['notes:enableGit'](undefined);
+    expect(settings().noteGitVaults).toEqual([vault]);
+    expect(await h['notes:gitStatus'](undefined)).toEqual({ isRepo: true, enabled: true, changed: ['a.md'] });
+    expect(await h['notes:commit']({ message: 'm' })).toMatchObject({ ok: true });
+    // Removing the vault drops its opt-in.
+    await h['notes:removeVault']({ path: vault });
+    expect(settings().noteGitVaults).toEqual([]);
+  });
+
+  it('refuses the home folder and other top-level folders as a vault', async () => {
+    expect(await isTooBroadVault('/')).toBe(true);
+    expect(await isTooBroadVault('/Users')).toBe(true);
+    expect(await isTooBroadVault('/Volumes')).toBe(true);
+    expect(await isTooBroadVault('/Volumes/Disk')).toBe(true);
+    const home = realpathSync(homedir());
+    expect(await isTooBroadVault(home)).toBe(true);
+    expect(await isTooBroadVault(dirname(home))).toBe(true);
+    expect(await isTooBroadVault(vault)).toBe(false);
+    expect(await isTooBroadVault(join(home, 'notes'))).toBe(false);
+    const git = fakeGit();
+    let settings: AppSettings = { ...DEFAULT_SETTINGS };
+    const store = { get: () => ({ settings }) as never, update: (fn: (d: { settings: AppSettings }) => void) => { const d = { settings: { ...settings } }; fn(d); settings = d.settings; } };
+    const h = buildNotesHandlers(store as never, { emit: () => {} } as never, {
+      pickFolder: async () => homedir(),
+      trash: async () => {},
+      openExternal: () => true,
+      git,
+      chats: createNoteChats(join(root, 'chats')),
+      watcher: { set: () => {}, dispose: () => {} },
+      runAi: async () => ({ ok: true, stopped: false }),
+    });
+    await expect(h['notes:addVault'](undefined)).rejects.toThrow(/홈 폴더/);
+    expect(settings.noteVaults).toEqual([]);
+  });
+});
+
+describe('vaultFs hardening', () => {
+  it('a .md name that resolves to another kind of file is neither read nor written', async () => {
+    writeFileSync(join(vault, 'secret.txt'), 'secret');
+    symlinkSync(join(vault, 'secret.txt'), join(vault, 'note.md'));
+    await expect(readNote(vault, 'note.md')).rejects.toThrow(/\.md/);
+    await expect(writeNote(vault, 'note.md', 'x')).rejects.toThrow(/\.md/);
+    expect(readFileSync(join(vault, 'secret.txt'), 'utf8')).toBe('secret');
+  });
+
+  it('refuses to write a hard-linked note', async () => {
+    linkSync(join(vault, 'Back-End', 'cache.md'), join(vault, 'Back-End', 'hard.md'));
+    await expect(writeNote(vault, 'Back-End/hard.md', 'x')).rejects.toThrow(/하드 링크/);
+    expect(readFileSync(join(vault, 'Back-End', 'cache.md'), 'utf8')).toBe('# Cache\n');
+  });
+
+  it('rename never replaces an existing note and keeps the file itself', async () => {
+    await expect(renameEntry(vault, 'Back-End/cache.md', 'distlock')).rejects.toThrow(/이미/);
+    expect(readFileSync(join(vault, 'Back-End', 'distlock.md'), 'utf8')).toBe('# Lock\n\nbody\n');
+    const ino = lstatSync(join(vault, 'Back-End', 'cache.md')).ino;
+    await renameEntry(vault, 'Back-End/cache.md', 'cache2');
+    expect(existsSync(join(vault, 'Back-End', 'cache.md'))).toBe(false);
+    expect(lstatSync(join(vault, 'Back-End', 'cache2.md')).ino).toBe(ino);
+    expect(lstatSync(join(vault, 'Back-End', 'cache2.md')).nlink).toBe(1);
+  });
+
+  it('rename and trash act on a link itself, not on what it points at', async () => {
+    symlinkSync(join(vault, 'Back-End', 'cache.md'), join(vault, 'alias.md'));
+    expect(await renameEntry(vault, 'alias.md', 'alias2')).toMatchObject({ path: 'alias2.md', kind: 'file' });
+    expect(lstatSync(join(vault, 'alias2.md')).isSymbolicLink()).toBe(true);
+    expect(readFileSync(join(vault, 'Back-End', 'cache.md'), 'utf8')).toBe('# Cache\n');
+    const trash = vi.fn(async () => {});
+    await trashEntry(vault, 'alias2.md', trash);
+    expect(trash).toHaveBeenCalledWith(join(vault, 'alias2.md'));
+  });
+
+  it('a huge folder is listed up to the cap', async () => {
+    mkdirSync(join(vault, 'Big'));
+    for (let i = 0; i < LIST_DIR_MAX + 20; i++) writeFileSync(join(vault, 'Big', `n${i}.md`), '');
+    const listing = await listDir(vault, 'Big');
+    expect(listing.entries).toHaveLength(LIST_DIR_MAX);
+    expect(listing.truncated).toBe(true);
+  });
+
+  it('a section target is clipped in the prompt like the document', () => {
+    const prompt = buildNoteUserPrompt({ mode: 'section', request: 'r', notePath: 'a.md', document: 'd', target: 'x'.repeat(500_000), styleRefs: [] });
+    expect(prompt.length).toBeLessThan(70_000);
+    expect(prompt).toContain('생략');
+  });
+});
+
+describe('noteWatcher', () => {
+  it('a burst over the cap is reported as one full refresh', async () => {
+    const changes: NoteChange[] = [];
+    const watcher = createNoteWatcher((c) => changes.push(c), () => {});
+    watcher.set(vault);
+    try {
+      await new Promise((r) => setTimeout(r, 100));
+      for (let i = 0; i < MAX_REPORTED + 50; i++) writeFileSync(join(vault, `w${i}.md`), 'x');
+      await vi.waitFor(() => expect(changes.some((c) => c.all)).toBe(true), { timeout: 5_000 });
+      const full = changes.find((c) => c.all) as NoteChange;
+      expect(full.paths).toEqual([]);
+    } finally {
+      watcher.dispose();
+    }
   });
 });

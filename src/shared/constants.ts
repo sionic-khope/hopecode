@@ -100,6 +100,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   codexPath: '',
   noteVaults: [],
   activeNoteVault: '',
+  noteGitVaults: [],
   settingsRev: SETTINGS_REV,
 };
 

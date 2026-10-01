@@ -27,9 +27,10 @@ export interface AcpFixtureLauncherOptions {
 
 /** Same env as the real launcher (agentDefaults `codexLaunchEnv`); an invalid model / effort falls back to defaults. */
 function codexEnv(opts: AcpLaunchOptions): Record<string, string> {
-  const input = { model: opts.model ?? null, effort: (opts.effort ?? null) as EffortLevel | null, permissionMode: opts.permissionMode };
+  const noTools = opts.noTools ? { noTools: opts.noTools } : {};
+  const input = { model: opts.model ?? null, effort: (opts.effort ?? null) as EffortLevel | null, permissionMode: opts.permissionMode, ...noTools };
   const res = codexLaunchEnv(input);
-  const launch = res.ok ? res : codexLaunchEnv({ model: null, effort: null, permissionMode: opts.permissionMode });
+  const launch = res.ok ? res : codexLaunchEnv({ model: null, effort: null, permissionMode: opts.permissionMode, ...noTools });
   return launch.ok ? { CODEX_PATH: FIXTURE_CODEX_PATH, ...launch.env } : {};
 }
 

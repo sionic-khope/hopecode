@@ -30,9 +30,10 @@ export function createAcpLaunchers(deps: AcpLaunchersDeps): Record<AcpAgentKind,
         // The file is checked again right before the spawn; CODEX_PATH gets its realpath.
         const enginePath = engine ? deps.binaries.verifyCodexEngine(engine.path) : null;
         if (!enginePath) return { ok: false, reason: 'not-installed' };
-        const wanted = codexLaunchEnv({ model: opts.model ?? null, effort: (opts.effort ?? null) as EffortLevel | null, permissionMode: opts.permissionMode });
+        const noTools = opts.noTools ? { noTools: opts.noTools } : {};
+        const wanted = codexLaunchEnv({ model: opts.model ?? null, effort: (opts.effort ?? null) as EffortLevel | null, permissionMode: opts.permissionMode, ...noTools });
         // A stored model / effort that fails validation is never passed on: Codex then runs with its own default.
-        const launch = wanted.ok ? wanted : codexLaunchEnv({ model: null, effort: null, permissionMode: opts.permissionMode });
+        const launch = wanted.ok ? wanted : codexLaunchEnv({ model: null, effort: null, permissionMode: opts.permissionMode, ...noTools });
         if (!launch.ok) return { ok: false, reason: 'not-installed' };
         const env = {
           ...buildAcpEnv(deps.baseEnv(), { agent: 'codex', ...(opts.gitCeiling !== undefined ? { gitCeiling: opts.gitCeiling } : {}) }),

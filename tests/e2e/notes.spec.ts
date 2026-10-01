@@ -1,6 +1,7 @@
 // 노트 모드: nav entry, vault via the dialog seam (a temp git repo, never a real notes folder), tree, new file,
 // autosave, Live Preview, AI requests streamed from the fixtures (Claude fakeQuery / fake ACP Codex), section-only
-// replacement, full rewrite, ⌘Z, and a commit of the changed notes (no push). Fixture mode only.
+// replacement, full rewrite, ⌘Z, a Codex tool call that is cancelled with the note left as it was, and a commit of
+// the changed notes after the git opt-in (no push). Fixture mode only.
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -155,6 +156,16 @@ test('전체 수정 rewrites the whole note (Codex through the fake ACP agent)',
   await request(page, '전체 수정', '정리');
   await waitSaved(page);
   expect(note('Back-End/redis-lock.md')).toBe('# 전체 수정본\n\nCODEX-REWRITE: 정리 요청대로 문서 전체를 다시 썼다.\n');
+  // A tool call in a Codex note request: the turn is cancelled, an error shows and the note stays as it was.
+  const saved = note('Back-End/redis-lock.md');
+  await request(page, '전체 수정', '[tool] 정리');
+  await expect(chat.getByRole('alert')).toContainText('도구를 쓰려고 해서');
+  // The half answer streamed before the tool call (it carries the request text) was rolled back.
+  const editor = page.locator('.cm-content');
+  await expect(editor).toContainText('CODEX-REWRITE: 정리 요청대로 문서 전체를 다시 썼다.');
+  await expect(editor).not.toContainText('[to');
+  await expect(editor).not.toContainText('FAKE-SECRET-KEY');
+  expect(note('Back-End/redis-lock.md')).toBe(saved);
   // Back to Claude for the rest of the run.
   await chat.locator('.hc-chip--agent').click();
   await page.getByRole('menu', { name: '에이전트' }).getByRole('menuitemradio', { name: /^Claude Code/ }).click();
@@ -163,11 +174,15 @@ test('전체 수정 rewrites the whole note (Codex through the fake ACP agent)',
   expect(note('Back-End/redis-lock.md')).toContain('FIXTURE-REWRITE: 다시');
 });
 
-test('커밋 commits only the changed notes (no push)', async () => {
+test('커밋 asks once to turn git on, then commits only the changed notes (no push)', async () => {
   const { page } = run;
   const button = page.getByTestId('notes-commit');
-  await expect(page.getByTestId('notes-changed-count')).toHaveText('1');
+  // Git is off for the vault until the user confirms: no status ran, so no count yet.
+  await expect(page.getByTestId('notes-changed-count')).toHaveCount(0);
   await button.click();
+  await expect(page.getByTestId('notes-git-optin')).toBeVisible();
+  await page.getByTestId('notes-git-optin-confirm').click();
+  await expect(page.getByTestId('notes-changed-count')).toHaveText('1');
   await page.getByTestId('notes-commit-message').fill('notes: redis lock');
   await page.getByTestId('notes-commit-confirm').click();
   await expect(page.getByTestId('notes-changed-count')).toHaveText('0');
