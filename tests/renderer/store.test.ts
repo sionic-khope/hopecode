@@ -575,7 +575,7 @@ describe('draft / new chat', () => {
 
   it('startThread without a folder starts a chat without a project (projectId left out)', async () => {
     useAppStore.setState({
-      draft: { ...useAppStore.getState().draft, projectId: null, agent: 'codex', model: 'gpt-6-sol', effort: 'high' },
+      draft: { ...useAppStore.getState().draft, projectId: null, agent: 'codex', model: 'gpt-6.1-sol', effort: 'high' },
     });
     const thread = makeThread({ id: 'scratch', title: 'hi', projectId: null, agent: 'codex' });
     invoke.mockResolvedValueOnce({ ok: true, thread, send: { accepted: true } });
@@ -583,7 +583,7 @@ describe('draft / new chat', () => {
     const req = invoke.mock.calls.at(-1)?.[1] as Record<string, unknown>;
     expect(invoke.mock.calls.at(-1)?.[0]).toBe('thread:start');
     expect('projectId' in req).toBe(false);
-    expect(req).toMatchObject({ agent: 'codex', model: 'gpt-6-sol', effort: 'high', text: 'hi' });
+    expect(req).toMatchObject({ agent: 'codex', model: 'gpt-6.1-sol', effort: 'high', text: 'hi' });
     expect(result.ok).toBe(true);
     expect(useAppStore.getState().selectedThreadId).toBe('scratch');
   });

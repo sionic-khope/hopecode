@@ -227,7 +227,7 @@ export interface AppSettings {
    * through `account:setLocalDefault`.
    */
   localClaudeInPool: boolean;
-  /** Codex model of a new chat (ACP config option value, e.g. `gpt-6-sol`). */
+  /** Codex model of a new chat (ACP config option value, e.g. `gpt-6.1-sol`). */
   codexDefaultModel: string;
   /** Codex reasoning effort of a new chat. */
   codexDefaultEffort: CodexEffortLevel;

@@ -106,7 +106,7 @@ export function DraftView({
   const setMode = useCallback((permissionMode: UiPermissionMode) => onDraftChange({ permissionMode }), [onDraftChange]);
   const setModel = useCallback((model: string) => onDraftChange({ model }), [onDraftChange]);
   const setEffort = useCallback((effort: EffortLevel | null) => onDraftChange({ effort }), [onDraftChange]);
-  // Switching agents resets model / effort to that agent's new-chat defaults (Opus 5.5 · High, GPT-6-Sol · High,
+  // Switching agents resets model / effort to that agent's new-chat defaults (Opus 5.5 · High, GPT-6.1-Sol · High,
   // Hermes' system default).
   const setAgent = useCallback(
     (agent: DraftState['agent']) => {

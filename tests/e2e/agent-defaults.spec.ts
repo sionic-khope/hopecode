@@ -1,4 +1,4 @@
-// Per-agent new-chat defaults (plan 2.11, AC10): a draft shows Opus 5.5 · High (Claude), GPT-6-Sol · High (Codex)
+// Per-agent new-chat defaults (plan 2.11, AC10): a draft shows Opus 5.5 · High (Claude), GPT-6.1-Sol · High (Codex)
 // or 시스템 기본값 (Hermes), the started session really runs with them, and Settings changes reach the next draft.
 import { expect, test, type Page } from '@playwright/test';
 import {
@@ -50,7 +50,7 @@ test('switching the draft agent resets the model chip to that agent\'s default',
   await openDraft(page);
   await expect(draftModel(page)).toHaveAttribute('aria-label', '모델: Opus 5.5 · High');
   await pickAgent(page, 'Codex');
-  await expect(draftModel(page)).toHaveAttribute('aria-label', '모델: GPT-6-Sol · High');
+  await expect(draftModel(page)).toHaveAttribute('aria-label', '모델: GPT-6.1-Sol · High');
   await pickAgent(page, 'Hermes');
   await expect(page.getByTestId('draft').getByTestId('system-model-tag')).toHaveText('시스템 기본값');
   await pickAgent(page, 'Claude Code');
@@ -68,7 +68,7 @@ test('the defaults reach the sessions: Claude Query, Codex -c, Hermes untouched'
   await pickAgent(page, 'Codex');
   await chooseFixtureFolder(page, sandbox);
   // Spawned with -c model / effort: already right, so no set_config_option correction either.
-  expect(await config(page, '/config')).toMatchObject({ model: 'gpt-6-sol', reasoning_effort: 'high', configSets: [] });
+  expect(await config(page, '/config')).toMatchObject({ model: 'gpt-6.1-sol', reasoning_effort: 'high', configSets: [] });
 
   await openDraft(page);
   await pickAgent(page, 'Hermes');
@@ -84,19 +84,19 @@ test('Settings: per-agent defaults apply to the next draft and its session', asy
   await expect(section.getByTestId('hermes-default')).toHaveText('시스템 기본값');
   await section.getByRole('radiogroup', { name: '기본 effort', exact: true }).getByRole('radio', { name: 'Low', exact: true }).click();
   await section.getByRole('radiogroup', { name: 'Codex 기본 effort' }).getByRole('radio', { name: 'Medium', exact: true }).click();
-  // The Codex list is what the fixture session reported (gpt-6-sol / gpt-6.1-sol).
+  // The Codex list is what the fixture session reported (gpt-6.1-sol / gpt-6-sol).
   await section.getByRole('button', { name: /^Codex 기본 모델/ }).click();
-  await page.getByRole('menu', { name: 'Codex 기본 모델' }).getByRole('menuitemradio', { name: 'gpt-6.1-sol' }).click();
+  await page.getByRole('menu', { name: 'Codex 기본 모델' }).getByRole('menuitemradio', { name: 'gpt-6-sol' }).click();
   await expect
     .poll(async () => ((await page.evaluate(() => window.hopecode.invoke('app:bootstrap'))) as { settings: Record<string, unknown> }).settings)
-    .toMatchObject({ defaultEffort: 'low', codexDefaultEffort: 'medium', codexDefaultModel: 'gpt-6.1-sol' });
+    .toMatchObject({ defaultEffort: 'low', codexDefaultEffort: 'medium', codexDefaultModel: 'gpt-6-sol' });
   await page.mouse.move(10, 700);
   await screenshot(page, 'v7-settings-agent-defaults', SHOTS);
 
   await openDraft(page);
   await expect(draftModel(page)).toHaveAttribute('aria-label', '모델: Opus 5.5 · Low');
   await pickAgent(page, 'Codex');
-  await expect(draftModel(page)).toHaveAttribute('aria-label', '모델: gpt-6.1-sol · Medium');
+  await expect(draftModel(page)).toHaveAttribute('aria-label', '모델: gpt-6-sol · Medium');
   await chooseFixtureFolder(page, sandbox);
-  expect(await config(page, '/config')).toMatchObject({ model: 'gpt-6.1-sol', reasoning_effort: 'medium', configSets: [] });
+  expect(await config(page, '/config')).toMatchObject({ model: 'gpt-6-sol', reasoning_effort: 'medium', configSets: [] });
 });

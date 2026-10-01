@@ -27,7 +27,7 @@ function thread(overrides: Partial<Thread> = {}): Thread {
     agent: 'codex',
     title: 't',
     cwd: '/scratch/t',
-    model: 'gpt-6-sol',
+    model: 'gpt-6.1-sol',
     resolvedModel: null,
     permissionMode: 'default',
     effort: 'high',
@@ -58,9 +58,9 @@ const CODEX_CONTROLS: AcpControls = {
       name: 'Model',
       category: 'model',
       type: 'select',
-      currentValue: 'gpt-6-sol',
+      currentValue: 'gpt-6.1-sol',
       options: [
-        { value: 'gpt-6-sol', name: 'GPT-6-Sol' },
+        { value: 'gpt-6.1-sol', name: 'GPT-6.1-Sol' },
         { value: 'gpt-6-mini', name: 'GPT-6 mini' },
       ],
     },
@@ -104,12 +104,12 @@ describe('agentMenuState', () => {
 });
 
 describe('draft defaults per agent (chips)', () => {
-  it('Claude Opus 5.5 · High, Codex GPT-6-Sol · High, Hermes system default', () => {
+  it('Claude Opus 5.5 · High, Codex GPT-6.1-Sol · High, Hermes system default', () => {
     expect(draftAgentDefaults('claude-code', DEFAULT_SETTINGS)).toEqual({ model: 'claude-opus-5-5', effort: 'high' });
     const codex = draftAgentDefaults('codex', DEFAULT_SETTINGS);
-    expect(codex).toEqual({ model: 'gpt-6-sol', effort: 'high' });
+    expect(codex).toEqual({ model: 'gpt-6.1-sol', effort: 'high' });
     const label = codexModelChoices([], codex.model).find((c) => c.value === codex.model)?.label;
-    expect(`${label} · ${EFFORT_LABEL[codex.effort as 'high']}`).toBe('GPT-6-Sol · High');
+    expect(`${label} · ${EFFORT_LABEL[codex.effort as 'high']}`).toBe('GPT-6.1-Sol · High');
     expect(draftAgentDefaults('hermes', DEFAULT_SETTINGS)).toEqual({ model: '', effort: null });
     expect(hermesModelLabel(null)).toBe('시스템 기본값');
   });
@@ -124,19 +124,19 @@ describe('codex chips', () => {
   });
 
   it('model choices come from the newest reported config option, else the built-in table', () => {
-    expect(codexModelChoices([], 'gpt-6-sol')).toEqual([{ value: 'gpt-6-sol', label: 'GPT-6-Sol' }]);
-    expect(codexModelChoices([], 'custom-x').map((c) => c.value)).toEqual(['custom-x', 'gpt-6-sol']);
+    expect(codexModelChoices([], 'gpt-6.1-sol')).toEqual([{ value: 'gpt-6.1-sol', label: 'GPT-6.1-Sol' }]);
+    expect(codexModelChoices([], 'custom-x').map((c) => c.value)).toEqual(['custom-x', 'gpt-6.1-sol']);
     const reported = thread({ acp: { sessionId: 's', controls: CODEX_CONTROLS }, updatedAt: 5 });
     const older = thread({ id: 'o', acp: { sessionId: 's', controls: { ...CODEX_CONTROLS, configOptions: [] } }, updatedAt: 9 });
-    expect(codexModelChoices([older, reported], 'gpt-6-sol').map((c) => c.label)).toEqual(['GPT-6-Sol', 'GPT-6 mini']);
+    expect(codexModelChoices([older, reported], 'gpt-6.1-sol').map((c) => c.label)).toEqual(['GPT-6.1-Sol', 'GPT-6 mini']);
   });
 
   it('thread chip: session values and config ids when reported, read-only stored values before', () => {
     const live = codexThreadChip(thread({ acp: { sessionId: 's', controls: CODEX_CONTROLS } }));
-    expect(live).toMatchObject({ modelLabel: 'GPT-6-Sol', effortLabel: 'High', modelConfigId: 'model', effortConfigId: 'reasoning_effort' });
+    expect(live).toMatchObject({ modelLabel: 'GPT-6.1-Sol', effortLabel: 'High', modelConfigId: 'model', effortConfigId: 'reasoning_effort' });
     expect(live.efforts.map((e) => e.label)).toEqual(['Medium', 'High', 'Ultra']);
     const before = codexThreadChip(thread({ acp: undefined }));
-    expect(before).toMatchObject({ modelLabel: 'GPT-6-Sol', effortLabel: 'High', modelConfigId: null, effortConfigId: null, models: [] });
+    expect(before).toMatchObject({ modelLabel: 'GPT-6.1-Sol', effortLabel: 'High', modelConfigId: null, effortConfigId: null, models: [] });
   });
 });
 

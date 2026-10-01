@@ -24,7 +24,7 @@ export interface AgentDescriptor {
   id: AgentKind;
   /** Display name. */
   name: string;
-  /** One-line description for the picker. */
+  /** Picker sub-line: vendor · new-chat default model (short; menu rows ellipsize). */
   description: string;
   /**
    * Optional logo under src/renderer/assets/ (e.g. `agents/claude-code.svg`). Loaded only if the file exists;
@@ -44,7 +44,7 @@ export const AGENTS: Readonly<Record<AgentKind, AgentDescriptor>> = {
   'claude-code': {
     id: 'claude-code',
     name: 'Claude Code',
-    description: 'Claude 계정 풀로 실행되는 코딩 에이전트',
+    description: 'Anthropic · Opus 5.5',
     iconAsset: 'agents/claude-code.svg',
     features: {
       worktree: true,
@@ -61,7 +61,7 @@ export const AGENTS: Readonly<Record<AgentKind, AgentDescriptor>> = {
   codex: {
     id: 'codex',
     name: 'Codex',
-    description: '이 Mac의 Codex 로그인(~/.codex)으로 실행되는 코딩 에이전트',
+    description: 'OpenAI · GPT-6.1-Sol',
     iconAsset: 'agents/codex.svg',
     // permissionModes: the app permission chip maps to codex `-c approval_policy / sandbox_mode` (plan 2.15).
     // Model / effort chips come from ACP config options, not modelPicker / effort.
@@ -81,7 +81,7 @@ export const AGENTS: Readonly<Record<AgentKind, AgentDescriptor>> = {
   hermes: {
     id: 'hermes',
     name: 'Hermes',
-    description: '설치된 Hermes(hermes acp)의 시스템 기본 설정으로 실행되는 에이전트',
+    description: 'Nous Research · 시스템 기본 모델',
     iconAsset: 'agents/hermes.svg',
     features: {
       worktree: true,

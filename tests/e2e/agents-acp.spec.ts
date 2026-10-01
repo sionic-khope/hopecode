@@ -136,22 +136,25 @@ test('agent menu lists Claude Code, Codex and Hermes (fixture logins: all usable
     await expect(row).toBeVisible();
     await expect(row).toBeEnabled();
   }
-  await screenshot(page, 'v7-agent-menu', SHOTS);
+  // Short vendor · default-model lines; the chip itself carries no tooltip repeating them.
+  for (const line of ['Anthropic · Opus 5.5', 'OpenAI · GPT-6.1-Sol', 'Nous Research · 시스템 기본 모델']) await expect(menu).toContainText(line);
+  await expect(page.getByTestId('draft').locator('.hc-chip--agent')).not.toHaveAttribute('title', /.+/);
+  await screenshot(page, 'v8-agent-menu', SHOTS);
   await page.keyboard.press('Escape');
 });
 
-test('codex: first send creates a worktree and streams; spawn -c carries GPT-6-Sol / high and the default permission', async () => {
+test('codex: first send creates a worktree and streams; spawn -c carries GPT-6.1-Sol / high and the default permission', async () => {
   const { page } = run;
   ids['codex'] = await startAgentThread(page, 'Codex', 'hello codex');
   await expect(messages(page)).toContainText('FAKE-ACP(codex): hello codex');
   const thread = await threadById(page, ids['codex']);
-  expect(thread).toMatchObject({ agent: 'codex', model: 'gpt-6-sol', effort: 'high', permissionMode: 'default' });
+  expect(thread).toMatchObject({ agent: 'codex', model: 'gpt-6.1-sol', effort: 'high', permissionMode: 'default' });
   expect((thread!['worktree'] as { branch: string }).branch).toMatch(/^hopecode\//);
   expect((thread!['cwd'] as string).startsWith(`${sandbox.home}/home/worktrees/`)).toBe(true);
 
   // Composer: Codex model chip + the app permission chip; no Claude account chip.
   // Live thread: the label is the agent's own option name (the fixture names options by value).
-  await expect(composer(page).locator('.hc-chip--model')).toContainText(/gpt-6-sol/i);
+  await expect(composer(page).locator('.hc-chip--model')).toContainText(/gpt-6.1-sol/i);
   await expect(composer(page).locator('.hc-chip--model')).toContainText('High');
   await expect(composer(page).getByRole('button', { name: '권한: 기본' })).toBeVisible();
   // Codex v1 shows no limit meters (ctx / model only).
@@ -160,12 +163,12 @@ test('codex: first send creates a worktree and streams; spawn -c carries GPT-6-S
   const who = await report(page, '[whoami]', 'WHOAMI');
   expect(who).toMatchObject({
     profile: 'codex',
-    model: 'gpt-6-sol',
+    model: 'gpt-6.1-sol',
     reasoning_effort: 'high',
     approval_policy: 'on-request',
     sandbox_mode: 'workspace-write',
   });
-  expect(who['args']).toMatchObject({ model: 'gpt-6-sol', model_reasoning_effort: 'high' });
+  expect(who['args']).toMatchObject({ model: 'gpt-6.1-sol', model_reasoning_effort: 'high' });
   ids['codexSession'] = who['sessionId'] as string;
 });
 

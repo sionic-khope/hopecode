@@ -377,7 +377,7 @@ export const AgentChip = memo(function AgentChip({
   const current = AGENTS[value];
   if (!onChange) {
     return (
-      <span className="hc-chip hc-chip--static hc-chip--agent" aria-label={`에이전트: ${current.name}`} title={current.description}>
+      <span className="hc-chip hc-chip--static hc-chip--agent" aria-label={`에이전트: ${current.name}`}>
         <AgentIcon kind={value} size={15} />
         <span className="hc-chip__label">{current.name}</span>
       </span>
@@ -420,7 +420,6 @@ export const AgentChip = memo(function AgentChip({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`에이전트: ${current.name}`}
-        title={current.description}
         onClick={() => setOpen((v) => !v)}
       >
         <AgentIcon kind={value} size={15} />

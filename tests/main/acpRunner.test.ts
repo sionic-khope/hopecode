@@ -94,7 +94,7 @@ function setup(opts: SetupOptions = {}) {
       makeThread('t1', {
         agent,
         cwd,
-        model: agent === 'codex' ? 'gpt-6-sol' : '',
+        model: agent === 'codex' ? 'gpt-6.1-sol' : '',
         effort: agent === 'codex' ? 'high' : null,
         ...opts.thread,
       }),
@@ -340,7 +340,7 @@ describe('AcpRunner (codex profile)', () => {
     mkdirSync(s.stateDir, { recursive: true });
     writeFileSync(
       join(s.stateDir, 'fake-empty.json'),
-      JSON.stringify({ sessionId: 'fake-empty', cwd: s.cwd, history: [], modeId: 'auto', model: 'gpt-6-sol', effort: 'high', configSets: [], turn: 0 }),
+      JSON.stringify({ sessionId: 'fake-empty', cwd: s.cwd, history: [], modeId: 'auto', model: 'gpt-6.1-sol', effort: 'high', configSets: [], turn: 0 }),
     );
     await turn(s.runner, '[whoami]');
     expect(reported(s.events(), 'WHOAMI').sessionId).toBe('fake-empty');
@@ -391,12 +391,12 @@ describe('AcpRunner (codex profile)', () => {
     const s = setup();
     await turn(s.runner, '/config');
     const cfg = reported(s.events(), 'CONFIG');
-    expect(cfg).toMatchObject({ model: 'gpt-6-sol', reasoning_effort: 'high', approval_policy: 'on-request', sandbox_mode: 'workspace-write', configSets: [] });
+    expect(cfg).toMatchObject({ model: 'gpt-6.1-sol', reasoning_effort: 'high', approval_policy: 'on-request', sandbox_mode: 'workspace-write', configSets: [] });
   });
 
   it('open-time reconcile: differing current values -> one set_config_option each', async () => {
     const base = createAcpFixtureLauncher({ profile: 'codex', scriptPath: FAKE_AGENT, stateDir: join(tmp(), 'state') });
-    // Drop the -c model / effort arguments so the agent starts on its own defaults (gpt-6.1-sol / medium).
+    // Drop the -c model / effort arguments so the agent starts on its own defaults (gpt-6-sol / medium).
     const launcher: AcpLauncher = {
       resolve: (cwd, o) => base.resolve(cwd, { ...o, model: null, effort: null }),
     };
@@ -404,32 +404,32 @@ describe('AcpRunner (codex profile)', () => {
     await turn(s.runner, '/config');
     const cfg = reported(s.events(), 'CONFIG');
     expect(cfg.configSets).toEqual([
-      { configId: 'model', value: 'gpt-6-sol' },
+      { configId: 'model', value: 'gpt-6.1-sol' },
       { configId: 'reasoning_effort', value: 'high' },
     ]);
-    expect(cfg).toMatchObject({ model: 'gpt-6-sol', reasoning_effort: 'high' });
-    expect(s.thread()).toMatchObject({ model: 'gpt-6-sol', effort: 'high' });
+    expect(cfg).toMatchObject({ model: 'gpt-6.1-sol', reasoning_effort: 'high' });
+    expect(s.thread()).toMatchObject({ model: 'gpt-6.1-sol', effort: 'high' });
   });
 
   it('open-time reconcile: a model the agent does not offer -> warn notice, thread adopts the current value', async () => {
     const s = setup({ thread: { model: 'gpt-unknown' } });
     await turn(s.runner, '/config');
-    expect(notices(s.events())).toEqual(['Codex가 모델 gpt-unknown을(를) 제공하지 않아 gpt-6.1-sol(으)로 실행합니다.']);
-    expect(s.thread().model).toBe('gpt-6.1-sol');
+    expect(notices(s.events())).toEqual(['Codex가 모델 gpt-unknown을(를) 제공하지 않아 gpt-6-sol(으)로 실행합니다.']);
+    expect(s.thread().model).toBe('gpt-6-sol');
     expect(reported(s.events(), 'CONFIG').configSets).toEqual([]);
   });
 
   it('setAgentConfig: live -> set_config_option and thread model follows; no session -> stored only', async () => {
     const s = setup();
-    await s.runner.setAgentConfig('model', 'gpt-6.1-sol');
-    expect(s.thread().model).toBe('gpt-6-sol'); // no controls yet: nothing to map
+    await s.runner.setAgentConfig('model', 'gpt-6-sol');
+    expect(s.thread().model).toBe('gpt-6.1-sol'); // no controls yet: nothing to map
     await turn(s.runner, 'hi');
-    await s.runner.setAgentConfig('model', 'gpt-6.1-sol');
-    expect(s.thread().model).toBe('gpt-6.1-sol');
+    await s.runner.setAgentConfig('model', 'gpt-6-sol');
+    expect(s.thread().model).toBe('gpt-6-sol');
     const model = s.thread().acp?.controls?.configOptions.find((o) => o.id === 'model');
-    expect(model).toMatchObject({ currentValue: 'gpt-6.1-sol' });
+    expect(model).toMatchObject({ currentValue: 'gpt-6-sol' });
     await turn(s.runner, '/config');
-    expect(reported(s.events(), 'CONFIG').configSets).toEqual([{ configId: 'model', value: 'gpt-6.1-sol' }]);
+    expect(reported(s.events(), 'CONFIG').configSets).toEqual([{ configId: 'model', value: 'gpt-6-sol' }]);
   });
 
   it('permission chip (plan 2.15): live session -> session/set_mode to the matching mode', async () => {
@@ -485,7 +485,7 @@ describe('AcpRunner (codex profile)', () => {
       mkdirSync(s.stateDir, { recursive: true });
       writeFileSync(
         join(s.stateDir, 'fake-full.json'),
-        JSON.stringify({ sessionId: 'fake-full', cwd: s.cwd, history: [], modeId: 'full-access', model: 'gpt-6-sol', effort: 'high', configSets: [], turn: 0 }),
+        JSON.stringify({ sessionId: 'fake-full', cwd: s.cwd, history: [], modeId: 'full-access', model: 'gpt-6.1-sol', effort: 'high', configSets: [], turn: 0 }),
       );
       await turn(s.runner, '[whoami]');
       const expected = permissionMode === 'default' ? 'auto' : 'full-access';

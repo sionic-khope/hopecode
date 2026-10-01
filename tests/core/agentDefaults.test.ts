@@ -5,25 +5,25 @@ import type { AcpConfigOptionLite } from '../../src/shared/types';
 const SETTINGS = {
   defaultModel: 'claude-opus-5-5',
   defaultEffort: 'high' as const,
-  codexDefaultModel: 'gpt-6-sol',
+  codexDefaultModel: 'gpt-6.1-sol',
   codexDefaultEffort: 'xhigh' as const,
 };
 
 describe('draftAgentDefaults', () => {
   it('picks per-agent defaults; hermes uses the system default', () => {
     expect(draftAgentDefaults('claude-code', SETTINGS)).toEqual({ model: 'claude-opus-5-5', effort: 'high' });
-    expect(draftAgentDefaults('codex', SETTINGS)).toEqual({ model: 'gpt-6-sol', effort: 'xhigh' });
+    expect(draftAgentDefaults('codex', SETTINGS)).toEqual({ model: 'gpt-6.1-sol', effort: 'xhigh' });
     expect(draftAgentDefaults('hermes', SETTINGS)).toEqual({ model: '', effort: null });
   });
 });
 
 describe('codexLaunchArgs', () => {
-  const base = { model: 'gpt-6-sol', effort: 'high' as const };
+  const base = { model: 'gpt-6.1-sol', effort: 'high' as const };
 
   it('builds -c arguments from the fixed permission table', () => {
     expect(codexLaunchArgs({ ...base, permissionMode: 'default' })).toEqual({
       ok: true,
-      args: ['-c', 'model="gpt-6-sol"', '-c', 'model_reasoning_effort="high"', '-c', 'approval_policy="on-request"', '-c', 'sandbox_mode="workspace-write"'],
+      args: ['-c', 'model="gpt-6.1-sol"', '-c', 'model_reasoning_effort="high"', '-c', 'approval_policy="on-request"', '-c', 'sandbox_mode="workspace-write"'],
     });
     const tail = (mode: Parameters<typeof codexLaunchArgs>[0]['permissionMode']) => {
       const r = codexLaunchArgs({ ...base, permissionMode: mode });
@@ -69,12 +69,12 @@ describe('reconcileConfig', () => {
     currentValue,
     options: values.map((value) => ({ value, name: value })),
   });
-  const opts = [select('model', 'model', 'gpt-5', ['gpt-5', 'gpt-6-sol']), select('effort', 'thought_level', 'low', ['low', 'high'])];
+  const opts = [select('model', 'model', 'gpt-5', ['gpt-5', 'gpt-6.1-sol']), select('effort', 'thought_level', 'low', ['low', 'high'])];
 
   it('sets values that differ and are offered', () => {
-    expect(reconcileConfig(opts, { model: 'gpt-6-sol', effort: 'high' })).toEqual({
+    expect(reconcileConfig(opts, { model: 'gpt-6.1-sol', effort: 'high' })).toEqual({
       set: [
-        { configId: 'model', value: 'gpt-6-sol' },
+        { configId: 'model', value: 'gpt-6.1-sol' },
         { configId: 'effort', value: 'high' },
       ],
       missing: [],

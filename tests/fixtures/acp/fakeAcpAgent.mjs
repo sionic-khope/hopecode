@@ -68,7 +68,7 @@ function newState(sessionId, cwd) {
     cwd,
     history: [], // {role:'user'|'agent', text}
     modeId: m.current,
-    model: CODEX_MODELS.includes(ARGS.model) ? ARGS.model : 'gpt-6.1-sol',
+    model: CODEX_MODELS.includes(ARGS.model) ? ARGS.model : 'gpt-6-sol',
     effort: CODEX_EFFORTS.includes(ARGS.model_reasoning_effort) ? ARGS.model_reasoning_effort : 'medium',
     configSets: [], // received session/set_config_option calls
     turn: 0,

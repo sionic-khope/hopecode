@@ -3,6 +3,7 @@
 import {
   CODEX_EFFORT_LEVELS,
   CODEX_MODEL_PATTERN,
+  CODEX_PREVIOUS_DEFAULT_MODEL,
   DEFAULT_NEW_TASK_TEMPLATE,
   DEFAULT_SETTINGS,
   EFFORT_LEVELS,
@@ -136,6 +137,8 @@ export function sanitizeSettings(raw: unknown): AppSettings {
       out.defaultEffort = DEFAULT_SETTINGS.defaultEffort;
     }
   }
+  // Rev 3: the untouched old Codex default moves to the new one; another stored model is the user's pick.
+  if (rev < 3 && out.codexDefaultModel === CODEX_PREVIOUS_DEFAULT_MODEL) out.codexDefaultModel = DEFAULT_SETTINGS.codexDefaultModel;
   out.settingsRev = SETTINGS_REV;
   // Older builds could store a bypass default; a new chat never starts in it.
   if (input.defaultPermissionMode === 'bypassPermissions') out.defaultPermissionMode = 'default';

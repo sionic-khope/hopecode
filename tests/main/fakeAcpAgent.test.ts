@@ -102,41 +102,41 @@ describe('fakeAcpAgent', () => {
       expect(created.modes.availableModes.map((m: any) => m.id)).toEqual(['read-only', 'auto', 'full-access']);
       const byId = Object.fromEntries(created.configOptions.map((o: any) => [o.id, o]));
       expect(byId.model.category).toBe('model');
-      expect(byId.model.currentValue).toBe('gpt-6.1-sol');
+      expect(byId.model.currentValue).toBe('gpt-6-sol');
       expect(byId.reasoning_effort.category).toBe('thought_level');
       expect(byId.reasoning_effort.currentValue).toBe('medium');
     });
 
     it('reflects -c args in [whoami], /config and the initial mode', async () => {
       const h = start('codex', {
-        args: ['-c', 'model="gpt-6-sol"', '-c', 'model_reasoning_effort="max"', '-c', 'approval_policy="never"', '-c', 'sandbox_mode="danger-full-access"'],
+        args: ['-c', 'model="gpt-6.1-sol"', '-c', 'model_reasoning_effort="max"', '-c', 'approval_policy="never"', '-c', 'sandbox_mode="danger-full-access"'],
       });
       const { created, sessionId } = await open(h);
       expect(created.modes.currentModeId).toBe('full-access');
-      expect(created.configOptions.find((o: any) => o.id === 'model').currentValue).toBe('gpt-6-sol');
+      expect(created.configOptions.find((o: any) => o.id === 'model').currentValue).toBe('gpt-6.1-sol');
       await prompt(h, sessionId, '[whoami]');
       const who = JSON.parse(texts(h).replace(/^WHOAMI /, ''));
-      expect(who).toMatchObject({ profile: 'codex', model: 'gpt-6-sol', reasoning_effort: 'max', approval_policy: 'never', sandbox_mode: 'danger-full-access' });
+      expect(who).toMatchObject({ profile: 'codex', model: 'gpt-6.1-sol', reasoning_effort: 'max', approval_policy: 'never', sandbox_mode: 'danger-full-access' });
       h.updates.length = 0;
       await prompt(h, sessionId, '/config');
       const cfg = JSON.parse(texts(h).replace(/^CONFIG /, ''));
-      expect(cfg).toMatchObject({ model: 'gpt-6-sol', reasoning_effort: 'max', approval_policy: 'never', cwd });
+      expect(cfg).toMatchObject({ model: 'gpt-6.1-sol', reasoning_effort: 'max', approval_policy: 'never', cwd });
     });
 
-    it('unknown model falls back to gpt-6.1-sol; no args -> defaults', async () => {
+    it('unknown model falls back to gpt-6-sol; no args -> defaults', async () => {
       const h = start('codex', { args: ['-c', 'model="made-up"'] });
       const { created } = await open(h);
-      expect(created.configOptions.find((o: any) => o.id === 'model').currentValue).toBe('gpt-6.1-sol');
+      expect(created.configOptions.find((o: any) => o.id === 'model').currentValue).toBe('gpt-6-sol');
     });
 
     it('set_config_option updates and returns configOptions; bad value is an error', async () => {
       const h = start('codex');
       const { sessionId } = await open(h);
-      const res = await h.req('session/set_config_option', { sessionId, configId: 'model', value: 'gpt-6-sol' });
-      expect(res.configOptions.find((o: any) => o.id === 'model').currentValue).toBe('gpt-6-sol');
+      const res = await h.req('session/set_config_option', { sessionId, configId: 'model', value: 'gpt-6.1-sol' });
+      expect(res.configOptions.find((o: any) => o.id === 'model').currentValue).toBe('gpt-6.1-sol');
       await expect(h.req('session/set_config_option', { sessionId, configId: 'model', value: 'nope' })).rejects.toThrow();
       await prompt(h, sessionId, '/config');
-      expect(texts(h)).toContain('"configSets":[{"configId":"model","value":"gpt-6-sol"},{"configId":"model","value":"nope"}]');
+      expect(texts(h)).toContain('"configSets":[{"configId":"model","value":"gpt-6.1-sol"},{"configId":"model","value":"nope"}]');
     });
 
     it('set_mode changes the mode and rejects unknown ids', async () => {
@@ -372,9 +372,9 @@ describe('fakeAcpAgent', () => {
   describe('launcher', () => {
     it('builds argv/env for each profile and honours unavailable', () => {
       const base = { scriptPath: SCRIPT, stateDir };
-      const codex = createAcpFixtureLauncher({ ...base, profile: 'codex' }).resolve(cwd, { model: 'gpt-6-sol', effort: 'high', permissionMode: 'plan', gitCeiling: '/x' });
+      const codex = createAcpFixtureLauncher({ ...base, profile: 'codex' }).resolve(cwd, { model: 'gpt-6.1-sol', effort: 'high', permissionMode: 'plan', gitCeiling: '/x' });
       expect(codex.ok && codex.spec.args).toEqual([
-        SCRIPT, '-c', 'model="gpt-6-sol"', '-c', 'model_reasoning_effort="high"', '-c', 'approval_policy="on-request"', '-c', 'sandbox_mode="read-only"',
+        SCRIPT, '-c', 'model="gpt-6.1-sol"', '-c', 'model_reasoning_effort="high"', '-c', 'approval_policy="on-request"', '-c', 'sandbox_mode="read-only"',
       ]);
       expect(codex.ok && codex.spec.env).toMatchObject({ FAKE_ACP_PROFILE: 'codex', FAKE_ACP_STATE_DIR: stateDir, ELECTRON_RUN_AS_NODE: '1', GIT_CEILING_DIRECTORIES: '/x' });
       const hermes = createAcpFixtureLauncher({ ...base, profile: 'hermes', env: { FAKE_ACP_NO_MODELS: '1' } }).resolve(cwd, { permissionMode: 'default' });

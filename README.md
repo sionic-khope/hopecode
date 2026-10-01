@@ -4,7 +4,8 @@
 
 A macOS desktop harness for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) sessions: threads in a native chat UI, a per-thread terminal, and a pool of subscription accounts that rotates automatically when a usage limit is reached.
 
-> Hopecode is an independent project and is not affiliated with or endorsed by Anthropic. Claude and Claude Code and their logos are trademarks of Anthropic.
+> Hopecode is an independent project and is not affiliated with or endorsed by Anthropic, OpenAI or Nous Research. Claude and Claude Code and their logos are trademarks of Anthropic. OpenAI, Codex and their logos are trademarks of OpenAI. Hermes and its logo are trademarks of Nous Research.
+> Agent logos come from [@lobehub/icons](https://github.com/lobehub/lobe-icons) (MIT).
 
 ## Features
 

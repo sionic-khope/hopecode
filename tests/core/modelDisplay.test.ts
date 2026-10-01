@@ -106,23 +106,23 @@ describe('full-id model values', () => {
         name: 'Model',
         category: 'model',
         type: 'select' as const,
-        currentValue: 'gpt-6-sol',
-        options: [{ value: 'gpt-6-sol', name: 'GPT-6 Sol (agent)' }],
+        currentValue: 'gpt-6.1-sol',
+        options: [{ value: 'gpt-6.1-sol', name: 'GPT-6 Sol (agent)' }],
       },
     ];
-    expect(codexModelLabel('gpt-6-sol', opts)).toBe('GPT-6 Sol (agent)');
-    expect(codexModelLabel('gpt-6-sol')).toBe('GPT-6-Sol');
+    expect(codexModelLabel('gpt-6.1-sol', opts)).toBe('GPT-6 Sol (agent)');
+    expect(codexModelLabel('gpt-6.1-sol')).toBe('GPT-6.1-Sol');
     expect(codexModelLabel('other-model')).toBe('other-model');
   });
 });
 
 describe('codexModelLabel with agents that echo raw ids as names', () => {
   it('prefers the versioned label when the option name equals its value', () => {
-    const opts = [{ id: 'model', name: 'Model', category: 'model', type: 'select', currentValue: 'gpt-6-sol', options: [{ value: 'gpt-6-sol', name: 'gpt-6-sol' }] }] as never;
-    expect(codexModelLabel('gpt-6-sol', opts)).toBe('GPT-6-Sol');
+    const opts = [{ id: 'model', name: 'Model', category: 'model', type: 'select', currentValue: 'gpt-6.1-sol', options: [{ value: 'gpt-6.1-sol', name: 'gpt-6.1-sol' }] }] as never;
+    expect(codexModelLabel('gpt-6.1-sol', opts)).toBe('GPT-6.1-Sol');
   });
   it('keeps a real agent-provided name', () => {
-    const opts = [{ id: 'model', name: 'Model', category: 'model', type: 'select', currentValue: 'gpt-6-sol', options: [{ value: 'gpt-6-sol', name: 'GPT 6 Sol (fast)' }] }] as never;
-    expect(codexModelLabel('gpt-6-sol', opts)).toBe('GPT 6 Sol (fast)');
+    const opts = [{ id: 'model', name: 'Model', category: 'model', type: 'select', currentValue: 'gpt-6.1-sol', options: [{ value: 'gpt-6.1-sol', name: 'GPT 6 Sol (fast)' }] }] as never;
+    expect(codexModelLabel('gpt-6.1-sol', opts)).toBe('GPT 6 Sol (fast)');
   });
 });

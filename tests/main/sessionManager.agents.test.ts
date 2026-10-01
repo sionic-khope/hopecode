@@ -80,7 +80,7 @@ const texts = (ev: ChatEvent[]) =>
 
 describe('SessionManager ACP runners (fixture agent)', () => {
   it('a Codex thread runs a turn through AcpRunner; the turn-end hook fires', async () => {
-    const s = setup([{ id: 'c1', agent: 'codex', model: 'gpt-6-sol', effort: 'high' }]);
+    const s = setup([{ id: 'c1', agent: 'codex', model: 'gpt-6.1-sol', effort: 'high' }]);
     expect(await s.manager.send('c1', 'hello')).toEqual({ accepted: true });
     await s.manager.whenSettled('c1');
     expect(texts(s.events('c1'))).toEqual(['FAKE-ACP(codex): hello']);
@@ -101,7 +101,7 @@ describe('SessionManager ACP runners (fixture agent)', () => {
   });
 
   it('listModels ignores ACP runners (no Claude catalog)', async () => {
-    const s = setup([{ id: 'c1', agent: 'codex', model: 'gpt-6-sol', effort: 'high' }]);
+    const s = setup([{ id: 'c1', agent: 'codex', model: 'gpt-6.1-sol', effort: 'high' }]);
     await s.manager.send('c1', 'hello');
     await s.manager.whenSettled('c1');
     expect((await s.manager.listModels()).length).toBeGreaterThan(0);
@@ -127,7 +127,7 @@ describe('SessionManager ACP runners (fixture agent)', () => {
   });
 
   it('dispose closes ACP runners within the quit budget', async () => {
-    const s = setup([{ id: 'c1', agent: 'codex', model: 'gpt-6-sol', effort: 'high' }]);
+    const s = setup([{ id: 'c1', agent: 'codex', model: 'gpt-6.1-sol', effort: 'high' }]);
     await s.manager.send('c1', 'hello');
     await s.manager.whenSettled('c1');
     const started = Date.now();
@@ -142,13 +142,13 @@ describe('createAcpLaunchers (real agents)', () => {
 
   it('codex: bundled binary, `-c` overrides from the thread values, scratch ceiling, no ANTHROPIC_* / HOPECODE_*', () => {
     const l = createAcpLaunchers({ binaries: binaries('/bin/codex-acp', null), baseEnv });
-    const res = l.codex.resolve('/w', { model: 'gpt-6-sol', effort: 'high', permissionMode: 'plan', gitCeiling: '/s' });
+    const res = l.codex.resolve('/w', { model: 'gpt-6.1-sol', effort: 'high', permissionMode: 'plan', gitCeiling: '/s' });
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.spec.command).toBe('/bin/codex-acp');
     expect(res.spec.args).toEqual([
       '-c',
-      'model="gpt-6-sol"',
+      'model="gpt-6.1-sol"',
       '-c',
       'model_reasoning_effort="high"',
       '-c',

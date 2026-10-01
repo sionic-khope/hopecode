@@ -55,12 +55,15 @@ export const IDLE_CLOSE_MAX_MINUTES = 240;
 
 /**
  * AppSettings schema revision. 2 = per-agent defaults: Claude `claude-opus-5-5` / high replaces the old
- * `default` / null, Codex defaults added. core/settings.sanitizeSettings migrates older files.
+ * `default` / null, Codex defaults added. 3 = Codex default `gpt-6-sol` -> `gpt-6.1-sol`.
+ * core/settings.sanitizeSettings migrates older files.
  */
-export const SETTINGS_REV = 2;
+export const SETTINGS_REV = 3;
 
 /** Codex model of a new chat (plan 2.11). */
-export const CODEX_DEFAULT_MODEL = 'gpt-6-sol';
+export const CODEX_DEFAULT_MODEL = 'gpt-6.1-sol';
+/** The Codex default before settings rev 3; a stored value equal to it was never picked, so rev 3 upgrades it. */
+export const CODEX_PREVIOUS_DEFAULT_MODEL = 'gpt-6-sol';
 export const CODEX_DEFAULT_EFFORT: CodexEffortLevel = 'high';
 /**
  * Codex model ids accepted from settings / IPC. They end up inside a TOML `-c model="..."` argument, so quotes,
@@ -69,7 +72,7 @@ export const CODEX_DEFAULT_EFFORT: CodexEffortLevel = 'high';
 export const CODEX_MODEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 /** Codex model labels used until the agent's own config options named them. */
 export const CODEX_MODEL_LABELS: Readonly<Record<string, string>> = {
-  'gpt-6-sol': 'GPT-6-Sol',
+  'gpt-6.1-sol': 'GPT-6.1-Sol',
 };
 
 /** Alias of the pool account backed by this Mac's own Claude Code login (`Account.source === 'local-default'`). */
