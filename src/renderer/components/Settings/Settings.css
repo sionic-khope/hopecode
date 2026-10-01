@@ -188,6 +188,23 @@
   box-shadow: inset 0 0 0 1px var(--accent), var(--focus-ring);
 }
 
+.hc-settings__text {
+  width: 200px;
+  height: var(--control-h-sm);
+  padding: 0 10px;
+  border: none;
+  border-radius: 8px;
+  background: var(--bg-card-muted);
+  box-shadow: inset 0 0 0 1px rgba(23, 23, 26, 0.1);
+  font-size: var(--text-sm);
+  color: var(--label);
+  transition: box-shadow var(--motion-1) var(--ease-soft);
+}
+.hc-settings__text:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--accent), var(--focus-ring);
+}
+
 /* Range slider with a filled track. */
 .hc-settings__range {
   display: inline-flex;

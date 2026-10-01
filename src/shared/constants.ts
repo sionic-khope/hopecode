@@ -78,7 +78,10 @@ export const CODEX_MODEL_LABELS: Readonly<Record<string, string>> = {
 /** Alias of the pool account backed by this Mac's own Claude Code login (`Account.source === 'local-default'`). */
 export const LOCAL_CLAUDE_ACCOUNT_ALIAS = '로컬 (기본)';
 
+export const PROFILE_NAME_MAX_CHARS = 40;
+
 export const DEFAULT_SETTINGS: AppSettings = {
+  profileName: '',
   idleCloseMinutes: 10,
   defaultModel: 'claude-opus-5-5',
   defaultPermissionMode: 'default',

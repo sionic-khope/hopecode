@@ -100,7 +100,7 @@ test('profile row: account, plan and an upward menu with the pool summary', asyn
   await expect(menu).toContainText('work@example.com');
   await expect(menu).toContainText('계정 3개 · 2개 사용 가능');
   // Pages (계정, 사용량, 설정, 단축키, 앱 정보) live in the nav's 더보기 menu; the profile menu does not repeat them.
-  await expect(menu.getByRole('menuitem')).toHaveText([/^계정 추가/, /^로그 폴더 열기/, /^Hopecode 종료/]);
+  await expect(menu.getByRole('menuitem')).toHaveText([/^계정 추가/, /^표시 이름 변경/, /^로그 폴더 열기/, /^Hopecode 종료/]);
   // The menu opens above the row.
   const menuBox = await page.locator('.hc-popover:has(.hc-mnu)').boundingBox();
   const rowBox = await row.boundingBox();

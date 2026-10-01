@@ -197,6 +197,8 @@ export interface EditorInfo {
 }
 
 export interface AppSettings {
+  /** Name shown in the sidebar profile row; '' = the active account's alias / email. Trimmed, at most 40 chars. */
+  profileName: string;
   /** Close idle Query after N minutes (resume on next send); 0 = never. */
   idleCloseMinutes: number;
   /** Model of a new chat (draft). */

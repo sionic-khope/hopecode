@@ -9,6 +9,7 @@ import {
   EFFORT_LEVELS,
   IDLE_CLOSE_MAX_MINUTES,
   NEW_TASK_TEMPLATE_MAX_CHARS,
+  PROFILE_NAME_MAX_CHARS,
   SETTINGS_REV,
   UI_PERMISSION_MODES,
   USAGE_POLL_MAX_SEC,
@@ -95,6 +96,14 @@ export function validateSettingsPatch(raw: unknown): SettingsPatchResult {
         // Blank is not a valid template: it silently falls back to the default instead of being rejected.
         patch.newTaskTemplate = value.trim().length === 0 ? DEFAULT_NEW_TASK_TEMPLATE : value;
         break;
+      case 'profileName': {
+        if (typeof value !== 'string') return { ok: false, error: 'profileName must be a string' };
+        const name = value.trim();
+        if ([...name].length > PROFILE_NAME_MAX_CHARS) return { ok: false, error: `profileName must be at most ${PROFILE_NAME_MAX_CHARS} characters` };
+        if (/[\u0000-\u001f\u007f-\u009f]/.test(name)) return { ok: false, error: 'profileName must not contain control characters' };
+        patch.profileName = name;
+        break;
+      }
       case 'codexDefaultModel':
         if (typeof value !== 'string' || !CODEX_MODEL_PATTERN.test(value)) {
           return { ok: false, error: 'codexDefaultModel must be a model id (letters, digits, . _ -)' };

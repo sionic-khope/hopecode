@@ -4,6 +4,7 @@ import {
   EFFORT_LEVELS,
   IDLE_CLOSE_MAX_MINUTES,
   NEW_TASK_TEMPLATE_MAX_CHARS,
+  PROFILE_NAME_MAX_CHARS,
   UI_PERMISSION_MODES,
   USAGE_POLL_MAX_SEC,
   USAGE_POLL_MIN_SEC,
@@ -99,10 +100,12 @@ export function SettingsPage({
   const [idleDraft, setIdleDraft] = useState(String(settings.idleCloseMinutes));
   const [pollDraft, setPollDraft] = useState(settings.usagePollIntervalSec);
   const [templateDraft, setTemplateDraft] = useState(settings.newTaskTemplate);
+  const [nameDraft, setNameDraft] = useState(settings.profileName);
 
   useEffect(() => setIdleDraft(String(settings.idleCloseMinutes)), [settings.idleCloseMinutes]);
   useEffect(() => setPollDraft(settings.usagePollIntervalSec), [settings.usagePollIntervalSec]);
   useEffect(() => setTemplateDraft(settings.newTaskTemplate), [settings.newTaskTemplate]);
+  useEffect(() => setNameDraft(settings.profileName), [settings.profileName]);
 
   useEffect(() => {
     let live = true;
@@ -126,6 +129,12 @@ export function SettingsPage({
       return;
     }
     if (n !== settings.idleCloseMinutes) save({ idleCloseMinutes: n });
+  };
+
+  const commitName = () => {
+    const next = nameDraft.trim();
+    setNameDraft(next);
+    if (next !== settings.profileName) save({ profileName: next });
   };
 
   const commitTemplate = () => {
@@ -219,6 +228,22 @@ export function SettingsPage({
       </Section>
 
       <Section title="일반" description="새 채팅을 시작할 때 쓰는 값입니다. 이미 시작된 채팅은 바뀌지 않습니다.">
+        <Row label="표시 이름" hint="사이드바 프로필에 표시됩니다. 비우면 계정 이름을 씁니다">
+          <input
+            id="hc-profile-name"
+            type="text"
+            className="hc-settings__text"
+            aria-label="표시 이름"
+            placeholder="이름 (예: 케이홉)"
+            maxLength={PROFILE_NAME_MAX_CHARS}
+            value={nameDraft}
+            onChange={(e) => setNameDraft(e.target.value)}
+            onBlur={commitName}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+            }}
+          />
+        </Row>
         <Row label="기본 권한 모드" hint="전체 액세스는 채팅마다 확인을 거쳐 켭니다">
           <Segmented
             aria-label="기본 권한 모드"

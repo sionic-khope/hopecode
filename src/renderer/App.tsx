@@ -252,6 +252,10 @@ export function App() {
   const onOpenAccounts = useCallback(() => useAppStore.getState().openAccounts(), []);
   const onOpenUsage = useCallback(() => useAppStore.getState().openAccounts('usage'), []);
   const onOpenSettings = useCallback(() => useAppStore.getState().setRoute('settings'), []);
+  const onRenameProfile = useCallback(() => {
+    useAppStore.getState().setRoute('settings');
+    setTimeout(() => document.getElementById('hc-profile-name')?.focus(), 50);
+  }, []);
   const onOpenSearch = useCallback(() => useAppStore.getState().setPaletteOpen(true), []);
   const onOpenPrs = useCallback(() => useAppStore.getState().setRoute('prs'), []);
   const onOpenSchedule = useCallback(() => useAppStore.getState().setRoute('schedule'), []);
@@ -540,6 +544,8 @@ export function App() {
                   onOpenDataFolder={onOpenDataFolder}
                   onQuit={onQuit}
                   onAddAccount={onAddAccount}
+                  profileName={settings.profileName}
+                  onRenameProfile={onRenameProfile}
                 />
               }
             />

@@ -135,4 +135,15 @@ describe('settings validation', () => {
     expect(sanitizeSettings({ localClaudeInPool: 'no' }).localClaudeInPool).toBe(true);
     expect(sanitizeSettings({ settingsRev: 99 }).settingsRev).toBe(SETTINGS_REV);
   });
+
+  it('validates profileName: trims, max 40 chars, no control characters', () => {
+    expect(validateSettingsPatch({ profileName: '  케이홉  ' })).toEqual({ ok: true, patch: { profileName: '케이홉' } });
+    expect(validateSettingsPatch({ profileName: '   ' })).toEqual({ ok: true, patch: { profileName: '' } });
+    expect(validateSettingsPatch({ profileName: 'a'.repeat(40) }).ok).toBe(true);
+    expect(validateSettingsPatch({ profileName: 'a'.repeat(41) }).ok).toBe(false);
+    expect(validateSettingsPatch({ profileName: 'a\nb' }).ok).toBe(false);
+    expect(validateSettingsPatch({ profileName: 3 }).ok).toBe(false);
+    expect(sanitizeSettings({}).profileName).toBe('');
+    expect(sanitizeSettings({ profileName: 'x\u0007' }).profileName).toBe('');
+  });
 });
