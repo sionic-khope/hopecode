@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { RequestError, type ContentBlock, type RequestPermissionResponse, type SessionNotification } from '@agentclientprotocol/sdk';
 import { finalizeAcpTurn, initialAcpReducerState, MAX_LABEL_CHARS, reduceAcpUpdate } from '../../core/acpReducer';
 import type { AcpAgentKind, AcpReducerState, AcpSignal, AcpStopReason } from '../../core/acpTypes';
-import { isFullAccessMode, reconcileConfig } from '../../core/agentDefaults';
+import { CODEX_MODE_BY_PERMISSION, isCodexAutoReviewMode, isFullAccessMode, reconcileConfig } from '../../core/agentDefaults';
 import { redact } from '../../core/redact';
 import { AGENTS } from '../../shared/agents';
 import {
@@ -102,10 +102,10 @@ export class AcpRunner implements AgentRunner {
   private interrupted = false;
   /** Retired (thread deleted / app quit). */
   private retired = false;
-  /** Permission mode changed without a matching ACP mode: respawn (new `-c`) before the next turn. */
+  /** Permission mode changed without a matching ACP mode: respawn (new `INITIAL_AGENT_MODE`) before the next turn. */
   private respawnNeeded = false;
   private openFailures = 0;
-  /** Thread permission the last resolved launch spec was built with (Codex `-c` approval / sandbox). */
+  /** Thread permission the last resolved launch spec was built with (Codex `INITIAL_AGENT_MODE`). */
   private specPermission: UiPermissionMode | null = null;
   /** The last `session/load` (or resume) timed out: the next open goes straight to `session/new`. */
   private skipLoad = false;
@@ -198,7 +198,7 @@ export class AcpRunner implements AgentRunner {
 
   /**
    * Codex (plan 2.15): the app permission chip. Live session -> `session/set_mode` to the matching mode; no match or
-   * a failure -> the process is restarted with the new `-c` arguments before the next turn (and loads the session).
+   * a failure -> the process is restarted with a new launch env before the next turn (and loads the session).
    * Hermes has no permission chip: the value is only stored.
    */
   async setPermissionMode(mode: UiPermissionMode): Promise<void> {
@@ -337,7 +337,7 @@ export class AcpRunner implements AgentRunner {
           return;
         }
         if (!this.conn) await this.ensureSession(spec);
-        // The open could not switch to the thread's (changed) permission: one respawn with new `-c` arguments.
+        // The open could not switch to the thread's (changed) permission: one respawn with a new launch env.
         if (!this.respawnNeeded || attempt >= 1 || this.retired || this.interrupted) break;
       }
     } catch (err) {
@@ -617,34 +617,52 @@ export class AcpRunner implements AgentRunner {
   private async leaveUnapprovedFullAccess(conn: AcpConnection, signal: AbortSignal): Promise<void> {
     const { modes, currentModeId } = this.controls();
     const mode = modes.find((m) => m.id === currentModeId);
-    if (!mode || !isFullAccessMode(mode) || this.isApprovedFullAccess(mode.id)) return;
+    if (!mode || !this.isEscalatedMode(mode) || this.isApprovedFullAccess(mode)) return;
     const target = this.safeModeTarget(null);
-    if (!target) throw new Error(`cannot leave the unconfirmed full-access mode ${mode.id}`);
+    if (!target) throw new Error(`cannot leave the unconfirmed mode ${mode.id}`);
     await conn.request('session/set_mode', { sessionId: this.sessionId!, modeId: target }, this.timeouts.control, signal);
     this.updateControls({ currentModeId: target });
-    this.notice('warn', `${this.label()} 세션이 전체 액세스 모드(${mode.name})로 열려 앱 권한에 맞는 모드로 바꿨습니다.`);
-  }
-
-  /** Codex: the thread is in a confirmed bypassPermissions; Hermes: the mode the app itself chose. */
-  private isApprovedFullAccess(modeId: string): boolean {
-    return this.agent === 'codex' ? this.thread().permissionMode === 'bypassPermissions' : this.approvedModeId === modeId;
-  }
-
-  /** A non-full-access mode to go back to: the previous one, else the thread permission's (Codex) / the first safe one. */
-  private safeModeTarget(previous: string | null): string | null {
-    const modes = this.controls().modes;
-    const prev = previous ? modes.find((m) => m.id === previous) : undefined;
-    if (prev && !isFullAccessMode(prev)) return prev.id;
-    if (this.agent === 'codex') {
-      const id = codexModeFor(this.thread().permissionMode, modes);
-      const m = modes.find((x) => x.id === id);
-      return m && !isFullAccessMode(m) ? m.id : null;
-    }
-    return modes.find((m) => !isFullAccessMode(m))?.id ?? null;
+    this.notice('warn', `${this.label()} 세션이 ${this.escalationLabel(mode)}(${mode.name})로 열려 앱 권한에 맞는 모드로 바꿨습니다.`);
   }
 
   /**
-   * Codex: the permission chip may have changed while the process started (its `-c` arguments are older).
+   * Codex: the thread is in a confirmed bypassPermissions (never for Auto review); Hermes: the mode the app itself
+   * chose.
+   */
+  private isApprovedFullAccess(mode: AcpModeLite): boolean {
+    if (this.agent !== 'codex') return this.approvedModeId === mode.id;
+    return !isCodexAutoReviewMode(mode) && this.thread().permissionMode === 'bypassPermissions';
+  }
+
+  /** A mode the app must not run in unconfirmed: full-access-like, or Codex's Auto review (the agent approves itself). */
+  private isEscalatedMode(mode: AcpModeLite): boolean {
+    return isFullAccessMode(mode) || (this.agent === 'codex' && isCodexAutoReviewMode(mode));
+  }
+
+  /** Not an escalation, or one the user confirmed (a confirmed bypass may go back to Full access). */
+  private isAllowedMode(mode: AcpModeLite): boolean {
+    return !this.isEscalatedMode(mode) || this.isApprovedFullAccess(mode);
+  }
+
+  private escalationLabel(mode: AcpModeLite): string {
+    return this.agent === 'codex' && isCodexAutoReviewMode(mode) ? '자동 리뷰 모드' : '전체 액세스 모드';
+  }
+
+  /** A mode to go back to: the previous allowed one, else the thread permission's (Codex) / the first safe one. */
+  private safeModeTarget(previous: string | null): string | null {
+    const modes = this.controls().modes;
+    const prev = previous ? modes.find((m) => m.id === previous) : undefined;
+    if (prev && this.isAllowedMode(prev)) return prev.id;
+    if (this.agent === 'codex') {
+      const id = codexModeFor(this.thread().permissionMode, modes);
+      const m = modes.find((x) => x.id === id);
+      return m && this.isAllowedMode(m) ? m.id : null;
+    }
+    return modes.find((m) => !this.isEscalatedMode(m))?.id ?? null;
+  }
+
+  /**
+   * Codex: the permission chip may have changed while the process started (its launch env is older).
    * set_mode to the thread's mode; no matching mode or a failure -> respawn before the prompt (runTurn).
    */
   private async reconcilePermission(conn: AcpConnection, signal: AbortSignal, spawnedWith: UiPermissionMode | null): Promise<void> {
@@ -730,15 +748,15 @@ export class AcpRunner implements AgentRunner {
 
   /**
    * The agent switched itself to a full-access-like mode the user never confirmed (Codex: thread not in
-   * bypassPermissions; Hermes: not the mode the app chose): set_mode straight back, or kill the process (the next
-   * turn respawns with the thread's permission). True when the switch was refused.
+   * bypassPermissions, or Auto review at any time; Hermes: not the mode the app chose): set_mode straight back, or
+   * kill the process (the next turn respawns with the thread's permission). True when the switch was refused.
    */
   private revertUnapprovedFullAccess(modeId: string, previous: string | null): boolean {
     const modes = this.controls().modes;
     const mode = modes.find((m) => m.id === modeId);
-    if (!mode || !isFullAccessMode(mode)) return false;
-    if (this.isApprovedFullAccess(modeId)) return false;
-    this.notice('warn', `${this.label()}가 스스로 전체 액세스 모드(${mode.name})로 바꿔 이전 모드로 되돌렸습니다.`);
+    if (!mode || !this.isEscalatedMode(mode)) return false;
+    if (this.isApprovedFullAccess(mode)) return false;
+    this.notice('warn', `${this.label()}가 스스로 ${this.escalationLabel(mode)}(${mode.name})로 바꿔 이전 모드로 되돌렸습니다.`);
     const target = this.safeModeTarget(previous);
     const conn = this.conn;
     const sessionId = this.sessionId;
@@ -773,7 +791,7 @@ export class AcpRunner implements AgentRunner {
     this.safePatch({ permissionMode: perm });
   }
 
-  /** Codex: thread model / effort follow the session's config options (next spawn's `-c` too). */
+  /** Codex: thread model / effort follow the session's config options (next spawn's `CODEX_CONFIG` too). */
   private syncThreadConfig(options: readonly AcpConfigOptionLite[]): void {
     if (this.agent !== 'codex') return;
     const thread = this.deps.store.getThread(this.threadId);
@@ -957,7 +975,7 @@ export class AcpRunner implements AgentRunner {
 
   private authMessage(): string {
     return this.agent === 'codex'
-      ? 'Codex 로그인이 필요합니다. 터미널에서 `npx @openai/codex login`을 실행한 뒤 다시 보내세요.'
+      ? 'Codex 로그인이 필요합니다. ChatGPT 앱에서 로그인하거나 터미널에서 `codex login`을 실행한 뒤 다시 보내세요.'
       : 'Hermes 로그인이 필요합니다. 터미널에서 `hermes acp --setup`을 실행한 뒤 다시 보내세요.';
   }
 
@@ -989,12 +1007,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
-/** Codex's own effort set (a session-reported value outside it is not copied to the thread / `-c`). */
+/** Codex's own effort set (a session-reported value outside it is not copied to the thread / `CODEX_CONFIG`). */
 function isEffort(value: string): value is CodexEffortLevel {
   return (CODEX_EFFORT_LEVELS as readonly string[]).includes(value);
 }
 
-/** default and acceptEdits share codex's workspace-write / on-request (agentDefaults PERMISSION_TABLE). */
+/** default and acceptEdits share codex's `workspace-write` mode (agentDefaults CODEX_MODE_BY_PERMISSION). */
 function sameCodexPermission(a: UiPermissionMode, b: UiPermissionMode): boolean {
   const norm = (m: UiPermissionMode) => (m === 'acceptEdits' ? 'default' : m);
   return norm(a) === norm(b);
@@ -1062,18 +1080,16 @@ function withCurrentValue(o: AcpConfigOptionLite, configId: string, value: strin
   return o;
 }
 
-/** plan 2.15: app permission chip -> codex-acp session mode (by id / name; never hard-coded ids only). */
+/** plan 2.15: app permission chip -> codex-acp 2.x session mode id, when the session offers it. Never `agent`. */
 export function codexModeFor(mode: UiPermissionMode, modes: readonly AcpModeLite[]): string | null {
-  const find = (test: (m: AcpModeLite) => boolean) => modes.find(test)?.id ?? null;
-  if (mode === 'plan') return find((m) => /read[-_ ]?only/i.test(m.id) || /read[-_ ]?only/i.test(m.name));
-  if (mode === 'bypassPermissions') return find((m) => /full/i.test(m.id) || /full/i.test(m.name));
-  return find((m) => /^(auto|workspace|default)/i.test(m.id) || m.name === 'Default');
+  const id = CODEX_MODE_BY_PERMISSION[mode];
+  return id !== undefined && modes.some((m) => m.id === id) ? id : null;
 }
 
-/** Reverse of codexModeFor (agent-side mode switches). */
+/** Reverse of codexModeFor (agent-side mode switches); `agent` (Auto review) and unknown ids map to nothing. */
 function permissionForCodexMode(m: AcpModeLite): UiPermissionMode | null {
-  if (/read[-_ ]?only/i.test(m.id) || /read[-_ ]?only/i.test(m.name)) return 'plan';
-  if (/full/i.test(m.id) || /full/i.test(m.name)) return 'bypassPermissions';
-  if (/^(auto|workspace|default)/i.test(m.id) || m.name === 'Default') return 'default';
+  if (m.id === CODEX_MODE_BY_PERMISSION.plan) return 'plan';
+  if (m.id === CODEX_MODE_BY_PERMISSION.bypassPermissions) return 'bypassPermissions';
+  if (m.id === CODEX_MODE_BY_PERMISSION.default) return 'default';
   return null;
 }

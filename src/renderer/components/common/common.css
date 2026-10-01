@@ -603,6 +603,19 @@
 .hc-status--running .hc-status__dot {
   animation: hc-pulse 1.4s var(--ease-soft) infinite;
 }
+/* Running pill (sidebar row, chat header): a soft halo breathes around the capsule. */
+.hc-status--running {
+  animation: hc-status-halo 2.4s ease-in-out infinite;
+}
+@keyframes hc-status-halo {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 83, 253, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 3px var(--accent-subtle);
+  }
+}
 .hc-status--waiting {
   background: var(--wait-bg);
   color: var(--warn-text);
@@ -616,7 +629,8 @@
   color: var(--crit-text);
 }
 @media (prefers-reduced-motion: reduce) {
-  .hc-status--running .hc-status__dot {
+  .hc-status--running .hc-status__dot,
+  .hc-status--running {
     animation: none;
   }
 }

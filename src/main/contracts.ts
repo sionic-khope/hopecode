@@ -248,17 +248,17 @@ export interface AcpLaunchSpec {
 }
 
 export interface AcpLaunchOptions {
-  /** Codex: `-c model=...` (null = agent default). Hermes ignores it. */
+  /** Codex: `CODEX_CONFIG.model` (null = agent default). Hermes ignores it. */
   model?: string | null;
-  /** Codex: `-c model_reasoning_effort=...`. Hermes ignores it. */
+  /** Codex: `CODEX_CONFIG.model_reasoning_effort`. Hermes ignores it. */
   effort?: string | null;
-  /** Codex: `-c approval_policy / sandbox_mode` (plan 2.15). Hermes ignores it. */
+  /** Codex: `INITIAL_AGENT_MODE` (plan 2.15). Hermes ignores it. */
   permissionMode: UiPermissionMode;
   /** Scratch thread: GIT_CEILING_DIRECTORIES for the agent. */
   gitCeiling?: string;
 }
 
-/** Resolves the agent command (bundled codex-acp, detected `hermes acp`, or the fixture agent). */
+/** Resolves the agent command (bundled codex-acp + installed codex, detected `hermes acp`, or the fixture agent). */
 export interface AcpLauncher {
   /** Not installed / not resolvable -> `{ ok: false }` and nothing is spawned. */
   resolve(

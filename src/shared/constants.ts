@@ -96,6 +96,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   localClaudeInPool: true,
   codexDefaultModel: CODEX_DEFAULT_MODEL,
   codexDefaultEffort: CODEX_DEFAULT_EFFORT,
+  codexPath: '',
   settingsRev: SETTINGS_REV,
 };
 

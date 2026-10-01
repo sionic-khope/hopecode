@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Account, Project, Thread } from '../../../shared/types';
 import { BrandMark } from '../common';
-import { IconArchive, IconChevron, IconCompose, IconFolderPlus, IconPinThread } from './icons';
+import { IconArchive, IconChevron, IconCompose, IconFolderPlus } from './icons';
 import { ProjectGroup, type ThreadRowHandlers } from './ProjectGroup';
 import { SidebarNav, type NavPage } from './SidebarNav';
 import { MINUTE_MS } from '../../../shared/constants';
@@ -147,7 +147,6 @@ export const Sidebar = memo(function Sidebar({
               {pinned.map((t) => (
                 <ThreadRow
                   key={t.id}
-                  glyph={<IconPinThread width={15} height={15} />}
                   thread={t}
                   account={accountFor(t)}
                   selected={t.id === selectedThreadId}

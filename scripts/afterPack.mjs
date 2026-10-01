@@ -8,8 +8,9 @@
 // terminal would silently never open (H1: "터미널이 안 열린다"). Belt-and-suspenders: chmod +x every
 // spawn-helper we can find under the packaged node-pty, not just the one path we know is used today.
 //
-// The bundled codex-acp binary (@zed-industries/codex-acp-darwin-<arch>/bin/codex-acp) is spawned directly for Codex
-// threads; it must exist under app.asar.unpacked and be executable, otherwise the build fails here (never silently).
+// The bundled codex-acp adapter (extraResources `bin/codex-acp`, built by scripts/build-codex-acp.mjs) is spawned
+// directly for Codex threads; it must exist under Contents/Resources/bin and be executable, otherwise the build fails
+// here (never silently).
 import { chmodSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -38,33 +39,21 @@ function ensureExecutable(path) {
   return true;
 }
 
-/** Every `@zed-industries/codex-acp-darwin-*` package's `bin/codex-acp`; throws when none is packaged. */
-function ensureCodexAcp(unpackedModules) {
-  const scope = join(unpackedModules, '@zed-industries');
-  const bins = (existsSync(scope) ? readdirSync(scope) : [])
-    .filter((name) => name.startsWith('codex-acp-darwin-'))
-    .map((name) => join(scope, name, 'bin', 'codex-acp'))
-    .filter((bin) => existsSync(bin));
-  if (bins.length === 0) {
-    throw new Error(`[afterPack] codex-acp binary missing under ${scope} (asarUnpack must include codex-acp-darwin-*)`);
+/** Resources/bin/codex-acp must be packaged and executable; throws when missing. */
+function ensureCodexAcp(resourcesDir) {
+  const bin = join(resourcesDir, 'bin', 'codex-acp');
+  if (!existsSync(bin)) {
+    throw new Error(`[afterPack] codex-acp binary missing at ${bin} (run scripts/build-codex-acp.mjs; extraResources bin/codex-acp)`);
   }
-  for (const bin of bins) {
-    const changed = ensureExecutable(bin);
-    console.log(`[afterPack] codex-acp ${changed ? 'chmod +x' : 'ok'}: ${bin}`);
-  }
+  const changed = ensureExecutable(bin);
+  console.log(`[afterPack] codex-acp ${changed ? 'chmod +x' : 'ok'}: ${bin}`);
 }
 
 /** @param {{ appOutDir: string, packager: { appInfo: { productFilename: string } } }} context */
 export default async function afterPack(context) {
-  const unpackedModules = join(
-    context.appOutDir,
-    `${context.packager.appInfo.productFilename}.app`,
-    'Contents',
-    'Resources',
-    'app.asar.unpacked',
-    'node_modules',
-  );
-  ensureCodexAcp(unpackedModules);
+  const resourcesDir = join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`, 'Contents', 'Resources');
+  const unpackedModules = join(resourcesDir, 'app.asar.unpacked', 'node_modules');
+  ensureCodexAcp(resourcesDir);
   const nodePtyDir = join(unpackedModules, 'node-pty');
   const helpers = [];
   findSpawnHelpers(nodePtyDir, helpers);

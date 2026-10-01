@@ -10,11 +10,13 @@ files:
 extraResources:
   - from: src/renderer/assets/fonts/licenses
     to: font-licenses
+  # codex-acp 2.x adapter compiled to one native binary (scripts/build-codex-acp.mjs, `predist:dir`). Spawned
+  # directly with CODEX_PATH=<installed codex>; the runAsNode fuse rules out its Node script. +x: afterPack.mjs.
+  - from: build/bin/codex-acp
+    to: bin/codex-acp
 asarUnpack:
   - "**/node_modules/node-pty/**"
   - "**/node_modules/@anthropic-ai/claude-agent-sdk-darwin-*/**"
-  # codex-acp native binary (spawned directly; the runAsNode fuse rules out its node wrapper). +x: afterPack.mjs.
-  - "**/node_modules/@zed-industries/codex-acp-darwin-*/**"
 mac:
   icon: build/icon.icns
   target:

@@ -3,13 +3,16 @@
 import { join } from 'node:path';
 import type { DecodeJwtClaimsFn } from '../../../core/acpTypes';
 import type { LocalAuthInfo } from '../../../shared/types';
+import { CODEX_MIN_VERSION, type CodexEngine } from '../agentBinaries';
 import { baseInfo, type DetectorDeps } from './detectorDeps';
 
 const MAX_AUTH_BYTES = 1024 * 1024;
 
 export interface CodexDetectorDeps extends DetectorDeps {
-  /** `agentBinaries.resolveCodexAcp` (null = not installed). */
-  codexPath: () => string | null;
+  /** `agentBinaries.resolveCodexAcp`: the bundled adapter (null = missing from this build). */
+  codexAcpPath: () => string | null;
+  /** `agentBinaries.resolveCodex`: the installed Codex engine (null = none at or above CODEX_MIN_VERSION). */
+  codexEngine: () => Promise<CodexEngine | null>;
   /** Login-shell env (CODEX_HOME, OPENAI_API_KEY, CODEX_API_KEY). */
   env: () => Record<string, string>;
   /** core/jwtClaims `decodeJwtClaims` (Lane A). Payload only, never throws. */
@@ -22,7 +25,13 @@ export async function detectCodex(deps: CodexDetectorDeps): Promise<LocalAuthInf
   const env = deps.env();
   const home = nonEmpty(env['CODEX_HOME']) ? env['CODEX_HOME'] : join(deps.homedir(), '.codex');
   const info = baseInfo('codex', join(home, 'auth.json'), deps.now());
-  if (!deps.codexPath()) return { ...info, state: 'not-installed', detail: 'codex-acp-not-found' };
+  if (!deps.codexAcpPath()) return { ...info, state: 'not-installed', detail: 'codex-acp-not-found' };
+  const engine = await deps.codexEngine();
+  if (!engine) {
+    return { ...info, state: 'not-installed', enginePath: null, detail: `ChatGPT 앱 또는 Codex CLI(${CODEX_MIN_VERSION} 이상) 설치가 필요합니다` };
+  }
+  info.version = engine.version;
+  info.enginePath = engine.path;
 
   const envKey = nonEmpty(env['OPENAI_API_KEY']) || nonEmpty(env['CODEX_API_KEY']);
   let raw: string | null = null;

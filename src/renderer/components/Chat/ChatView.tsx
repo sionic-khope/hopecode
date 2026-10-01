@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { ChatImage, EffortLevel, ModelOption, PermissionDecision, Project, Thread, UiPermissionMode } from '../../../shared/types';
+import type { ChatImage, ChatItem, EffortLevel, ModelOption, PermissionDecision, Project, Thread, UiPermissionMode } from '../../../shared/types';
 import { formatResetCountdown } from '../../../core/format';
 import { MINUTE_MS } from '../../../shared/constants';
 import { AGENTS } from '../../../shared/agents';
 import { ipcErrorMessage } from '../../errors';
-import { selectChatItems, selectStreamingItemId, useAppStore, usePendingPermissions } from '../../store';
+import { selectChatItems, selectStreamingItemId, selectTurnPhase, useAppStore, usePendingPermissions, type TurnPhase } from '../../store';
 import { MessageList } from './MessageList';
-import { ToolPathContext } from './ToolCard';
+import { ToolPathContext, TurnLiveContext } from './ToolCard';
+import type { ErrorCardActions } from './ErrorCard';
 import { Composer } from './Composer';
 import { AcpModelChip, AgentChip, AgentModeChip, FolderTag, ModelPicker, NO_PROJECT_LABEL, PermissionChip, SystemModelTag } from './ComposerControls';
 import { agentModeChip, codexThreadChip, hermesModelChip } from './acpChips';
@@ -23,6 +24,8 @@ export interface ChatViewProps {
   onEffortChange: (threadId: string, effort: EffortLevel | null) => void;
   onPermissionModeChange: (threadId: string, mode: UiPermissionMode) => void;
   onAttachFiles: (threadId: string) => Promise<string[]>;
+  /** Error card "새 세션으로 시도": a new thread like this one, started with `text`. */
+  onRetryInNewSession?: (thread: Thread, text: string) => void;
   /** What the `default` model runs as (e.g. "Fable 5"). */
   defaultModelLabel: string;
   homeDir: string | null;
@@ -44,6 +47,7 @@ export function ChatView({
   onEffortChange,
   onPermissionModeChange,
   onAttachFiles,
+  onRetryInNewSession,
   defaultModelLabel,
   homeDir,
 }: ChatViewProps) {
@@ -94,6 +98,27 @@ export function ChatView({
     },
     [threadId],
   );
+  const phase = useAppStore((s) => selectTurnPhase(s, threadId));
+  const activity = useMemo(
+    () => turnActivity(items, running, streamingItemId, permissionRequests.length, phase),
+    [items, running, streamingItemId, permissionRequests.length, phase],
+  );
+  const lastUser = useMemo(() => {
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i]!;
+      if (it.type === 'user') return it;
+    }
+    return null;
+  }, [items]);
+  const errorActions = useMemo<ErrorCardActions | null>(() => {
+    if (!lastUser) return null;
+    return {
+      message: lastUser.text,
+      disabled: running,
+      onRetry: () => onSend(threadId, lastUser.text, lastUser.images),
+      onRetryInNewSession: () => onRetryInNewSession?.(thread, lastUser.text),
+    };
+  }, [lastUser, running, onSend, threadId, onRetryInNewSession, thread]);
   const features = AGENTS[thread.agent].features;
   const codex = thread.agent === 'codex' ? codexThreadChip(thread) : null;
   const modeChip = features.agentModes ? agentModeChip(thread.acp) : null;
@@ -129,6 +154,7 @@ export function ChatView({
   return (
     <div className="hc-chat">
       <ToolPathContext.Provider value={toolPaths}>
+      <TurnLiveContext.Provider value={running}>
       <MessageList
         items={items}
         streamingItemId={streamingItemId}
@@ -138,7 +164,10 @@ export function ChatView({
         agent={thread.agent}
         onEditResend={handleEditResend}
         threadId={thread.id}
+        activity={activity}
+        errorActions={errorActions}
       />
+      </TurnLiveContext.Provider>
       </ToolPathContext.Provider>
       {waiting ? <WaitingBanner until={thread.waitingUntil} /> : null}
       {controlError ? (
@@ -177,6 +206,32 @@ export function ChatView({
       />
     </div>
   );
+}
+
+/**
+ * The "생각 중" row: a running turn with nothing streaming, no permission question and no tool running (a running
+ * tool card shows its own progress). Without a phase from turn-start (renderer reloaded mid-turn) it counts from
+ * the last user message.
+ */
+function turnActivity(
+  items: readonly ChatItem[],
+  running: boolean,
+  streamingItemId: string | null,
+  pendingPermissions: number,
+  phase: TurnPhase | null,
+): TurnPhase | null {
+  if (!running || streamingItemId !== null || pendingPermissions > 0) return null;
+  let lastUserAt: number | null = null;
+  for (let i = items.length - 1; i >= 0; i--) {
+    const it = items[i]!;
+    if (it.type === 'user') {
+      lastUserAt = it.createdAt;
+      break;
+    }
+    if (it.type === 'tool' && it.result === undefined && !it.parentToolUseId) return null;
+  }
+  if (phase) return phase;
+  return { phase: 'thinking', startedAt: lastUserAt ?? Date.now() };
 }
 
 function WaitingBanner({ until }: { until: number | null }) {

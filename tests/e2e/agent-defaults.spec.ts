@@ -1,5 +1,7 @@
 // Per-agent new-chat defaults (plan 2.11, AC10): a draft shows Opus 5.5 · High (Claude), GPT-6.1-Sol · High (Codex)
 // or 시스템 기본값 (Hermes), the started session really runs with them, and Settings changes reach the next draft.
+import { chmodSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
   chooseFixtureFolder,
@@ -57,7 +59,7 @@ test('switching the draft agent resets the model chip to that agent\'s default',
   await expect(draftModel(page)).toHaveAttribute('aria-label', '모델: Opus 5.5 · High');
 });
 
-test('the defaults reach the sessions: Claude Query, Codex -c, Hermes untouched', async () => {
+test('the defaults reach the sessions: Claude Query, Codex CODEX_CONFIG, Hermes untouched', async () => {
   const { page } = run;
   await chooseFixtureFolder(page, sandbox);
   await sendMessage(page, '[whoami] claude defaults');
@@ -67,7 +69,7 @@ test('the defaults reach the sessions: Claude Query, Codex -c, Hermes untouched'
   await openDraft(page);
   await pickAgent(page, 'Codex');
   await chooseFixtureFolder(page, sandbox);
-  // Spawned with -c model / effort: already right, so no set_config_option correction either.
+  // Spawned with CODEX_CONFIG model / effort: already right, so no set_config_option correction either.
   expect(await config(page, '/config')).toMatchObject({ model: 'gpt-6.1-sol', reasoning_effort: 'high', configSets: [] });
 
   await openDraft(page);
@@ -99,4 +101,35 @@ test('Settings: per-agent defaults apply to the next draft and its session', asy
   await expect(draftModel(page)).toHaveAttribute('aria-label', '모델: gpt-6-sol · Medium');
   await chooseFixtureFolder(page, sandbox);
   expect(await config(page, '/config')).toMatchObject({ model: 'gpt-6-sol', reasoning_effort: 'medium', configSets: [] });
+});
+
+test('Settings: Codex 실행 파일 경로 is stored only after its `--version` passes', async () => {
+  const { page } = run;
+  // Stand-in executables (shell scripts printing a version); no real codex runs.
+  const script = (name: string, version: string) => {
+    const path = join(sandbox.home, name);
+    writeFileSync(path, `#!/bin/sh\necho "codex-cli ${version}"\n`);
+    chmodSync(path, 0o755);
+    return path;
+  };
+  const good = script('codex-new', '0.160.0');
+  const old = script('codex-old', '0.100.0');
+  const settingsOf = async () =>
+    ((await page.evaluate(() => window.hopecode.invoke('app:bootstrap'))) as { settings: Record<string, unknown> }).settings;
+
+  await openFromMore(page, '설정');
+  const input = page.getByTestId('settings-codex-path');
+  await input.fill(good);
+  await input.press('Enter');
+  await expect.poll(async () => (await settingsOf())['codexPath']).toBe(good);
+
+  await input.fill(old);
+  await input.press('Enter');
+  await expect(page.getByTestId('settings').getByRole('alert')).toContainText('0.150.0 이상 필요');
+  await expect(input).toHaveValue(good);
+  expect((await settingsOf())['codexPath']).toBe(good);
+
+  await input.fill('');
+  await input.press('Enter');
+  await expect.poll(async () => (await settingsOf())['codexPath']).toBe('');
 });

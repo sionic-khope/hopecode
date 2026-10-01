@@ -1,5 +1,6 @@
 import { memo, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import type { AgentKind, ChatItem, PermissionDecision, PermissionRequest } from '../../../shared/types';
+import type { TurnPhase } from '../../store';
 import { AGENTS } from '../../../shared/agents';
 import { AgentIcon } from '../Agent/AgentIcon';
 import { GlyphEditResend } from '../common/glyphs';
@@ -8,6 +9,9 @@ import { CopyButton } from './CopyButton';
 import { ToolCard } from './ToolCard';
 import { PermissionCard } from './PermissionCard';
 import { SystemNotice } from './SystemNotice';
+import { AgentWarningNotice, ErrorCard, type ErrorCardActions } from './ErrorCard';
+import { TurnActivity } from './TurnActivity';
+import { splitAgentWarning } from './agentIssues';
 import { buildChatTree, type ChatNode, type SubagentSummary } from '../../../core/subagents';
 import { SubagentCard, SubagentRouting } from '../Subagents/SubagentCard';
 import { ImageGalleryCard, ThreadImageContext, UserImages } from '../Images/ChatImages';
@@ -28,9 +32,30 @@ export interface MessageListProps {
   onEditResend?: (text: string) => void;
   /** Thread whose folder gallery / tool image paths resolve against (image:read). */
   threadId?: string;
+  /** Running turn with nothing streaming: the "생각 중" row in the agent's slot. */
+  activity?: TurnPhase | null;
+  /** Buttons of the error card that ended the latest turn (older error cards show none). */
+  errorActions?: ErrorCardActions | null;
 }
 
 const NEAR_BOTTOM_PX = 96;
+
+/** Agent output that opens / continues an avatar run (a text that is only an agent warning renders as a notice). */
+function isAgentOutput(it: ChatItem | undefined): boolean {
+  if (!it) return false;
+  if (it.type === 'assistant-text') return splitAgentWarning(it.text)?.rest !== '';
+  return it.type === 'tool' || it.type === 'image-gallery';
+}
+
+/** Id of the error notice that ended the latest turn: no user message after it. */
+function latestErrorId(items: readonly ChatItem[]): string | null {
+  for (let i = items.length - 1; i >= 0; i--) {
+    const it = items[i]!;
+    if (it.type === 'user') return null;
+    if (it.type === 'notice' && it.level === 'error') return it.id;
+  }
+  return null;
+}
 
 /** Subagent node -> the turn's top-level subagents, keyed by the first subagent node id of each turn. */
 function routingByTurn(nodes: readonly ChatNode[]): Map<string, SubagentSummary[]> {
@@ -71,6 +96,8 @@ export function MessageList({
   agent = 'claude-code',
   onEditResend,
   threadId,
+  activity = null,
+  errorActions = null,
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
@@ -80,7 +107,7 @@ export function MessageList({
     if (!el || !stickToBottom.current) return;
     el.scrollTop = el.scrollHeight;
     onScrolledChange?.(el.scrollTop > 0);
-  }, [items, streamingItemId, permissionRequests, onScrolledChange]);
+  }, [items, streamingItemId, permissionRequests, onScrolledChange, activity]);
 
   useEffect(() => () => onScrolledChange?.(false), [onScrolledChange]);
 
@@ -96,11 +123,12 @@ export function MessageList({
   // Subagent frames nest under their Task/Agent card; permission requests of nested calls stay in the bottom list.
   const nodes = useMemo(() => buildChatTree(items), [items]);
   const routing = useMemo(() => routingByTurn(nodes), [nodes]);
+  const errorId = useMemo(() => (errorActions ? latestErrorId(items) : null), [errorActions, items]);
 
   return (
     <ThreadImageContext.Provider value={threadId ?? null}>
     <div className="hc-messages" ref={scrollRef} onScroll={onScroll}>
-      {items.length === 0 && permissionRequests.length === 0 ? (
+      {items.length === 0 && permissionRequests.length === 0 && !activity ? (
         <div className="hc-messages__empty">{emptyLabel}</div>
       ) : (
         <div className="hc-messages__inner">
@@ -110,9 +138,7 @@ export function MessageList({
             if (pendingRequest) rendered.add(pendingRequest.requestId);
             // The agent avatar opens each run of agent output (text / tools / galleries) after a user message.
             const prev = i > 0 ? nodes[i - 1]?.item : undefined;
-            const isAgent = (it: ChatItem | undefined) =>
-              !!it && (it.type === 'assistant-text' || it.type === 'tool' || it.type === 'image-gallery');
-            const leadsRun = isAgent(item) && !isAgent(prev);
+            const leadsRun = isAgentOutput(item) && !isAgentOutput(prev);
             if (node.kind === 'subagent') {
               const turnRouting = routing.get(item.id);
               return (
@@ -133,9 +159,11 @@ export function MessageList({
                 pendingRequest={pendingRequest}
                 onPermissionDecision={onPermissionDecision}
                 onEditResend={onEditResend}
+                errorActions={item.id === errorId ? errorActions : null}
               />
             );
           })}
+          {activity ? <TurnActivity agent={agent} phase={activity.phase} startedAt={activity.startedAt} /> : null}
           {permissionRequests
             .filter((r) => !rendered.has(r.requestId))
             .map((r) => (
@@ -177,6 +205,7 @@ const MessageItem = memo(function MessageItem({
   pendingRequest,
   onPermissionDecision,
   onEditResend,
+  errorActions,
 }: {
   item: ChatItem;
   agent: AgentKind;
@@ -185,6 +214,7 @@ const MessageItem = memo(function MessageItem({
   pendingRequest?: PermissionRequest;
   onPermissionDecision: (requestId: string, decision: PermissionDecision) => void;
   onEditResend?: (text: string) => void;
+  errorActions?: ErrorCardActions | null;
 }) {
   switch (item.type) {
     case 'user':
@@ -210,17 +240,31 @@ const MessageItem = memo(function MessageItem({
           </div>
         </div>
       );
-    case 'assistant-text':
+    case 'assistant-text': {
+      // "Model metadata for … not found" and the like: a warning the agent streamed, not part of its answer.
+      const split = splitAgentWarning(item.text);
+      const text = split ? split.rest : item.text;
+      const answer =
+        text === '' ? null : (
+          <AgentRow agent={agent} leadsRun={leadsRun}>
+            <AssistantText text={text} streaming={streaming} />
+            {streaming ? null : (
+              <div className="hc-msg-actions hc-msg-actions--agent">
+                <CopyButton text={text} label="답변 복사" className="hc-msg-action" />
+              </div>
+            )}
+          </AgentRow>
+        );
+      if (!split) return answer;
       return (
-        <AgentRow agent={agent} leadsRun={leadsRun}>
-          <AssistantText text={item.text} streaming={streaming} />
-          {streaming ? null : (
-            <div className="hc-msg-actions hc-msg-actions--agent">
-              <CopyButton text={item.text} label="답변 복사" className="hc-msg-action" />
-            </div>
-          )}
-        </AgentRow>
+        <>
+          <div className="hc-msg-enter">
+            <AgentWarningNotice warning={split.warning} />
+          </div>
+          {answer}
+        </>
       );
+    }
     case 'tool':
       return (
         <AgentRow agent={agent} leadsRun={leadsRun}>
@@ -235,6 +279,13 @@ const MessageItem = memo(function MessageItem({
         </AgentRow>
       );
     case 'notice':
+      if (item.level === 'error') {
+        return (
+          <div className="hc-error-enter">
+            <ErrorCard item={item} agent={agent} actions={errorActions} />
+          </div>
+        );
+      }
       return (
         <div className="hc-msg-enter">
           <SystemNotice item={item} />

@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { codexLaunchArgs, draftAgentDefaults, isFullAccessMode, reconcileConfig, SETTABLE_CONFIG_CATEGORIES } from '../../src/core/agentDefaults';
+import {
+  CODEX_MODE_BY_PERMISSION,
+  codexLaunchEnv,
+  draftAgentDefaults,
+  isCodexAutoReviewMode,
+  isFullAccessMode,
+  reconcileConfig,
+  SETTABLE_CONFIG_CATEGORIES,
+} from '../../src/core/agentDefaults';
 import type { AcpConfigOptionLite } from '../../src/shared/types';
 
 const SETTINGS = {
@@ -17,43 +25,51 @@ describe('draftAgentDefaults', () => {
   });
 });
 
-describe('codexLaunchArgs', () => {
+describe('codexLaunchEnv', () => {
   const base = { model: 'gpt-6.1-sol', effort: 'high' as const };
+  const modeOf = (permissionMode: Parameters<typeof codexLaunchEnv>[0]['permissionMode']) => {
+    const r = codexLaunchEnv({ ...base, permissionMode });
+    return r.ok ? r.env.INITIAL_AGENT_MODE : null;
+  };
 
-  it('builds -c arguments from the fixed permission table', () => {
-    expect(codexLaunchArgs({ ...base, permissionMode: 'default' })).toEqual({
+  it('builds CODEX_CONFIG JSON and INITIAL_AGENT_MODE from the fixed permission table', () => {
+    expect(codexLaunchEnv({ ...base, permissionMode: 'default' })).toEqual({
       ok: true,
-      args: ['-c', 'model="gpt-6.1-sol"', '-c', 'model_reasoning_effort="high"', '-c', 'approval_policy="on-request"', '-c', 'sandbox_mode="workspace-write"'],
+      env: { CODEX_CONFIG: '{"model":"gpt-6.1-sol","model_reasoning_effort":"high"}', INITIAL_AGENT_MODE: 'workspace-write' },
     });
-    const tail = (mode: Parameters<typeof codexLaunchArgs>[0]['permissionMode']) => {
-      const r = codexLaunchArgs({ ...base, permissionMode: mode });
-      return r.ok ? r.args.slice(-4) : null;
-    };
-    expect(tail('plan')).toEqual(['-c', 'approval_policy="on-request"', '-c', 'sandbox_mode="read-only"']);
-    expect(tail('acceptEdits')).toEqual(tail('default'));
-    expect(tail('bypassPermissions')).toEqual(['-c', 'approval_policy="never"', '-c', 'sandbox_mode="danger-full-access"']);
+    expect(modeOf('plan')).toBe('read-only');
+    expect(modeOf('acceptEdits')).toBe('workspace-write');
+    expect(modeOf('bypassPermissions')).toBe('agent-full-access');
+  });
+
+  it('never selects the auto-review `agent` mode (the adapter default)', () => {
+    for (const mode of ['default', 'plan', 'acceptEdits', 'bypassPermissions'] as const) {
+      expect(modeOf(mode)).not.toBe('agent');
+      expect(CODEX_MODE_BY_PERMISSION[mode]).not.toBe('agent');
+    }
+    expect(modeOf('weird' as never)).toBe('workspace-write');
   });
 
   it('omits model / effort when null', () => {
-    const r = codexLaunchArgs({ model: null, effort: null, permissionMode: 'default' });
-    expect(r).toEqual({ ok: true, args: ['-c', 'approval_policy="on-request"', '-c', 'sandbox_mode="workspace-write"'] });
+    const r = codexLaunchEnv({ model: null, effort: null, permissionMode: 'default' });
+    expect(r).toEqual({ ok: true, env: { CODEX_CONFIG: '{}', INITIAL_AGENT_MODE: 'workspace-write' } });
   });
 
-  it('rejects models that could break out of the TOML string', () => {
-    for (const model of ['a"b', 'a\nb', 'a=b', 'a b', '', '-x', 'a'.repeat(65), 'm"\nsandbox_mode="danger-full-access']) {
-      expect(codexLaunchArgs({ model, effort: null, permissionMode: 'default' })).toEqual({ ok: false, error: 'invalid-model' });
+  it('rejects models outside the id pattern (nothing reaches CODEX_CONFIG)', () => {
+    for (const model of ['a"b', 'a\nb', 'a=b', 'a b', '', '-x', 'a'.repeat(65), 'm","approval_policy":"never']) {
+      expect(codexLaunchEnv({ model, effort: null, permissionMode: 'default' })).toEqual({ ok: false, error: 'invalid-model' });
     }
   });
 
   it('accepts Codex-only efforts (ultra, max) from the Codex set', () => {
     for (const effort of ['max', 'ultra'] as const) {
-      const res = codexLaunchArgs({ model: null, effort, permissionMode: 'default' });
-      expect(res.ok && res.args.slice(0, 2)).toEqual(['-c', `model_reasoning_effort="${effort}"`]);
+      const res = codexLaunchEnv({ model: null, effort, permissionMode: 'default' });
+      expect(res.ok && JSON.parse(res.env.CODEX_CONFIG)).toEqual({ model_reasoning_effort: effort });
     }
   });
 
   it('rejects unknown effort values', () => {
-    expect(codexLaunchArgs({ model: null, effort: 'high"x' as never, permissionMode: 'default' })).toEqual({
+    expect(codexLaunchEnv({ model: null, effort: 'high"x' as never, permissionMode: 'default' })).toEqual({
       ok: false,
       error: 'invalid-effort',
     });
@@ -110,6 +126,18 @@ describe('isFullAccessMode / SETTABLE_CONFIG_CATEGORIES', () => {
     }
     for (const m of [{ id: 'auto', name: 'Default' }, { id: 'read-only', name: 'Read Only' }, { id: 'accept_edits', name: 'Accept edits' }]) {
       expect(isFullAccessMode(m)).toBe(false);
+    }
+  });
+
+  it('codex-acp 2.x mode ids: agent-full-access is full access; agent (Auto review) is flagged separately', () => {
+    expect(isFullAccessMode({ id: 'agent-full-access', name: 'Full access' })).toBe(true);
+    for (const m of [{ id: 'read-only', name: 'Read-only' }, { id: 'workspace-write', name: 'Workspace access' }, { id: 'agent', name: 'Auto review' }]) {
+      expect(isFullAccessMode(m)).toBe(false);
+    }
+    expect(isCodexAutoReviewMode({ id: 'agent', name: 'Auto review' })).toBe(true);
+    expect(isCodexAutoReviewMode({ id: 'x', name: 'Auto-review' })).toBe(true);
+    for (const m of [{ id: 'workspace-write', name: 'Workspace access' }, { id: 'agent-full-access', name: 'Full access' }]) {
+      expect(isCodexAutoReviewMode(m)).toBe(false);
     }
   });
 

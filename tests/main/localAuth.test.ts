@@ -57,9 +57,17 @@ describe('claude detector', () => {
 describe('codex detector', () => {
   const claims: DecodeJwtClaimsFn = (jwt) =>
     jwt === SECRET_ID ? { email: 'me@x.io', plan: 'plus', exp: NOW / 1000 + 1000 } : null;
-  const mk = (m: Record<string, string>, env: Record<string, string> = {}, path: string | null = '/bin/codex-acp', decode = claims) => ({
+  const ENGINE = { path: '/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex', version: '0.159.2' };
+  const mk = (
+    m: Record<string, string>,
+    env: Record<string, string> = {},
+    path: string | null = '/bin/codex-acp',
+    decode = claims,
+    engine: { path: string; version: string } | null = ENGINE,
+  ) => ({
     ...deps({ readFile: files(m) }),
-    codexPath: () => path,
+    codexAcpPath: () => path,
+    codexEngine: async () => engine,
     env: () => env,
     decodeJwtClaims: decode,
   });
@@ -70,7 +78,14 @@ describe('codex detector', () => {
       mk({ '/fake/home/.codex/auth.json': auth({ auth_mode: 'chatgpt', tokens: { id_token: SECRET_ID, access_token: SECRET_ACCESS, refresh_token: 'r' } }) }),
     );
     expect(r).toMatchObject({ state: 'logged-in', method: 'chatgpt', email: 'me@x.io', plan: 'plus', detail: null });
+    expect(r).toMatchObject({ enginePath: ENGINE.path, version: '0.159.2' });
     expect(JSON.stringify(r)).not.toContain('SECRET');
+  });
+  it('no Codex engine (ChatGPT.app / codex CLI) -> not-installed with an install hint', async () => {
+    const r = await detectCodex(mk({ '/fake/home/.codex/auth.json': auth({ tokens: { id_token: SECRET_ID } }) }, {}, '/bin/codex-acp', claims, null));
+    expect(r).toMatchObject({ state: 'not-installed', enginePath: null, email: null });
+    expect(r.detail).toContain('ChatGPT 앱 또는 Codex CLI');
+    expect(r.detail).toContain('0.150.0');
   });
   it('respects CODEX_HOME', async () => {
     const r = await detectCodex(

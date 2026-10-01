@@ -20,6 +20,7 @@ import type { AppSettings, CodexEffortLevel, EditorId, EffortLevel, SettingsPatc
 export const EDITOR_IDS: readonly EditorId[] = ['vscode', 'cursor', 'zed', 'xcode', 'finder', 'terminal', 'iterm', 'ghostty'];
 
 const MODEL_VALUE_MAX = 200;
+const CODEX_PATH_MAX = 1024;
 
 const isInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v);
 
@@ -109,6 +110,13 @@ export function validateSettingsPatch(raw: unknown): SettingsPatchResult {
           return { ok: false, error: 'codexDefaultModel must be a model id (letters, digits, . _ -)' };
         }
         patch.codexDefaultModel = value;
+        break;
+      case 'codexPath':
+        if (typeof value !== 'string') return { ok: false, error: 'codexPath must be a string' };
+        if (value !== '' && (!value.startsWith('/') || value.length > CODEX_PATH_MAX || /[\u0000-\u001f\u007f]/.test(value))) {
+          return { ok: false, error: 'codexPath must be empty or an absolute path' };
+        }
+        patch.codexPath = value;
         break;
       case 'codexDefaultEffort':
         if (!isCodexEffort(value)) return { ok: false, error: 'codexDefaultEffort must be a Codex effort level' };

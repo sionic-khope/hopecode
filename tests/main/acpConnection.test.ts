@@ -113,7 +113,7 @@ describe('AcpConnection', () => {
     const updates: SessionNotification[] = [];
     const conn = open(fakeSpec(), updates);
     const init = await conn.initialize();
-    expect(init.agentInfo?.name).toBe('codex-acp');
+    expect(init.agentInfo?.name).toBe('@agentclientprotocol/codex-acp');
     expect(conn.init).toBe(init);
     const { sessionId } = await conn.request('session/new', { cwd: tmp(), mcpServers: [] }, 5000);
     const res = await conn.request('session/prompt', { sessionId, prompt: [{ type: 'text', text: 'hello world' }] }, null);

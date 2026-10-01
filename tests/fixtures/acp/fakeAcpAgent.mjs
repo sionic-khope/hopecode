@@ -3,7 +3,11 @@
 // Profile: FAKE_ACP_PROFILE=codex|hermes|noload. Session state (load replay): FAKE_ACP_STATE_DIR/<sessionId>.json.
 // Other env: FAKE_ACP_NO_MODELS=1 (hermes omits `models`), FAKE_ACP_AUTH_REQUIRED=1 (session/new -> -32000),
 // FAKE_ACP_INIT_DELAY_MS=<ms> (initialize answers late), FAKE_ACP_SET_MODE_FAIL=1 (session/set_mode errors).
-// Prompt scenarios (first word): /tool /diff /permission /plan /slow /crash /mode /image /config; `[whoami]` anywhere.
+// Codex (codex-acp 2.x style, env only): CODEX_CONFIG (JSON: model, model_reasoning_effort), INITIAL_AGENT_MODE
+// (read-only | workspace-write | agent | agent-full-access; default agent), CODEX_PATH (reported, never run).
+// `/mode [modeId]` switches to the next mode (or the given one) from the agent side.
+// Prompt scenarios (first word): /tool /slowtool /diff /permission /plan /slow [delayMs] /crash /warn /mode /image
+// /config; `[whoami]` anywhere.
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -18,33 +22,40 @@ const INIT_DELAY_MS = Number(process.env.FAKE_ACP_INIT_DELAY_MS || 0);
 const SET_MODE_FAILS = process.env.FAKE_ACP_SET_MODE_FAIL === '1';
 const IS_HERMES = PROFILE === 'hermes';
 
-// ---- argv: `-c key=value` (codex-acp style config overrides) --------------------------------------------------
-function parseArgs(argv) {
-  const out = {};
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    const kv = a === '-c' || a === '--config' ? argv[++i] : a.startsWith('-c=') ? a.slice(3) : null;
-    if (typeof kv !== 'string') continue;
-    const eq = kv.indexOf('=');
-    if (eq <= 0) continue;
-    let v = kv.slice(eq + 1).trim();
-    if (v.length >= 2 && (v[0] === '"' || v[0] === "'") && v.at(-1) === v[0]) v = v.slice(1, -1);
-    out[kv.slice(0, eq).trim()] = v;
+// ---- env: codex-acp 2.x configuration (no argv) ---------------------------------------------------------------
+function parseConfig(raw) {
+  try {
+    const v = JSON.parse(raw ?? '{}');
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+  } catch {
+    return {};
   }
-  return out;
 }
-const ARGS = parseArgs(process.argv.slice(2));
+const CODEX_CONFIG = parseConfig(process.env.CODEX_CONFIG);
+const INITIAL_AGENT_MODE = process.env.INITIAL_AGENT_MODE ?? null;
+const CODEX_PATH = process.env.CODEX_PATH ?? null;
 
 // ---- profile data ----------------------------------------------------------------------------------------------
 const CODEX_MODELS = ['gpt-6-sol', 'gpt-6.1-sol'];
 const CODEX_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
-// codex-acp's "Approval Preset" select (category `mode`): the app must never set it (it can mean full access).
-const CODEX_PRESETS = ['read-only', 'auto', 'full-access'];
+// codex-acp 2.x session modes (also the `mode` config option, which the app must never set: it can mean full access).
 const CODEX_MODES = [
-  { id: 'read-only', name: 'Read Only', description: 'Read files only' },
-  { id: 'auto', name: 'Default', description: 'Edit in the workspace, ask for the rest' },
-  { id: 'full-access', name: 'Full Access', description: 'No sandbox, no approvals' },
+  { id: 'read-only', name: 'Read-only', description: 'Read files; ask before edits and commands' },
+  { id: 'workspace-write', name: 'Workspace access', description: 'Edit in the workspace, ask for the rest' },
+  { id: 'agent', name: 'Auto review', description: 'An automatic reviewer approves requests' },
+  { id: 'agent-full-access', name: 'Full access', description: 'No sandbox, no approvals' },
 ];
+const CODEX_MODE_IDS = CODEX_MODES.map((m) => m.id);
+/** Turn policy per mode (what `turn/start` would send to codex app-server). */
+const CODEX_MODE_POLICY = {
+  'read-only': { approval_policy: 'on-request', sandbox_mode: 'read-only' },
+  'workspace-write': { approval_policy: 'on-request', sandbox_mode: 'workspace-write' },
+  agent: { approval_policy: 'on-request', sandbox_mode: 'workspace-write' },
+  'agent-full-access': { approval_policy: 'never', sandbox_mode: 'danger-full-access' },
+};
+const CODEX_COLLABORATION = ['default', 'plan'];
+const CODEX_FAST = ['off', 'on'];
+const CODEX_INITIAL_MODE = CODEX_MODE_IDS.includes(INITIAL_AGENT_MODE) ? INITIAL_AGENT_MODE : 'agent';
 const HERMES_MODES = [
   { id: 'default', name: 'Ask before edits', description: 'Ask before every edit' },
   { id: 'accept_edits', name: 'Accept edits', description: 'Edits are applied without asking' },
@@ -54,9 +65,7 @@ const HERMES_MODEL = 'og/deepseek-fixture';
 
 function initialModes() {
   if (IS_HERMES) return { available: HERMES_MODES, current: 'default' };
-  if (PROFILE === 'noload') return { available: CODEX_MODES, current: 'auto' };
-  const current = ARGS.sandbox_mode === 'read-only' ? 'read-only' : ARGS.sandbox_mode === 'danger-full-access' ? 'full-access' : 'auto';
-  return { available: CODEX_MODES, current };
+  return { available: CODEX_MODES, current: CODEX_INITIAL_MODE };
 }
 
 const sessions = new Map();
@@ -68,8 +77,10 @@ function newState(sessionId, cwd) {
     cwd,
     history: [], // {role:'user'|'agent', text}
     modeId: m.current,
-    model: CODEX_MODELS.includes(ARGS.model) ? ARGS.model : 'gpt-6-sol',
-    effort: CODEX_EFFORTS.includes(ARGS.model_reasoning_effort) ? ARGS.model_reasoning_effort : 'medium',
+    model: CODEX_MODELS.includes(CODEX_CONFIG.model) ? CODEX_CONFIG.model : 'gpt-6-sol',
+    effort: CODEX_EFFORTS.includes(CODEX_CONFIG.model_reasoning_effort) ? CODEX_CONFIG.model_reasoning_effort : 'medium',
+    collaboration: 'default',
+    fast: 'off',
     configSets: [], // received session/set_config_option calls
     turn: 0,
   };
@@ -105,6 +116,22 @@ function configOptionsOf(s) {
   if (IS_HERMES) return undefined; // Hermes sends no configOptions
   return [
     {
+      id: 'mode',
+      name: 'Mode',
+      category: 'mode',
+      type: 'select',
+      currentValue: s.modeId,
+      options: CODEX_MODES.map((m) => ({ value: m.id, name: m.name })),
+    },
+    {
+      id: 'collaboration_mode',
+      name: 'Collaboration Mode',
+      category: 'collaboration_mode',
+      type: 'select',
+      currentValue: s.collaboration ?? 'default',
+      options: CODEX_COLLABORATION.map((value) => ({ value, name: value })),
+    },
+    {
       id: 'model',
       name: 'Model',
       category: 'model',
@@ -121,12 +148,12 @@ function configOptionsOf(s) {
       options: CODEX_EFFORTS.map((value) => ({ value, name: value })),
     },
     {
-      id: 'approval_preset',
-      name: 'Approval Preset',
-      category: 'mode',
+      id: 'fast-mode',
+      name: 'Fast Mode',
+      category: 'model_config',
       type: 'select',
-      currentValue: s.modeId,
-      options: CODEX_PRESETS.map((value) => ({ value, name: value })),
+      currentValue: s.fast ?? 'off',
+      options: CODEX_FAST.map((value) => ({ value, name: value })),
     },
   ];
 }
@@ -173,6 +200,13 @@ function textOf(blocks) {
     .join('\n');
 }
 
+/** What this process was started with (codex: INITIAL_AGENT_MODE's turn policy, CODEX_CONFIG, CODEX_PATH). */
+function spawnPolicy() {
+  if (IS_HERMES) return { approval_policy: null, sandbox_mode: null, initialMode: null, codexConfig: null, codexPath: null };
+  const policy = CODEX_MODE_POLICY[INITIAL_AGENT_MODE] ?? { approval_policy: null, sandbox_mode: null };
+  return { ...policy, initialMode: INITIAL_AGENT_MODE, codexConfig: CODEX_CONFIG, codexPath: CODEX_PATH };
+}
+
 function whoami(s) {
   return `WHOAMI ${JSON.stringify({
     profile: PROFILE,
@@ -182,9 +216,8 @@ function whoami(s) {
     model: s.model,
     reasoning_effort: s.effort,
     modeId: s.modeId,
-    approval_policy: ARGS.approval_policy ?? null,
-    sandbox_mode: ARGS.sandbox_mode ?? null,
-    args: ARGS,
+    ...spawnPolicy(),
+    args: process.argv.slice(2),
   })}`;
 }
 
@@ -242,6 +275,29 @@ async function runTurn(s, params, cx, signal) {
       await say('tool done');
       return finish();
     }
+    case '/slowtool': {
+      // A tool call that stays in_progress for a while (the app's running tool card), then completes.
+      const id = toolId();
+      await update({ sessionUpdate: 'tool_call', toolCallId: id, title: 'Run sleep fixture', kind: 'execute', status: 'pending', rawInput: { command: 'sleep 3' } });
+      await update({ sessionUpdate: 'tool_call_update', toolCallId: id, status: 'in_progress' });
+      await sleep(Math.min(30_000, Number(text.trim().split(/\s+/)[1]) || 3000), signal);
+      if (signal.aborted) {
+        await update({ sessionUpdate: 'tool_call_update', toolCallId: id, status: 'failed' });
+        return finish('cancelled');
+      }
+      await update({ sessionUpdate: 'tool_call_update', toolCallId: id, status: 'completed', content: [{ type: 'content', content: { type: 'text', text: 'slept' } }] });
+      await say('slow tool done');
+      return finish();
+    }
+    case '/warn': {
+      // codex-acp streams its model-metadata warning as an agent message of its own, then the answer.
+      const warnId = randomUUID();
+      const warning = `Model metadata for \`${s.model}\` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.`;
+      await update({ sessionUpdate: 'agent_message_chunk', messageId: warnId, content: { type: 'text', text: warning } });
+      agentText += `${warning}\n`;
+      await say('warn done');
+      return finish();
+    }
     case '/diff': {
       const id = toolId();
       const path = join(s.cwd, 'fake-acp-edit.txt');
@@ -292,6 +348,9 @@ async function runTurn(s, params, cx, signal) {
       return finish();
     }
     case '/slow': {
+      // `/slow 2500`: think that long before the first tick (the app's "생각 중" row).
+      const delay = Math.min(30_000, Math.max(0, Number(text.trim().split(/\s+/)[1]) || 0));
+      if (delay > 0) await sleep(delay, signal);
       for (let i = 0; i < 300 && !signal.aborted; i++) {
         await say(`tick ${i} `);
         await sleep(200, signal);
@@ -307,7 +366,8 @@ async function runTurn(s, params, cx, signal) {
     }
     case '/mode': {
       const list = initialModes().available;
-      const next = list[(list.findIndex((m) => m.id === s.modeId) + 1) % list.length].id;
+      const wanted = text.trim().split(/\s+/)[1];
+      const next = list.some((m) => m.id === wanted) ? wanted : list[(list.findIndex((m) => m.id === s.modeId) + 1) % list.length].id;
       s.modeId = next;
       await update({ sessionUpdate: 'current_mode_update', currentModeId: next });
       await update({ sessionUpdate: 'config_option_update', configOptions: configOptionsOf(s) ?? [] });
@@ -326,8 +386,7 @@ async function runTurn(s, params, cx, signal) {
           model: IS_HERMES ? HERMES_MODEL : s.model,
           reasoning_effort: IS_HERMES ? null : s.effort,
           modeId: s.modeId,
-          approval_policy: ARGS.approval_policy ?? null,
-          sandbox_mode: ARGS.sandbox_mode ?? null,
+          ...spawnPolicy(),
           configSets: s.configSets,
         })}`,
       );
@@ -377,7 +436,7 @@ app.onRequest('initialize', async () => {
       sessionCapabilities: { resume: {}, close: {} },
     },
     authMethods: [{ id: 'chatgpt', name: 'Login with ChatGPT' }],
-    agentInfo: { name: 'codex-acp', title: 'Codex', version: '0.0.0-fixture' },
+    agentInfo: { name: '@agentclientprotocol/codex-acp', title: 'Codex', version: '0.0.0-fixture' },
   };
 });
 
@@ -448,7 +507,9 @@ app.onRequest('session/set_config_option', ({ params }) => {
   }
   if (params.configId === 'model' && CODEX_MODELS.includes(params.value)) s.model = params.value;
   else if (params.configId === 'reasoning_effort' && CODEX_EFFORTS.includes(params.value)) s.effort = params.value;
-  else if (params.configId === 'approval_preset' && CODEX_PRESETS.includes(params.value)) s.modeId = params.value;
+  else if (params.configId === 'mode' && CODEX_MODE_IDS.includes(params.value)) s.modeId = params.value;
+  else if (params.configId === 'collaboration_mode' && CODEX_COLLABORATION.includes(params.value)) s.collaboration = params.value;
+  else if (params.configId === 'fast-mode' && CODEX_FAST.includes(params.value)) s.fast = params.value;
   else throw new acp.RequestError(-32602, 'Unsupported config option value');
   save(s);
   return { configOptions: configOptionsOf(s) };

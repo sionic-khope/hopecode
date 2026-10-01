@@ -102,11 +102,13 @@ export function SettingsPage({
   const [pollDraft, setPollDraft] = useState(settings.usagePollIntervalSec);
   const [templateDraft, setTemplateDraft] = useState(settings.newTaskTemplate);
   const [nameDraft, setNameDraft] = useState(settings.profileName);
+  const [codexPathDraft, setCodexPathDraft] = useState(settings.codexPath);
 
   useEffect(() => setIdleDraft(String(settings.idleCloseMinutes)), [settings.idleCloseMinutes]);
   useEffect(() => setPollDraft(settings.usagePollIntervalSec), [settings.usagePollIntervalSec]);
   useEffect(() => setTemplateDraft(settings.newTaskTemplate), [settings.newTaskTemplate]);
   useEffect(() => setNameDraft(settings.profileName), [settings.profileName]);
+  useEffect(() => setCodexPathDraft(settings.codexPath), [settings.codexPath]);
 
   useEffect(() => {
     let live = true;
@@ -138,6 +140,18 @@ export function SettingsPage({
     if (next !== settings.profileName) save({ profileName: next });
   };
 
+  // Main checks the file (`--version` -> codex-cli >= minimum) before storing; a refused path reverts the field.
+  const commitCodexPath = () => {
+    const next = codexPathDraft.trim();
+    setCodexPathDraft(next);
+    if (next === settings.codexPath) return;
+    setError(null);
+    void onUpdate({ codexPath: next }).catch((err: unknown) => {
+      setCodexPathDraft(settings.codexPath);
+      setError(`Codex 실행 파일 경로를 저장하지 못했습니다: ${err instanceof Error ? err.message : String(err)}`);
+    });
+  };
+
   const commitTemplate = () => {
     // Mirrors the core validation (core/settings.ts): blank falls back to the default. Applied to the local draft
     // right away so the textarea reflects it even when that also happens to be what `settings` already held (the
@@ -154,6 +168,7 @@ export function SettingsPage({
   const modelOptions = models.length > 0 ? models : [{ value: 'default', label: 'Default' }];
   const threads = useAppStore((s) => s.threads);
   const hermesInfo = useAppStore((s) => s.localAuth.find((i) => i.agent === 'hermes'));
+  const codexInfo = useAppStore((s) => s.localAuth.find((i) => i.agent === 'codex'));
   const codexModels = useMemo(() => codexModelChoices(threads, settings.codexDefaultModel), [threads, settings.codexDefaultModel]);
   const effortLabel = (e: EffortLevel | CodexEffortLevel) => (e === 'xhigh' ? 'XHigh' : EFFORT_LABEL[e]);
   const codexEfforts = useMemo(() => codexEffortChoices(threads), [threads]);
@@ -219,6 +234,29 @@ export function SettingsPage({
             value={settings.codexDefaultEffort}
             options={codexEfforts.map((e) => ({ value: e.value, label: effortLabel(e.value) }))}
             onChange={(codexDefaultEffort) => save({ codexDefaultEffort })}
+          />
+        </Row>
+        <Row
+          label="Codex 실행 파일 경로"
+          hint={
+            codexInfo?.enginePath
+              ? `사용 중: ${codexInfo.enginePath} (codex-cli ${codexInfo.version ?? '?'}). 비우면 ChatGPT 앱 · PATH에서 찾습니다`
+              : '선택 사항. 비우면 ChatGPT 앱 · PATH에서 찾습니다'
+          }
+        >
+          <input
+            type="text"
+            className="hc-settings__text"
+            aria-label="Codex 실행 파일 경로"
+            data-testid="settings-codex-path"
+            placeholder="자동 감지"
+            spellCheck={false}
+            value={codexPathDraft}
+            onChange={(e) => setCodexPathDraft(e.target.value)}
+            onBlur={commitCodexPath}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur();
+            }}
           />
         </Row>
         <AgentGroup agent="hermes" />

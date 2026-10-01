@@ -10,6 +10,8 @@ export interface LocalAuthView {
   source: string | null;
   /** Hermes: system default model (`DeepSeek V4.1 Flash Ultrafast · og`). */
   defaultModel: string | null;
+  /** Codex: the engine executable and its version (`/Applications/ChatGPT.app/…/codex · codex-cli 0.159.2`). */
+  engine: string | null;
 }
 
 const STATE_LABEL: Record<LocalAuthState, { label: string; tone: LocalAuthView['tone'] }> = {
@@ -21,14 +23,15 @@ const STATE_LABEL: Record<LocalAuthState, { label: string; tone: LocalAuthView['
 
 /** Display model for the "이 Mac에서 감지됨" card. Only whitelisted fields are read -- nothing token-like can leak. */
 export function localAuthView(info: LocalAuthInfo | undefined): LocalAuthView {
-  if (!info) return { stateLabel: '확인 중', tone: 'neutral', identity: null, source: null, defaultModel: null };
+  if (!info) return { stateLabel: '확인 중', tone: 'neutral', identity: null, source: null, defaultModel: null, engine: null };
   const s = STATE_LABEL[info.state];
   const identity = [info.email, info.plan].filter((v): v is string => !!v).join(' · ') || null;
   const provider = info.provider && info.agent === 'hermes' ? `provider: ${info.provider}` : null;
   const defaultModel = info.agent === 'hermes' && info.defaultModel
     ? `${hermesModelLabel(info.defaultModel)}${info.defaultProvider ? ` · ${info.defaultProvider}` : ''}`
     : null;
-  return { stateLabel: s.label, tone: s.tone, identity: identity ?? provider, source: info.source || null, defaultModel };
+  const engine = info.agent === 'codex' && info.enginePath ? `${info.enginePath}${info.version ? ` · codex-cli ${info.version}` : ''}` : null;
+  return { stateLabel: s.label, tone: s.tone, identity: identity ?? provider, source: info.source || null, defaultModel, engine };
 }
 
 /** How to log in for agents that sign in from their own CLI. */

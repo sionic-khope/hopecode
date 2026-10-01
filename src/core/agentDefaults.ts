@@ -1,7 +1,8 @@
-// Per-agent draft defaults, codex-acp launch arguments and post-open config reconciliation (plan 2.11 / 2.15). Pure.
+// Per-agent draft defaults, codex-acp launch env, Codex mode ids and post-open config reconciliation (plan 2.11 / 2.15).
+// Pure.
 import { CODEX_EFFORT_LEVELS, CODEX_MODEL_PATTERN } from '../shared/constants';
 import type { AcpModeLite, UiPermissionMode } from '../shared/types';
-import type { CodexLaunchArgsFn, DraftAgentDefaultsFn, ReconcileConfigFn } from './acpTypes';
+import type { CodexLaunchEnvFn, DraftAgentDefaultsFn, ReconcileConfigFn } from './acpTypes';
 
 /** Codex's own effort set (includes `ultra`), never Claude's. */
 const CODEX_EFFORTS: ReadonlySet<string> = new Set<string>(CODEX_EFFORT_LEVELS);
@@ -27,23 +28,30 @@ export const draftAgentDefaults: DraftAgentDefaultsFn = (agent, settings) => {
   }
 };
 
-/** App permission chip -> codex `approval_policy` / `sandbox_mode` (fixed table, no user text). */
-const PERMISSION_TABLE: Readonly<Record<UiPermissionMode, { approval: string; sandbox: string }>> = {
-  default: { approval: 'on-request', sandbox: 'workspace-write' },
-  plan: { approval: 'on-request', sandbox: 'read-only' },
-  acceptEdits: { approval: 'on-request', sandbox: 'workspace-write' },
-  bypassPermissions: { approval: 'never', sandbox: 'danger-full-access' },
+/**
+ * App permission chip -> codex-acp 2.x session mode id (`INITIAL_AGENT_MODE`, `session/set_mode`). Fixed table, no
+ * user text. `agent` (Auto review: an automatic reviewer approves on the user's behalf) is never chosen by the app.
+ */
+export const CODEX_MODE_BY_PERMISSION: Readonly<Record<UiPermissionMode, string>> = {
+  default: 'workspace-write',
+  plan: 'read-only',
+  acceptEdits: 'workspace-write',
+  bypassPermissions: 'agent-full-access',
 };
 
-export const codexLaunchArgs: CodexLaunchArgsFn = ({ model, effort, permissionMode }) => {
+/** codex-acp's `agent` mode (approvalsReviewer auto_review); the app treats it as an unconfirmed escalation. */
+export function isCodexAutoReviewMode(mode: Pick<AcpModeLite, 'id' | 'name'>): boolean {
+  return mode.id === 'agent' || /auto[-_ ]?review/i.test(mode.id) || /auto[-_ ]?review/i.test(mode.name);
+}
+
+export const codexLaunchEnv: CodexLaunchEnvFn = ({ model, effort, permissionMode }) => {
   if (model !== null && !CODEX_MODEL_PATTERN.test(model)) return { ok: false, error: 'invalid-model' };
   if (effort !== null && !CODEX_EFFORTS.has(effort)) return { ok: false, error: 'invalid-effort' };
-  const perm = PERMISSION_TABLE[permissionMode] ?? PERMISSION_TABLE.default;
-  const args: string[] = [];
-  if (model !== null) args.push('-c', `model="${model}"`);
-  if (effort !== null) args.push('-c', `model_reasoning_effort="${effort}"`);
-  args.push('-c', `approval_policy="${perm.approval}"`, '-c', `sandbox_mode="${perm.sandbox}"`);
-  return { ok: true, args };
+  const config: Record<string, string> = {};
+  if (model !== null) config.model = model;
+  if (effort !== null) config.model_reasoning_effort = effort;
+  const mode = CODEX_MODE_BY_PERMISSION[permissionMode] ?? CODEX_MODE_BY_PERMISSION.default;
+  return { ok: true, env: { CODEX_CONFIG: JSON.stringify(config), INITIAL_AGENT_MODE: mode } };
 };
 
 export const reconcileConfig: ReconcileConfigFn = (configOptions, wanted) => {

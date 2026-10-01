@@ -109,6 +109,16 @@ describe('settings validation', () => {
     expect(sanitizeSettings({ codexDefaultModel: 'gpt-6-sol', settingsRev: 3 }).codexDefaultModel).toBe('gpt-6-sol');
   });
 
+  it('codexPath: empty or an absolute path without control characters (the executable check is main-side)', () => {
+    expect(DEFAULT_SETTINGS.codexPath).toBe('');
+    expect(validateSettingsPatch({ codexPath: '' })).toEqual({ ok: true, patch: { codexPath: '' } });
+    expect(validateSettingsPatch({ codexPath: '/opt/homebrew/bin/codex' })).toEqual({ ok: true, patch: { codexPath: '/opt/homebrew/bin/codex' } });
+    for (const bad of ['codex', './codex', '/a\nb', '/' + 'x'.repeat(1100), 42, null]) {
+      expect(validateSettingsPatch({ codexPath: bad }).ok).toBe(false);
+    }
+    expect(sanitizeSettings({ codexPath: 'relative' }).codexPath).toBe('');
+  });
+
   it('codex defaults: model id pattern (no TOML injection) and effort level', () => {
     expect(validateSettingsPatch({ codexDefaultModel: 'gpt-6-sol', codexDefaultEffort: 'xhigh' })).toEqual({
       ok: true,

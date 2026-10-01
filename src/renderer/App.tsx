@@ -6,6 +6,7 @@ import { AccountsPage } from './components/Accounts/AccountsPage';
 import { AddAccountDialog, type LoginStatus } from './components/Accounts/AddAccountDialog';
 import { ChatView, DraftView } from './components/Chat';
 import { BoltIcon } from './components/Chat/icons';
+import { AgentIcon } from './components/Agent/AgentIcon';
 import { CommandPalette, type PaletteCommand } from './components/Palette/CommandPalette';
 import { SettingsPage } from './components/Settings/SettingsPage';
 import { PluginsPage } from './components/Nav/PluginsPage';
@@ -69,6 +70,7 @@ import type {
   EditorInfo,
   EffortLevel,
   PermissionDecision,
+  Thread,
   UiPermissionMode,
   UsageSample,
 } from '../shared/types';
@@ -237,6 +239,23 @@ export function App() {
     }
   }, []);
 
+  // Error card "새 세션으로 시도": a fresh thread with the failed thread's agent, folder and settings.
+  const onRetryInNewSession = useCallback(
+    (thread: Thread, text: string) => {
+      useAppStore.getState().setDraft({
+        projectId: thread.projectId,
+        agent: thread.agent,
+        model: thread.model,
+        permissionMode: thread.permissionMode,
+        effort: thread.effort,
+        pinnedAccountId: null,
+        base: null,
+      });
+      void onStartThread(text);
+    },
+    [onStartThread],
+  );
+
   const onNewChat = useCallback(() => useAppStore.getState().newDraft(), []);
   const onNewChatIn = useCallback((projectId: string) => {
     const s = useAppStore.getState();
@@ -366,7 +385,11 @@ export function App() {
   // Statusline model: the thread's (resolved) model, or what the draft will start with.
   const hermesAuth = useAppStore((st) => selectLocalAuthFor(st, 'hermes'));
   const statusModel = activeThread
-    ? concreteModelLabel(activeThread.model, models, { resolvedModel: activeThread.resolvedModel, defaultLabel: defaultModelLabel })
+    ? activeThread.agent === 'codex'
+      ? codexModelLabel(activeThread.model, activeThread.acp?.controls?.configOptions ?? [])
+      : activeThread.agent === 'hermes'
+        ? hermesModelChip(activeThread.acp?.controls?.reportedModel, hermesAuth).label
+        : concreteModelLabel(activeThread.model, models, { resolvedModel: activeThread.resolvedModel, defaultLabel: defaultModelLabel })
     : route === 'chat'
       ? draft.agent === 'hermes'
         ? hermesModelChip(null, hermesAuth).label
@@ -396,6 +419,11 @@ export function App() {
         title: t.title,
         subtitle: t.projectId === null ? undefined : byProject.get(t.projectId),
         group: '스레드',
+        icon: (
+          <span className="hc-palette__agent" data-agent={t.agent}>
+            <AgentIcon kind={t.agent} size={15} />
+          </span>
+        ),
         // Title and first message are both searchable (⌘K / 검색).
         keywords: [(t.projectId === null ? undefined : byProject.get(t.projectId)) ?? '', firstMessages[t.id] ?? ''],
         run: () => onSelectThread(t.id),
@@ -673,6 +701,7 @@ export function App() {
                 onEffortChange={onEffortChange}
                 onPermissionModeChange={onPermissionModeChange}
                 onAttachFiles={onAttachToThread}
+                onRetryInNewSession={onRetryInNewSession}
                 defaultModelLabel={defaultModelLabel}
                 homeDir={homeDir}
               />

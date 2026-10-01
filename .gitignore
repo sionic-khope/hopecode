@@ -6,3 +6,4 @@ release/
 *.log
 .DS_Store
 *.tsbuildinfo
+build/bin/

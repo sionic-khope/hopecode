@@ -143,6 +143,8 @@ export interface RegisterIpcServices {
   quit: () => void;
   /** ~/.claude sharing state per account, and re-linking every account. */
   sharedConfig: { status(): Promise<SharedConfigStatus>; relink(): Promise<SharedConfigStatus> };
+  /** Settings > Codex 실행 파일 경로: null = usable, else why the path is refused (nothing is stored). */
+  checkCodexPath?: (path: string) => Promise<string | null>;
   /** Called after `settings:update` stored a change (main re-applies poll interval etc.). */
   onSettingsChanged?: (next: AppSettings, prev: AppSettings) => void;
   /** Fixture / headless e2e run (bootstrap `testMode`: no system notifications). */
@@ -883,6 +885,10 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
       const checked = validateSettingsPatch(req);
       assertReq('settings:update', checked.ok, checked.ok ? '' : checked.error);
       const patch = (checked as { ok: true; patch: Parameters<typeof applySettingsPatch>[1] }).patch;
+      if (patch.codexPath) {
+        const refused = s.checkCodexPath ? await s.checkCodexPath(patch.codexPath) : 'codex path check unavailable';
+        assertReq('settings:update', refused === null, `codexPath: ${refused ?? ''}`);
+      }
       const prev = store.get().settings;
       const next = applySettingsPatch(prev, patch);
       store.update((draft) => {

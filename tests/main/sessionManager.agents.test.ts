@@ -137,32 +137,68 @@ describe('SessionManager ACP runners (fixture agent)', () => {
 });
 
 describe('createAcpLaunchers (real agents)', () => {
-  const binaries = (codex: string | null, hermes: string | null) => ({ resolveCodexAcp: () => codex, resolveHermes: () => hermes });
-  const baseEnv = () => ({ PATH: '/usr/bin', ANTHROPIC_API_KEY: 'x', HOPECODE_FIXTURES: '1', OPENAI_API_KEY: 'k' });
+  const ENGINE = { path: '/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex', version: '0.159.2' };
+  const binaries = (codex: string | null, hermes: string | null, engine: typeof ENGINE | null = ENGINE) => ({
+    resolveCodexAcp: () => codex,
+    codexEngine: () => engine,
+    resolveHermes: () => hermes,
+  });
+  const baseEnv = () => ({
+    PATH: '/usr/bin',
+    ANTHROPIC_API_KEY: 'x',
+    HOPECODE_FIXTURES: '1',
+    OPENAI_API_KEY: 'k',
+    CODEX_HOME: '/codex-home',
+    // A login shell cannot pick the adapter's mode / config / engine: the launcher always overrides these.
+    INITIAL_AGENT_MODE: 'agent',
+    CODEX_CONFIG: '{"approval_policy":"never"}',
+    CODEX_PATH: '/evil/codex',
+  });
 
-  it('codex: bundled binary, `-c` overrides from the thread values, scratch ceiling, no ANTHROPIC_* / HOPECODE_*', () => {
+  it('codex: bundled adapter, env config (CODEX_PATH / CODEX_CONFIG / INITIAL_AGENT_MODE), no argv, scrubbed env', () => {
     const l = createAcpLaunchers({ binaries: binaries('/bin/codex-acp', null), baseEnv });
     const res = l.codex.resolve('/w', { model: 'gpt-6.1-sol', effort: 'high', permissionMode: 'plan', gitCeiling: '/s' });
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.spec.command).toBe('/bin/codex-acp');
-    expect(res.spec.args).toEqual([
-      '-c',
-      'model="gpt-6.1-sol"',
-      '-c',
-      'model_reasoning_effort="high"',
-      '-c',
-      'approval_policy="on-request"',
-      '-c',
-      'sandbox_mode="read-only"',
-    ]);
-    expect(res.spec.env).toEqual({ PATH: '/usr/bin', OPENAI_API_KEY: 'k', GIT_CEILING_DIRECTORIES: '/s' });
+    expect(res.spec.args).toEqual([]);
+    expect(res.spec.env).toEqual({
+      PATH: '/usr/bin',
+      OPENAI_API_KEY: 'k',
+      CODEX_HOME: '/codex-home',
+      GIT_CEILING_DIRECTORIES: '/s',
+      CODEX_PATH: ENGINE.path,
+      CODEX_CONFIG: '{"model":"gpt-6.1-sol","model_reasoning_effort":"high"}',
+      INITIAL_AGENT_MODE: 'read-only',
+    });
+  });
+
+  it('codex: each permission chip maps to its mode; never the auto-review `agent`', () => {
+    const l = createAcpLaunchers({ binaries: binaries('/bin/codex-acp', null), baseEnv });
+    const modeOf = (permissionMode: 'default' | 'plan' | 'acceptEdits' | 'bypassPermissions') => {
+      const res = l.codex.resolve('/w', { permissionMode });
+      return res.ok ? res.spec.env['INITIAL_AGENT_MODE'] : null;
+    };
+    expect(modeOf('default')).toBe('workspace-write');
+    expect(modeOf('plan')).toBe('read-only');
+    expect(modeOf('acceptEdits')).toBe('workspace-write');
+    expect(modeOf('bypassPermissions')).toBe('agent-full-access');
   });
 
   it('codex: an invalid stored model is dropped (agent default), never passed on', () => {
     const l = createAcpLaunchers({ binaries: binaries('/bin/codex-acp', null), baseEnv });
     const res = l.codex.resolve('/w', { model: 'a"b', effort: 'high', permissionMode: 'default' });
-    expect(res.ok && res.spec.args.some((a) => a.startsWith('model'))).toBe(false);
+    expect(res.ok && res.spec.env['CODEX_CONFIG']).toBe('{}');
+  });
+
+  it('codex: no adapter or no detected engine -> not-installed', () => {
+    expect(createAcpLaunchers({ binaries: binaries(null, null), baseEnv }).codex.resolve('/w', { permissionMode: 'default' })).toEqual({
+      ok: false,
+      reason: 'not-installed',
+    });
+    expect(
+      createAcpLaunchers({ binaries: binaries('/bin/codex-acp', null, null), baseEnv }).codex.resolve('/w', { permissionMode: 'default' }),
+    ).toEqual({ ok: false, reason: 'not-installed' });
   });
 
   it('hermes: `hermes acp`; not installed -> not-installed', () => {

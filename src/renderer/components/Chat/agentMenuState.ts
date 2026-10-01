@@ -16,12 +16,12 @@ export interface AgentMenuRow {
 
 /** Short (menu rows ellipsize): the command that logs in. */
 const LOGIN_HINT: Partial<Record<AgentKind, string>> = {
-  codex: 'npx @openai/codex login',
+  codex: 'codex login 또는 ChatGPT 앱',
   hermes: '터미널에서 hermes auth',
 };
 
 const INSTALL_HINT: Partial<Record<AgentKind, string>> = {
-  codex: 'codex-acp를 찾지 못함',
+  codex: 'ChatGPT 앱 또는 Codex CLI 설치 필요',
   hermes: 'hermes CLI를 설치하세요',
 };
 

@@ -36,7 +36,7 @@ export function LocalAuthCard({ agent, info, onRecheck }: LocalAuthCardProps) {
           {busy ? '확인 중…' : '재확인'}
         </Button>
       </div>
-      {view.identity || view.source || view.defaultModel ? (
+      {view.identity || view.source || view.defaultModel || view.engine ? (
         <dl className="hc-local-auth__kv">
           {view.identity ? (
             <>
@@ -48,6 +48,14 @@ export function LocalAuthCard({ agent, info, onRecheck }: LocalAuthCardProps) {
             <>
               <dt>기본 모델</dt>
               <dd data-testid={`local-auth-model-${agent}`}>{view.defaultModel}</dd>
+            </>
+          ) : null}
+          {view.engine ? (
+            <>
+              <dt>엔진</dt>
+              <dd data-testid={`local-auth-engine-${agent}`}>
+                <code>{view.engine}</code>
+              </dd>
             </>
           ) : null}
           {view.source ? (

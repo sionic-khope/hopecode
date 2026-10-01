@@ -458,6 +458,16 @@
 .hc-thread-wrap--archived .hc-thread {
   color: var(--label-secondary);
 }
+/* Agent logo (Claude / Codex / Hermes): full color, a touch quieter until the row is hovered or selected. */
+.hc-thread__glyph--agent > img {
+  display: block;
+  opacity: 0.86;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.hc-thread-wrap:hover .hc-thread__glyph--agent > img,
+.hc-thread--selected .hc-thread__glyph--agent > img {
+  opacity: 1;
+}
 .hc-thread:hover,
 .hc-thread-wrap:hover .hc-thread {
   background: var(--bg-sidebar-hover);

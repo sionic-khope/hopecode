@@ -9,25 +9,31 @@
   "author": "Hopecode",
   "license": "UNLICENSED",
   "scripts": {
+    "predev": "node scripts/build-codex-acp.mjs",
     "dev": "electron-vite dev",
+    "prebuild": "node scripts/build-codex-acp.mjs",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "test": "vitest run",
+    "pretest:e2e": "node scripts/build-codex-acp.mjs",
     "test:e2e": "playwright test",
+    "predist:dir": "node scripts/build-codex-acp.mjs",
     "dist:dir": "electron-vite build && electron-builder --mac --dir",
     "rebuild:native": "electron-rebuild -f -w node-pty",
+    "presmoke:native": "node scripts/build-codex-acp.mjs",
     "smoke:native": "electron-vite build && node scripts/smoke-native.mjs",
-    "postinstall": "electron-builder install-app-deps"
+    "postinstall": "electron-builder install-app-deps",
+    "build:codex-acp": "node scripts/build-codex-acp.mjs"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.5.1",
     "@anthropic-ai/claude-agent-sdk": "0.3.282",
-    "@zed-industries/codex-acp": "0.16.0",
     "node-pty": "1.1.0",
     "zod": "4.6.5"
   },
   "devDependencies": {
+    "@agentclientprotocol/codex-acp": "2.1.0",
     "@dnd-kit/core": "6.3.1",
     "@dnd-kit/sortable": "10.0.0",
     "@electron/rebuild": "4.2.0",
@@ -38,6 +44,7 @@
     "@vitejs/plugin-react": "^5.2.0",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/xterm": "6.0.0",
+    "bun": "1.4.2",
     "electron": "44.4.5",
     "electron-builder": "26.15.3",
     "electron-vite": "^5.0.0",
@@ -54,6 +61,7 @@
     "node-pty@1.1.0": true,
     "esbuild@0.25.12": true,
     "esbuild@0.28.2": true,
-    "electron-winstaller": false
+    "electron-winstaller": false,
+    "bun@1.4.2": true
   }
 }

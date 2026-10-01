@@ -143,7 +143,7 @@ test('agent menu lists Claude Code, Codex and Hermes (fixture logins: all usable
   await page.keyboard.press('Escape');
 });
 
-test('codex: first send creates a worktree and streams; spawn -c carries GPT-6.1-Sol / high and the default permission', async () => {
+test('codex: first send creates a worktree and streams; spawn env carries GPT-6.1-Sol / high and the default permission', async () => {
   const { page } = run;
   ids['codex'] = await startAgentThread(page, 'Codex', 'hello codex');
   await expect(messages(page)).toContainText('FAKE-ACP(codex): hello codex');
@@ -167,8 +167,13 @@ test('codex: first send creates a worktree and streams; spawn -c carries GPT-6.1
     reasoning_effort: 'high',
     approval_policy: 'on-request',
     sandbox_mode: 'workspace-write',
+    // codex-acp 2.x: env only (no argv); 기본 = workspace-write, never the adapter's `agent` (Auto review) default.
+    initialMode: 'workspace-write',
+    modeId: 'workspace-write',
+    codexConfig: { model: 'gpt-6.1-sol', model_reasoning_effort: 'high' },
+    codexPath: '/fixture/codex',
+    args: [],
   });
-  expect(who['args']).toMatchObject({ model: 'gpt-6.1-sol', model_reasoning_effort: 'high' });
   ids['codexSession'] = who['sessionId'] as string;
 });
 
@@ -190,7 +195,7 @@ test('codex: 전체 액세스 needs the confirmation; declined keeps 기본', as
   expect(await threadById(page, ids['codex'])).toMatchObject({ permissionMode: 'default' });
 });
 
-test('codex: a draft with 전체 액세스 (confirmed) spawns approval_policy=never + danger-full-access', async () => {
+test('codex: a draft with 전체 액세스 (confirmed) spawns INITIAL_AGENT_MODE=agent-full-access', async () => {
   const { page, app } = run;
   await app.evaluate(() => {
     globalThis.__hopecodeFixtureBypassAnswer = true;
@@ -202,26 +207,29 @@ test('codex: a draft with 전체 액세스 (confirmed) spawns approval_policy=ne
   await page.getByRole('menu', { name: '권한' }).getByRole('menuitemradio', { name: /^전체 액세스/ }).click();
   await chooseFixtureFolder(page, sandbox);
   const who = await report(page, '[whoami] full access', 'WHOAMI');
-  expect(who).toMatchObject({ approval_policy: 'never', sandbox_mode: 'danger-full-access', modeId: 'full-access' });
+  expect(who).toMatchObject({ approval_policy: 'never', sandbox_mode: 'danger-full-access', initialMode: 'agent-full-access', modeId: 'agent-full-access' });
   await expect(composer(page).getByRole('button', { name: /^권한:/ })).toHaveAttribute('aria-label', '권한: 전체 액세스');
 });
 
-test('codex: 계획 maps to sandbox_mode=read-only', async () => {
+test('codex: 계획 maps to INITIAL_AGENT_MODE=read-only', async () => {
   const { page } = run;
   await openDraft(page);
   await pickAgent(page, 'Codex');
   await page.getByTestId('draft').locator('.hc-chip--perm').click();
   await page.getByRole('menu', { name: '권한' }).getByRole('menuitemradio', { name: /^계획/ }).click();
   await chooseFixtureFolder(page, sandbox);
-  expect(await report(page, '[whoami] plan mode', 'WHOAMI')).toMatchObject({ approval_policy: 'on-request', sandbox_mode: 'read-only', modeId: 'read-only' });
+  expect(await report(page, '[whoami] plan mode', 'WHOAMI')).toMatchObject({ approval_policy: 'on-request', sandbox_mode: 'read-only', initialMode: 'read-only', modeId: 'read-only' });
 });
 
 test('codex: /crash ends with a redacted error notice (no token on screen)', async () => {
   const { page } = run;
   ids['crash'] = await startAgentThread(page, 'Codex', '/crash');
-  const notice = messages(page).locator('.hc-notice--error').last();
-  await expect(notice).toContainText('프로세스가 종료되었습니다');
-  await expect(notice).toContainText('fatal: token [redacted]');
+  // The error card explains the crash; the (redacted) raw message sits behind 자세히 보기.
+  const card = messages(page).getByTestId('error-card').last();
+  await expect(card).toContainText('Codex 프로세스 종료');
+  await card.getByRole('button', { name: '자세히 보기' }).click();
+  await expect(card.getByTestId('error-raw')).toContainText('프로세스가 종료되었습니다');
+  await expect(card.getByTestId('error-raw')).toContainText('fatal: token [redacted]');
   const html = await page.content();
   expect(html).not.toContain('sk-FAKESECRET');
   expect(html).not.toContain('FAKESECRET0123456789');

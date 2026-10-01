@@ -240,6 +240,61 @@ describe('chat event application', () => {
   });
 });
 
+describe('turn phase (생각 중 row)', () => {
+  const controls = { modes: [], currentModeId: null, configOptions: [], reportedModel: null };
+  const phase = () => selectors.selectTurnPhase(useAppStore.getState(), 't1');
+
+  it('a Claude turn starts thinking and is cleared by turn-end', () => {
+    useAppStore.getState().applyThreadUpdated(makeThread());
+    useAppStore.getState().applyChatEvent('t1', { type: 'turn-start', accountId: 'acc-1' });
+    expect(phase()).toMatchObject({ phase: 'thinking' });
+    useAppStore.getState().applyChatEvent('t1', { type: 'turn-end', ok: true });
+    expect(phase()).toBeNull();
+  });
+
+  it('an ACP thread prepares a new session, or loads its previous one, until controls arrive', () => {
+    useAppStore.getState().applyThreadUpdated(makeThread({ agent: 'codex' }));
+    useAppStore.getState().applyChatEvent('t1', { type: 'turn-start' });
+    expect(phase()?.phase).toBe('preparing');
+    const startedAt = phase()!.startedAt;
+    useAppStore.getState().applyAgentControls('t1', controls);
+    expect(phase()).toEqual({ phase: 'thinking', startedAt });
+    useAppStore.getState().applyChatEvent('t1', { type: 'turn-end', ok: true });
+
+    // The session is known to be open now: the next turn thinks right away.
+    useAppStore.getState().applyChatEvent('t1', { type: 'turn-start' });
+    expect(phase()?.phase).toBe('thinking');
+
+    // An error may have taken the process down: the next turn opens (here: loads) a session again.
+    useAppStore.getState().applyChatEvent('t1', { type: 'error', message: 'Codex 프로세스가 종료되었습니다.' });
+    expect(phase()).toBeNull();
+    useAppStore.getState().applyThreadUpdated(makeThread({ agent: 'codex', acp: { sessionId: 's1', controls: null } }));
+    useAppStore.getState().applyChatEvent('t1', { type: 'turn-start' });
+    expect(phase()?.phase).toBe('loading');
+    useAppStore.getState().applyChatEvent('t1', { type: 'text-delta', itemId: 'x', text: 'hi' });
+    expect(phase()?.phase).toBe('thinking');
+  });
+
+  it('an account switch notice mid-turn shows the switching phase and keeps the timer', () => {
+    useAppStore.getState().applyThreadUpdated(makeThread());
+    useAppStore.getState().applyChatEvent('t1', { type: 'turn-start', accountId: 'a' });
+    const startedAt = phase()!.startedAt;
+    const notice: ChatItem = { id: 'n1', type: 'notice', level: 'info', text: '계정 전환: Work → Spare (5시간 한도)', createdAt: 1 };
+    useAppStore.getState().applyChatEvent('t1', { type: 'item-upsert', item: notice });
+    expect(phase()).toEqual({ phase: 'switching', startedAt });
+    useAppStore.getState().applyChatEvent('t1', { type: 'turn-start', accountId: 'b' });
+    expect(phase()).toEqual({ phase: 'switching', startedAt });
+  });
+
+  it('acpSessionLikelyOpen follows the idle-close setting', async () => {
+    const { acpSessionLikelyOpen } = await import('../../src/renderer/store/appStore');
+    expect(acpSessionLikelyOpen(undefined, 10, 0)).toBe(false);
+    expect(acpSessionLikelyOpen(0, 10, 9 * 60_000)).toBe(true);
+    expect(acpSessionLikelyOpen(0, 10, 11 * 60_000)).toBe(false);
+    expect(acpSessionLikelyOpen(0, 0, 60 * 60_000)).toBe(true);
+  });
+});
+
 describe('permissions', () => {
   const req: PermissionRequest = {
     requestId: 'r1',
@@ -425,6 +480,15 @@ describe('review fixes', () => {
     });
     items = selectors.selectChatItems(useAppStore.getState(), 't1');
     expect(items.map((i) => i.id)).toEqual(['notice-1']);
+  });
+
+  it('the same error after a new user message (다시 시도) gets its own notice', () => {
+    const { applyChatEvent } = useAppStore.getState();
+    applyChatEvent('t1', { type: 'error', message: 'Codex 프로세스가 종료되었습니다.' });
+    applyChatEvent('t1', { type: 'item-upsert', item: { type: 'user', id: 'u2', text: '/crash', createdAt: 2 } });
+    applyChatEvent('t1', { type: 'error', message: 'Codex 프로세스가 종료되었습니다.' });
+    const items = selectors.selectChatItems(useAppStore.getState(), 't1');
+    expect(items.map((i) => i.type)).toEqual(['notice', 'user', 'notice']);
   });
 
   it('loadChatHistory merges by id with items that arrived live', async () => {

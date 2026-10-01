@@ -1,7 +1,9 @@
 import { memo, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import type { Account, Thread } from '../../../shared/types';
 import { formatRelativeTime, formatResetCountdown } from '../../../core/format';
+import { AGENTS } from '../../../shared/agents';
 import { StatusPill } from '../common';
+import { AgentIcon } from '../Agent/AgentIcon';
 import { IconArchive, IconPinThread, IconUnarchive } from './icons';
 import { ActionMenu, ConfirmDeletePopover, type NEEDS_FORCE } from './ItemMenu';
 
@@ -13,8 +15,8 @@ export interface ThreadRowProps {
   /** Indented under a project header. */
   nested?: boolean;
   /**
-   * Icon in the 17px leading slot (pinned / archived sections). Every row keeps the slot, so all titles start
-   * at the same x as the project names.
+   * Icon in the 17px leading slot; defaults to the thread's agent logo (archived rows pass their own glyph). Every
+   * row keeps the slot, so all titles start at the same x as the project names.
    */
   glyph?: ReactNode;
   onSelect: (threadId: string) => void;
@@ -150,9 +152,15 @@ export const ThreadRow = memo(function ThreadRow({
           onClick={() => onSelect(thread.id)}
           onDoubleClick={startRename}
           onKeyDown={onRowKeyDown}
+          data-agent={thread.agent}
         >
-          <span className="hc-thread__glyph" aria-hidden>
-            {glyph}
+          <span
+            className={`hc-thread__glyph${glyph ? '' : ' hc-thread__glyph--agent'}`}
+            data-agent={thread.agent}
+            title={glyph ? undefined : AGENTS[thread.agent].name}
+            aria-hidden
+          >
+            {glyph ?? <AgentIcon kind={thread.agent} size={15} />}
           </span>
           <span className="hc-thread__title">{thread.title}</span>
           <span className="hc-thread__trail">

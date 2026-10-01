@@ -2,10 +2,14 @@
 // `process.execPath` + ELECTRON_RUN_AS_NODE=1 (plan 4). Never spawns a real codex-acp / hermes, no network.
 // Paths are injected so this module stays free of electron imports (the caller passes
 // `join(app.getAppPath(), 'tests/fixtures/acp/fakeAcpAgent.mjs')` and `join(hopecodeHome(), 'fake-acp')`).
-import type { UiPermissionMode } from '../../shared/types';
+import { codexLaunchEnv } from '../../core/agentDefaults';
+import type { EffortLevel } from '../../shared/types';
 import type { AcpLauncher, AcpLaunchOptions } from '../contracts';
 
 export type FakeAcpProfile = 'codex' | 'hermes' | 'noload';
+
+/** CODEX_PATH the fixture agent reports back (it never runs a real codex). */
+export const FIXTURE_CODEX_PATH = '/fixture/codex';
 
 export interface AcpFixtureLauncherOptions {
   profile: FakeAcpProfile;
@@ -21,21 +25,12 @@ export interface AcpFixtureLauncherOptions {
   unavailable?: 'not-installed' | 'not-logged-in';
 }
 
-// plan 2.15: UI permission mode -> codex `-c approval_policy / sandbox_mode`.
-const CODEX_PERMISSION: Record<UiPermissionMode, { approval_policy: string; sandbox_mode: string }> = {
-  default: { approval_policy: 'on-request', sandbox_mode: 'workspace-write' },
-  acceptEdits: { approval_policy: 'on-request', sandbox_mode: 'workspace-write' },
-  plan: { approval_policy: 'on-request', sandbox_mode: 'read-only' },
-  bypassPermissions: { approval_policy: 'never', sandbox_mode: 'danger-full-access' },
-};
-
-function codexArgs(opts: AcpLaunchOptions): string[] {
-  const kv: string[] = [];
-  if (opts.model) kv.push(`model="${opts.model}"`);
-  if (opts.effort) kv.push(`model_reasoning_effort="${opts.effort}"`);
-  const p = CODEX_PERMISSION[opts.permissionMode];
-  if (p) kv.push(`approval_policy="${p.approval_policy}"`, `sandbox_mode="${p.sandbox_mode}"`);
-  return kv.flatMap((v) => ['-c', v]);
+/** Same env as the real launcher (agentDefaults `codexLaunchEnv`); an invalid model / effort falls back to defaults. */
+function codexEnv(opts: AcpLaunchOptions): Record<string, string> {
+  const input = { model: opts.model ?? null, effort: (opts.effort ?? null) as EffortLevel | null, permissionMode: opts.permissionMode };
+  const res = codexLaunchEnv(input);
+  const launch = res.ok ? res : codexLaunchEnv({ model: null, effort: null, permissionMode: opts.permissionMode });
+  return launch.ok ? { CODEX_PATH: FIXTURE_CODEX_PATH, ...launch.env } : {};
 }
 
 export function createAcpFixtureLauncher(o: AcpFixtureLauncherOptions): AcpLauncher {
@@ -48,11 +43,12 @@ export function createAcpFixtureLauncher(o: AcpFixtureLauncherOptions): AcpLaunc
         FAKE_ACP_PROFILE: o.profile,
         FAKE_ACP_STATE_DIR: o.stateDir,
         ...(opts.gitCeiling ? { GIT_CEILING_DIRECTORIES: opts.gitCeiling } : {}),
+        ...(o.profile === 'hermes' ? {} : codexEnv(opts)),
         ...o.env,
       };
       return {
         ok: true,
-        spec: { command: o.command ?? process.execPath, args: [o.scriptPath, ...(o.profile === 'hermes' ? [] : codexArgs(opts))], env },
+        spec: { command: o.command ?? process.execPath, args: [o.scriptPath], env },
       };
     },
   };

@@ -175,6 +175,34 @@ export interface LoginSessionState {
   error: string | null;
 }
 
+/**
+ * What a running turn is doing before (and between) visible output, for the "생각 중" row:
+ * - `preparing`: an ACP agent process is starting / opening a new session.
+ * - `loading`: an ACP agent is loading the thread's previous session (`session/load`).
+ * - `switching`: the turn moved to another Claude account (rotation notice).
+ * - `thinking`: the session is up; waiting for the agent's next output.
+ */
+export type TurnPhaseKind = 'preparing' | 'loading' | 'switching' | 'thinking';
+
+export interface TurnPhase {
+  phase: TurnPhaseKind;
+  /** epoch ms of the turn start (elapsed timer). */
+  startedAt: number;
+}
+
+/** Notice main logs when a Claude turn rotates to another account (threadRunner). */
+const ACCOUNT_SWITCH_PREFIX = '계정 전환:';
+
+/** An ACP session counts as open this long after its last sign of life when idle-close is off (0). */
+const ACP_LIVE_FALLBACK_MS = 6 * 60 * 60 * 1000;
+
+/** True when this renderer saw the thread's ACP session open (agent:controls / output) and it has not idled out. */
+export function acpSessionLikelyOpen(lastSeen: number | undefined, idleCloseMinutes: number, now: number): boolean {
+  if (lastSeen === undefined) return false;
+  const window = idleCloseMinutes > 0 ? idleCloseMinutes * 60_000 : ACP_LIVE_FALLBACK_MS;
+  return now - lastSeen < window;
+}
+
 export interface PtyStatus {
   ptyId: string | null;
   running: boolean;
@@ -237,6 +265,42 @@ function upsertChatItem(items: ChatItem[], item: ChatItem): ChatItem[] {
 }
 
 const EMPTY_CHAT_ITEMS: ChatItem[] = [];
+
+function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T> {
+  if (!(key in record)) return record;
+  const next = { ...record };
+  delete next[key];
+  return next;
+}
+
+type PhaseSlice = Pick<AppStoreState, 'turnPhaseByThread' | 'acpLiveAt' | 'threads' | 'settings'>;
+
+/** Phase of a turn that just started: ACP threads without a known-open session start by opening one. */
+function startPhase(s: PhaseSlice, threadId: string): TurnPhaseKind {
+  const thread = s.threads.find((t) => t.id === threadId);
+  if (!thread || thread.agent === 'claude-code') return 'thinking';
+  if (acpSessionLikelyOpen(s.acpLiveAt[threadId], s.settings.idleCloseMinutes, Date.now())) return 'thinking';
+  return thread.acp?.sessionId ? 'loading' : 'preparing';
+}
+
+/** Agent output / session controls: a preparing turn is thinking now, and an ACP session is known to be open. */
+function outputSeen(s: PhaseSlice, threadId: string): Partial<PhaseSlice> {
+  const thread = s.threads.find((t) => t.id === threadId);
+  const out: Partial<PhaseSlice> = {};
+  if (thread && thread.agent !== 'claude-code') out.acpLiveAt = { ...s.acpLiveAt, [threadId]: Date.now() };
+  const phase = s.turnPhaseByThread[threadId];
+  if (phase && phase.phase !== 'thinking') out.turnPhaseByThread = { ...s.turnPhaseByThread, [threadId]: { ...phase, phase: 'thinking' } };
+  return out;
+}
+
+function phaseAfterItem(s: PhaseSlice, threadId: string, item: ChatItem): Partial<PhaseSlice> {
+  if (item.type === 'assistant-text' || item.type === 'tool' || item.type === 'image-gallery') return outputSeen(s, threadId);
+  const phase = s.turnPhaseByThread[threadId];
+  if (phase && item.type === 'notice' && item.level === 'info' && item.text.startsWith(ACCOUNT_SWITCH_PREFIX)) {
+    return { turnPhaseByThread: { ...s.turnPhaseByThread, [threadId]: { ...phase, phase: 'switching' } } };
+  }
+  return {};
+}
 
 /** A draft never starts in bypassPermissions (main confirms it when the thread starts). */
 function safeDraftMode(mode: UiPermissionMode): UiPermissionMode {
@@ -320,6 +384,10 @@ export interface AppStoreState {
   chatItemsByThread: Record<string, ChatItem[]>;
   streamingItemIdByThread: Record<string, string | null>;
   permissionRequests: PermissionRequest[];
+  /** Running turns: their phase and start time (cleared on turn-end / error). */
+  turnPhaseByThread: Record<string, TurnPhase>;
+  /** ACP threads: last time this renderer saw their session alive (controls or output). */
+  acpLiveAt: Record<string, number>;
 
   // account login pty + terminal pty (lightweight: raw byte stream stays component-local, see events.ts)
   loginSessions: Record<string, LoginSessionState>;
@@ -480,6 +548,8 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
   chatItemsByThread: {},
   streamingItemIdByThread: {},
   permissionRequests: [],
+  turnPhaseByThread: {},
+  acpLiveAt: {},
 
   loginSessions: {},
   ptyStatusByThread: {},
@@ -903,11 +973,13 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
           return {
             chatItemsByThread: { ...s.chatItemsByThread, [threadId]: upsertChatItem(items, item) },
             streamingItemIdByThread: { ...s.streamingItemIdByThread, [threadId]: event.itemId },
+            ...outputSeen(s, threadId),
           };
         });
         break;
       case 'item-upsert':
         set((s) => ({
+          ...phaseAfterItem(s, threadId, event.item),
           chatItemsByThread: {
             ...s.chatItemsByThread,
             [threadId]: upsertChatItem(
@@ -922,7 +994,16 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
         }));
         break;
       case 'turn-start':
-        set((s) => ({ streamingItemIdByThread: { ...s.streamingItemIdByThread, [threadId]: null } }));
+        set((s) => ({
+          streamingItemIdByThread: { ...s.streamingItemIdByThread, [threadId]: null },
+          // A retried attempt inside the same turn (account rotation) keeps its timer and its "계정 전환" phase.
+          turnPhaseByThread: {
+            ...s.turnPhaseByThread,
+            [threadId]: s.turnPhaseByThread[threadId]
+              ? { ...s.turnPhaseByThread[threadId]!, phase: s.turnPhaseByThread[threadId]!.phase === 'switching' ? 'switching' : startPhase(s, threadId) }
+              : { phase: startPhase(s, threadId), startedAt: Date.now() },
+          },
+        }));
         break;
       case 'turn-end':
         set((s) => {
@@ -931,6 +1012,7 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
           const done = event.ok && !watching;
           return {
             streamingItemIdByThread: { ...s.streamingItemIdByThread, [threadId]: null },
+            turnPhaseByThread: withoutKey(s.turnPhaseByThread, threadId),
             ...(done ? { unseenDone: { ...s.unseenDone, [threadId]: true as const } } : {}),
           };
         });
@@ -940,8 +1022,13 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
         // (item-upsert / history merge drop same-text local errors), and a recent identical notice is not repeated.
         set((s) => {
           const items = s.chatItemsByThread[threadId] ?? EMPTY_CHAT_ITEMS;
-          const recent = items.slice(-3);
-          if (recent.some((i) => i.type === 'notice' && i.level === 'error' && i.text === event.message)) return {};
+          // Same turn only: a retried message that fails the same way gets its own card.
+          let turnStart = items.length;
+          while (turnStart > 0 && items[turnStart - 1]!.type !== 'user') turnStart--;
+          const recent = items.slice(Math.max(turnStart, items.length - 3));
+          // A failed turn may have lost its agent process: the next send starts (or loads) a session again.
+          const settled = { turnPhaseByThread: withoutKey(s.turnPhaseByThread, threadId), acpLiveAt: withoutKey(s.acpLiveAt, threadId) };
+          if (recent.some((i) => i.type === 'notice' && i.level === 'error' && i.text === event.message)) return settled;
           const notice: ChatItem = {
             type: 'notice',
             id: `${LOCAL_ERROR_PREFIX}${++localErrorSeq}`,
@@ -950,6 +1037,7 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
             createdAt: Date.now(),
           };
           return {
+            ...settled,
             chatItemsByThread: { ...s.chatItemsByThread, [threadId]: [...items, notice] },
             streamingItemIdByThread: { ...s.streamingItemIdByThread, [threadId]: null },
           };
@@ -1007,7 +1095,9 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
 
   applyLocalAuthUpdated: (localAuth) => set({ localAuth }),
 
-  applyAgentControls: (threadId, controls) => set((s) => ({ threads: withAcpControls(s.threads, threadId, controls) })),
+  // Controls arrive once the ACP session is open (new / load / resume), so a preparing turn is now thinking.
+  applyAgentControls: (threadId, controls) =>
+    set((s) => ({ threads: withAcpControls(s.threads, threadId, controls), ...outputSeen(s, threadId) })),
 
   applyAgentUsageUpdated: (agent, snapshot) => set((s) => ({ agentUsage: { ...s.agentUsage, [agent]: snapshot } })),
 

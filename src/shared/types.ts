@@ -233,6 +233,11 @@ export interface AppSettings {
   codexDefaultModel: string;
   /** Codex reasoning effort of a new chat. */
   codexDefaultEffort: CodexEffortLevel;
+  /**
+   * Codex executable override (absolute path; '' = auto-detect: ChatGPT.app, login-shell PATH, common dirs). Stored
+   * only after `--version` reported a supported `codex-cli`.
+   */
+  codexPath: string;
   /** Settings schema revision (SETTINGS_REV); drives one-time default migrations. Not user-editable. */
   settingsRev: number;
 }
@@ -530,6 +535,8 @@ export interface LocalAuthInfo {
   /** Display-only origin ('~/.codex/auth.json', 'Keychain: Claude Code-credentials', '~/.local/bin/hermes'). */
   source: string;
   version: string | null;
+  /** Codex: the detected engine executable (`codex app-server`), shown on the Accounts card. */
+  enginePath?: string | null;
   /** Short reason code / text without secrets. */
   detail: string | null;
   checkedAt: number;

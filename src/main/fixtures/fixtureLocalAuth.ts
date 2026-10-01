@@ -2,6 +2,7 @@
 // `HOPECODE_FIXTURE_AGENTS="codex:logged-out,hermes:not-installed"` overrides per-agent state (dev env only).
 import type { AgentKind, LocalAuthInfo, LocalAuthState } from '../../shared/types';
 import type { LocalAuthService } from '../contracts';
+import { CODEX_MIN_VERSION } from '../agents/agentBinaries';
 import { createLocalAuthService } from '../agents/localAuth/localAuthService';
 
 const STATES: LocalAuthState[] = ['logged-in', 'logged-out', 'not-installed', 'error'];
@@ -26,6 +27,9 @@ export function createFixtureLocalAuth(env: NodeJS.ProcessEnv = process.env): Lo
     const state = overrides[agent] ?? defaults.state;
     const base: LocalAuthInfo = { agent, ...defaults, state, checkedAt: AT };
     if (state === 'logged-in') return base;
+    if (state === 'not-installed' && agent === 'codex') {
+      return { ...base, method: null, email: null, plan: null, version: null, enginePath: null, detail: `ChatGPT 앱 또는 Codex CLI(${CODEX_MIN_VERSION} 이상) 설치가 필요합니다` };
+    }
     return { ...base, method: null, email: null, plan: null, provider: null, defaultModel: null, defaultProvider: null, detail: state === 'error' ? 'fixture-error' : null };
   }
 
@@ -46,7 +50,8 @@ export function createFixtureLocalAuth(env: NodeJS.ProcessEnv = process.env): Lo
     plan: 'plus',
     provider: null,
     source: '~/.codex/auth.json',
-    version: null,
+    version: '0.159.2',
+    enginePath: '/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex',
     detail: null,
   });
   const hermes = make('hermes', {

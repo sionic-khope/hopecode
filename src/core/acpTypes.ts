@@ -127,12 +127,15 @@ export interface CodexLaunchInput {
 }
 
 /**
- * `-c key="value"` argv for codex-acp (process-only overrides; `~/.codex/config.toml` is never written).
- * Values come from the fixed permission table and validated model / effort only.
+ * codex-acp 2.x launch env: `CODEX_CONFIG` (JSON thread config: model / model_reasoning_effort) and
+ * `INITIAL_AGENT_MODE` (session mode id). Process-only; `~/.codex/config.toml` is never written. Values come from the
+ * fixed permission table and validated model / effort only.
  */
-export type CodexLaunchArgsResult = { ok: true; args: string[] } | { ok: false; error: 'invalid-model' | 'invalid-effort' };
+export type CodexLaunchEnvResult =
+  | { ok: true; env: { CODEX_CONFIG: string; INITIAL_AGENT_MODE: string } }
+  | { ok: false; error: 'invalid-model' | 'invalid-effort' };
 
-export type CodexLaunchArgsFn = (input: CodexLaunchInput) => CodexLaunchArgsResult;
+export type CodexLaunchEnvFn = (input: CodexLaunchInput) => CodexLaunchEnvResult;
 
 /** One `session/set_config_option` the runner should send after a session opened. */
 export interface AcpConfigSet {

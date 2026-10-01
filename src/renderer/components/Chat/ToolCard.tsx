@@ -1,10 +1,12 @@
-import { createContext, memo, useContext, useState } from 'react';
+import { createContext, memo, useContext, useEffect, useRef, useState } from 'react';
 import { displayPath } from '../../../core/displayPath';
 import type { ToolItem } from '../../../shared/types';
 import { Collapse } from '../common';
 import { CheckCircleIcon, ChevronIcon, ErrorCircleIcon, SpinnerIcon, iconForTool } from './icons';
 import { DiffView } from './DiffView';
 import { ToolImages } from '../Images/ChatImages';
+import { useTicker } from './TurnActivity';
+import { formatElapsed } from './agentIssues';
 import './Chat.css';
 
 export interface ToolCardProps {
@@ -14,6 +16,10 @@ export interface ToolCardProps {
 
 /** Thread folder + home, so tool summaries show `src/a.ts` / `~/x` instead of long absolute paths. */
 export const ToolPathContext = createContext<{ cwd?: string | null; home?: string | null }>({});
+
+/** The thread's turn is running: pending tool cards show "실행 중…" and their elapsed time (a pending card left over
+ *  from an earlier, interrupted turn keeps only its spinner). */
+export const TurnLiveContext = createContext(false);
 
 /** Best-effort one-line summary of a tool_use input, per tool name. */
 function summarize(item: ToolItem, cwd?: string | null, home?: string | null): string {
@@ -66,6 +72,15 @@ export const ToolCard = memo(function ToolCard({ item, defaultExpanded = false }
   const Icon = iconForTool(item.name);
   const running = item.result === undefined;
   const hasError = item.isError === true;
+  const live = useContext(TurnLiveContext) && running;
+  const now = useTicker(live);
+  // The check pops in only when this card watched the call finish (not for finished calls loaded from history).
+  const sawRunning = useRef(running);
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    if (running) sawRunning.current = true;
+    else if (sawRunning.current) setSettled(true);
+  }, [running]);
   const paths = useContext(ToolPathContext);
   const summary = summarize(item, paths.cwd, paths.home);
   const hasPatch = Array.isArray(item.patch) && item.patch.length > 0;
@@ -74,7 +89,11 @@ export const ToolCard = memo(function ToolCard({ item, defaultExpanded = false }
     !hasPatch && diffs.length === 0 && item.name === 'Edit' && typeof item.input.old_string === 'string' && typeof item.input.new_string === 'string';
 
   return (
-    <div className={`hc-tool${open ? ' hc-tool--open' : ''}`} data-tool-id={item.toolUseId}>
+    <div
+      className={`hc-tool${open ? ' hc-tool--open' : ''}${live ? ' hc-tool--running' : ''}`}
+      data-tool-id={item.toolUseId}
+      data-state={running ? 'running' : hasError ? 'error' : 'done'}
+    >
       <button
         type="button"
         className="hc-tool__header"
@@ -87,8 +106,14 @@ export const ToolCard = memo(function ToolCard({ item, defaultExpanded = false }
         <span className="hc-tool__name">{item.name}</span>
         <span className="hc-tool__summary">{summary}</span>
         <span
-          className={`hc-tool__status ${running ? 'hc-tool__status--running' : hasError ? 'hc-tool__status--error' : 'hc-tool__status--ok'}`}
+          className={`hc-tool__status ${running ? 'hc-tool__status--running' : hasError ? 'hc-tool__status--error' : 'hc-tool__status--ok'}${settled ? ' hc-tool__status--settled' : ''}`}
+          role={live ? 'status' : undefined}
         >
+          {live ? (
+            <span className="hc-tool__progress">
+              실행 중…<span className="hc-tool__elapsed" aria-hidden>{formatElapsed(now - item.createdAt)}</span>
+            </span>
+          ) : null}
           {running ? (
             <SpinnerIcon width={13} height={13} />
           ) : hasError ? (

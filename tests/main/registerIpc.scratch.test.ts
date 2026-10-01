@@ -61,6 +61,7 @@ interface SetupOptions {
   send?: ChatSendResult;
   usable?: Partial<Record<AgentKind, boolean>>;
   bypassOk?: boolean;
+  checkCodexPath?: (path: string) => Promise<string | null>;
 }
 
 function setup(opts: SetupOptions = {}) {
@@ -195,6 +196,7 @@ function setup(opts: SetupOptions = {}) {
     },
     gitService: git,
     editorLauncher: { open: async (editor: string, dir: string) => void calls.push(`editor:${editor}:${dir}`) },
+    ...(opts.checkCodexPath ? { checkCodexPath: opts.checkCodexPath } : {}),
     testMode: true,
   } as unknown as RegisterIpcServices;
   const ipcMain = createFakeIpcMain();
@@ -484,5 +486,31 @@ describe('account:remove / account:setLocalDefault wiring (removeAccountWithHand
     expect(store.get().settings.localClaudeInPool).toBe(true);
     expect(rechecks).toEqual([{ agent: 'claude-code', force: true }]);
     expect(accountOps).toEqual(['addLocalDefault:local@example.com']);
+  });
+});
+
+describe('settings:update codexPath (Settings > Codex 실행 파일 경로)', () => {
+  it('stores a path only after main checked it; a refused path changes nothing; empty resets without a check', async () => {
+    const checked: string[] = [];
+    const { ipcMain, store } = setup({
+      checkCodexPath: async (path) => {
+        checked.push(path);
+        return path === '/ok/codex' ? null : 'codex-cli 0.100.0은(는) 지원하지 않습니다';
+      },
+    });
+    await ipcMain.invoke('settings:update', { codexPath: '/ok/codex' });
+    expect(store.get().settings.codexPath).toBe('/ok/codex');
+    await expect(ipcMain.invoke('settings:update', { codexPath: '/old/codex' })).rejects.toThrow(/지원하지 않습니다/);
+    expect(store.get().settings.codexPath).toBe('/ok/codex');
+    await expect(ipcMain.invoke('settings:update', { codexPath: 'relative/codex' })).rejects.toThrow();
+    await ipcMain.invoke('settings:update', { codexPath: '' });
+    expect(store.get().settings.codexPath).toBe('');
+    expect(checked).toEqual(['/ok/codex', '/old/codex']);
+  });
+
+  it('without a checker a non-empty path is refused', async () => {
+    const { ipcMain, store } = setup();
+    await expect(ipcMain.invoke('settings:update', { codexPath: '/any/codex' })).rejects.toThrow();
+    expect(store.get().settings.codexPath).toBe('');
   });
 });

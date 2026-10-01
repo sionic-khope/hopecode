@@ -205,8 +205,9 @@ describe('AcpRunner (codex profile)', () => {
     expect(turnEnds(ev)).toEqual([{ type: 'turn-end', ok: true }]);
     expect(s.thread().status).toBe('idle');
     expect(s.thread().acp?.sessionId).toMatch(/^fake-/);
-    expect(s.thread().acp?.controls?.modes.map((m) => m.id)).toEqual(['read-only', 'auto', 'full-access']);
-    expect(s.thread().acp?.controls?.currentModeId).toBe('auto');
+    expect(s.thread().acp?.controls?.modes.map((m) => m.id)).toEqual(['read-only', 'workspace-write', 'agent', 'agent-full-access']);
+    // Spawned with INITIAL_AGENT_MODE=workspace-write (permission default), never the adapter's `agent` default.
+    expect(s.thread().acp?.controls?.currentModeId).toBe('workspace-write');
     expect(s.broadcaster.of('agent:controls').length).toBeGreaterThan(0);
     // Persisted: user + assistant text.
     const logged = s.threadLog.items.get('t1') ?? [];
@@ -340,7 +341,7 @@ describe('AcpRunner (codex profile)', () => {
     mkdirSync(s.stateDir, { recursive: true });
     writeFileSync(
       join(s.stateDir, 'fake-empty.json'),
-      JSON.stringify({ sessionId: 'fake-empty', cwd: s.cwd, history: [], modeId: 'auto', model: 'gpt-6.1-sol', effort: 'high', configSets: [], turn: 0 }),
+      JSON.stringify({ sessionId: 'fake-empty', cwd: s.cwd, history: [], modeId: 'workspace-write', model: 'gpt-6.1-sol', effort: 'high', configSets: [], turn: 0 }),
     );
     await turn(s.runner, '[whoami]');
     expect(reported(s.events(), 'WHOAMI').sessionId).toBe('fake-empty');
@@ -361,7 +362,7 @@ describe('AcpRunner (codex profile)', () => {
     const s = setup({ env: { FAKE_ACP_AUTH_REQUIRED: '1' } });
     await turn(s.runner, 'one');
     expect(turnEnds(s.events())).toEqual([{ type: 'turn-end', ok: false, reason: 'auth' }]);
-    expect(notices(s.events()).at(-1)).toContain('npx @openai/codex login');
+    expect(notices(s.events()).at(-1)).toContain('codex login');
     expect(s.problems).toEqual(['codex']);
     expect(s.thread().status).toBe('idle');
     await turn(s.runner, 'two');
@@ -387,16 +388,24 @@ describe('AcpRunner (codex profile)', () => {
     expect(items(s.events())[0]).toMatchObject({ type: 'user', images: [{ mediaType: 'image/png' }] });
   });
 
-  it('spawn -c values already match: no set_config_option; thread model / effort kept', async () => {
+  it('spawn CODEX_CONFIG values already match: no set_config_option; thread model / effort kept', async () => {
     const s = setup();
     await turn(s.runner, '/config');
     const cfg = reported(s.events(), 'CONFIG');
-    expect(cfg).toMatchObject({ model: 'gpt-6.1-sol', reasoning_effort: 'high', approval_policy: 'on-request', sandbox_mode: 'workspace-write', configSets: [] });
+    expect(cfg).toMatchObject({
+      model: 'gpt-6.1-sol',
+      reasoning_effort: 'high',
+      approval_policy: 'on-request',
+      sandbox_mode: 'workspace-write',
+      initialMode: 'workspace-write',
+      codexConfig: { model: 'gpt-6.1-sol', model_reasoning_effort: 'high' },
+      configSets: [],
+    });
   });
 
   it('open-time reconcile: differing current values -> one set_config_option each', async () => {
     const base = createAcpFixtureLauncher({ profile: 'codex', scriptPath: FAKE_AGENT, stateDir: join(tmp(), 'state') });
-    // Drop the -c model / effort arguments so the agent starts on its own defaults (gpt-6-sol / medium).
+    // Drop the CODEX_CONFIG model / effort so the agent starts on its own defaults (gpt-6-sol / medium).
     const launcher: AcpLauncher = {
       resolve: (cwd, o) => base.resolve(cwd, { ...o, model: null, effort: null }),
     };
@@ -442,7 +451,7 @@ describe('AcpRunner (codex profile)', () => {
     expect(reported(s.events(), 'CONFIG')).toMatchObject({ modeId: 'read-only', sandbox_mode: 'workspace-write' });
   });
 
-  it('permission chip without a matching mode: respawn with new -c arguments, then load', async () => {
+  it('permission chip without a matching mode: respawn with a new INITIAL_AGENT_MODE, then load', async () => {
     const s = setup();
     await turn(s.runner, 'hi');
     const sessionId = s.thread().acp!.sessionId;
@@ -451,24 +460,50 @@ describe('AcpRunner (codex profile)', () => {
     await s.runner.whenSettled();
     await turn(s.runner, '[whoami]');
     const who = reported(s.events(), 'WHOAMI');
-    expect(who).toMatchObject({ sessionId, sandbox_mode: 'read-only', approval_policy: 'on-request' });
+    expect(who).toMatchObject({ sessionId, sandbox_mode: 'read-only', approval_policy: 'on-request', initialMode: 'read-only' });
   });
 
   it('agent-side switch to full access is reverted with set_mode (chip never escalates)', async () => {
     const s = setup();
-    await turn(s.runner, '/mode'); // auto -> full-access
+    await turn(s.runner, '/mode agent-full-access');
     expect(s.thread().permissionMode).toBe('default');
     expect(notices(s.events()).at(-1)).toContain('전체 액세스');
-    await waitFor(() => s.thread().acp?.controls?.currentModeId === 'auto');
+    await waitFor(() => s.thread().acp?.controls?.currentModeId === 'workspace-write');
     await turn(s.runner, '/config');
-    expect(reported(s.events(), 'CONFIG').modeId).toBe('auto');
+    expect(reported(s.events(), 'CONFIG').modeId).toBe('workspace-write');
     expect(s.conns).toHaveLength(1);
+  });
+
+  it('agent-side switch to Auto review (`agent`) is reverted like an escalation, also under a confirmed bypass', async () => {
+    for (const permissionMode of ['default', 'bypassPermissions'] as const) {
+      const s = setup({ thread: { permissionMode } });
+      await turn(s.runner, '/mode agent');
+      expect(s.thread().permissionMode).toBe(permissionMode);
+      expect(notices(s.events()).at(-1)).toContain('자동 리뷰 모드(Auto review)');
+      const back = permissionMode === 'default' ? 'workspace-write' : 'agent-full-access';
+      await waitFor(() => s.thread().acp?.controls?.currentModeId === back);
+      await turn(s.runner, '/config');
+      expect(reported(s.events(), 'CONFIG').modeId).toBe(back);
+      s.runner.abort();
+    }
+  });
+
+  it('a session loaded in Auto review (`agent`) is switched to the permission mode before the first prompt', async () => {
+    const s = setup({ thread: { acp: { sessionId: 'fake-agent', controls: null } } });
+    mkdirSync(s.stateDir, { recursive: true });
+    writeFileSync(
+      join(s.stateDir, 'fake-agent.json'),
+      JSON.stringify({ sessionId: 'fake-agent', cwd: s.cwd, history: [], modeId: 'agent', model: 'gpt-6.1-sol', effort: 'high', configSets: [], turn: 0 }),
+    );
+    await turn(s.runner, '[whoami]');
+    expect(reported(s.events(), 'WHOAMI').modeId).toBe('workspace-write');
+    expect(notices(s.events()).some((n) => n.includes('자동 리뷰 모드'))).toBe(true);
   });
 
   it('a full-access revert that fails kills the agent; the next send respawns', async () => {
     const s = setup({ env: { FAKE_ACP_SET_MODE_FAIL: '1' } });
     await turn(s.runner, 'hi');
-    await s.runner.send('/mode'); // auto -> full-access; the revert set_mode fails
+    await s.runner.send('/mode agent-full-access'); // the revert set_mode fails
     await s.runner.whenSettled();
     expect((await s.conns[0]!.exited).signal).toBe('SIGKILL');
     expect(notices(s.events()).some((n) => n.includes('전체 액세스'))).toBe(true);
@@ -485,10 +520,10 @@ describe('AcpRunner (codex profile)', () => {
       mkdirSync(s.stateDir, { recursive: true });
       writeFileSync(
         join(s.stateDir, 'fake-full.json'),
-        JSON.stringify({ sessionId: 'fake-full', cwd: s.cwd, history: [], modeId: 'full-access', model: 'gpt-6.1-sol', effort: 'high', configSets: [], turn: 0 }),
+        JSON.stringify({ sessionId: 'fake-full', cwd: s.cwd, history: [], modeId: 'agent-full-access', model: 'gpt-6.1-sol', effort: 'high', configSets: [], turn: 0 }),
       );
       await turn(s.runner, '[whoami]');
-      const expected = permissionMode === 'default' ? 'auto' : 'full-access';
+      const expected = permissionMode === 'default' ? 'workspace-write' : 'agent-full-access';
       expect(reported(s.events(), 'WHOAMI').modeId).toBe(expected);
       expect(notices(s.events()).some((n) => n.includes('전체 액세스 모드'))).toBe(permissionMode === 'default');
       s.runner.abort();
@@ -498,7 +533,7 @@ describe('AcpRunner (codex profile)', () => {
 
   it('with a confirmed bypass the full-access mode stays; an agent switch to read-only mirrors to plan', async () => {
     const s = setup({ thread: { permissionMode: 'bypassPermissions' } });
-    await turn(s.runner, '/mode'); // full-access (spawned with danger-full-access) -> read-only
+    await turn(s.runner, '/mode'); // agent-full-access (spawned with INITIAL_AGENT_MODE) -> read-only (wraps)
     expect(s.thread().permissionMode).toBe('plan');
     expect(notices(s.events())).toEqual([]);
   });
@@ -507,7 +542,7 @@ describe('AcpRunner (codex profile)', () => {
     const s = setup({ env: { FAKE_ACP_INIT_DELAY_MS: '300' } });
     expect(await s.runner.send('[whoami]')).toEqual({ accepted: true });
     await waitFor(() => s.conns.length === 1);
-    await s.runner.setPermissionMode('plan'); // initialize pending: spawned with the old -c, no live session yet
+    await s.runner.setPermissionMode('plan'); // initialize pending: spawned with the old env, no live session yet
     await s.runner.whenSettled();
     expect(reported(s.events(), 'WHOAMI')).toMatchObject({ modeId: 'read-only' });
     expect(s.thread().acp?.controls?.currentModeId).toBe('read-only');
@@ -521,7 +556,7 @@ describe('AcpRunner (codex profile)', () => {
     await waitFor(() => s.conns.length === 1);
     await s.runner.setPermissionMode('plan'); // open #1 (default): set_mode fails -> respawn with plan
     await waitFor(() => s.conns.length === 2);
-    await s.runner.setPermissionMode('bypassPermissions'); // open #2 (plan, loaded in auto): set_mode fails again
+    await s.runner.setPermissionMode('bypassPermissions'); // open #2 (plan, loaded in workspace-write): set_mode fails again
     await s.runner.whenSettled();
     expect(s.conns).toHaveLength(2);
     expect(texts(s.events()).some((t) => t.startsWith('WHOAMI'))).toBe(false);
@@ -548,7 +583,7 @@ describe('AcpRunner (codex profile)', () => {
     await turn(s.runner, 'hi');
     await s.runner.setAgentConfig('reasoning_effort', 'ultra');
     expect(s.thread().effort).toBe('ultra');
-    expect(s.thread().acp?.controls?.configOptions.find((o) => o.id === 'approval_preset')).toMatchObject({ category: 'mode' });
+    expect(s.thread().acp?.controls?.configOptions.find((o) => o.id === 'mode')).toMatchObject({ category: 'mode' });
   });
 });
 

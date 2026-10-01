@@ -13,7 +13,7 @@ import type {
   Project,
   Thread,
 } from '../../shared/types';
-import type { AppStoreState, LoginSessionState, PtyStatus, Route } from './appStore';
+import type { AppStoreState, LoginSessionState, PtyStatus, Route, TurnPhase } from './appStore';
 
 const EMPTY_CHAT_ITEMS: ChatItem[] = [];
 const EMPTY_PERMISSIONS: PermissionRequest[] = [];
@@ -83,3 +83,6 @@ export const selectLocalAuth = (s: AppStoreState): LocalAuthInfo[] => s.localAut
 export const selectLocalAuthFor = (s: AppStoreState, agent: AgentKind): LocalAuthInfo | undefined =>
   s.localAuth.find((i) => i.agent === agent);
 export const selectAgentUsage = (s: AppStoreState, agent: AgentKind): AgentUsageSnapshot | null => s.agentUsage[agent] ?? null;
+
+/** Phase + start of the thread's running turn (null when no turn is running in this renderer's view). */
+export const selectTurnPhase = (s: AppStoreState, threadId: string): TurnPhase | null => s.turnPhaseByThread[threadId] ?? null;

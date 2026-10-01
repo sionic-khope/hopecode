@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import * as acp from '@agentclientprotocol/sdk';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createAcpFixtureLauncher } from '../../src/main/fixtures/acpFixtureLaunchers';
+import { createAcpFixtureLauncher, FIXTURE_CODEX_PATH } from '../../src/main/fixtures/acpFixtureLaunchers';
 
 const SCRIPT = resolve(__dirname, '../fixtures/acp/fakeAcpAgent.mjs');
 
@@ -98,8 +98,17 @@ describe('fakeAcpAgent', () => {
       expect(init.agentCapabilities.loadSession).toBe(true);
       expect(init.agentCapabilities.promptCapabilities.image).toBe(true);
       expect(init.agentCapabilities.sessionCapabilities.close).toBeDefined();
-      expect(created.modes.currentModeId).toBe('auto');
-      expect(created.modes.availableModes.map((m: any) => m.id)).toEqual(['read-only', 'auto', 'full-access']);
+      expect(init.agentInfo.name).toBe('@agentclientprotocol/codex-acp');
+      // No INITIAL_AGENT_MODE: the adapter's own default (Auto review), which Hopecode never relies on.
+      expect(created.modes.currentModeId).toBe('agent');
+      expect(created.modes.availableModes.map((m: any) => m.id)).toEqual(['read-only', 'workspace-write', 'agent', 'agent-full-access']);
+      expect(created.configOptions.map((o: any) => [o.id, o.category])).toEqual([
+        ['mode', 'mode'],
+        ['collaboration_mode', 'collaboration_mode'],
+        ['model', 'model'],
+        ['reasoning_effort', 'thought_level'],
+        ['fast-mode', 'model_config'],
+      ]);
       const byId = Object.fromEntries(created.configOptions.map((o: any) => [o.id, o]));
       expect(byId.model.category).toBe('model');
       expect(byId.model.currentValue).toBe('gpt-6-sol');
@@ -107,16 +116,29 @@ describe('fakeAcpAgent', () => {
       expect(byId.reasoning_effort.currentValue).toBe('medium');
     });
 
-    it('reflects -c args in [whoami], /config and the initial mode', async () => {
+    it('reflects CODEX_CONFIG / INITIAL_AGENT_MODE / CODEX_PATH in [whoami], /config and the initial mode', async () => {
       const h = start('codex', {
-        args: ['-c', 'model="gpt-6.1-sol"', '-c', 'model_reasoning_effort="max"', '-c', 'approval_policy="never"', '-c', 'sandbox_mode="danger-full-access"'],
+        env: {
+          CODEX_CONFIG: JSON.stringify({ model: 'gpt-6.1-sol', model_reasoning_effort: 'max' }),
+          INITIAL_AGENT_MODE: 'agent-full-access',
+          CODEX_PATH: '/x/codex',
+        },
       });
       const { created, sessionId } = await open(h);
-      expect(created.modes.currentModeId).toBe('full-access');
+      expect(created.modes.currentModeId).toBe('agent-full-access');
       expect(created.configOptions.find((o: any) => o.id === 'model').currentValue).toBe('gpt-6.1-sol');
       await prompt(h, sessionId, '[whoami]');
       const who = JSON.parse(texts(h).replace(/^WHOAMI /, ''));
-      expect(who).toMatchObject({ profile: 'codex', model: 'gpt-6.1-sol', reasoning_effort: 'max', approval_policy: 'never', sandbox_mode: 'danger-full-access' });
+      expect(who).toMatchObject({
+        profile: 'codex',
+        model: 'gpt-6.1-sol',
+        reasoning_effort: 'max',
+        approval_policy: 'never',
+        sandbox_mode: 'danger-full-access',
+        initialMode: 'agent-full-access',
+        codexPath: '/x/codex',
+        args: [],
+      });
       h.updates.length = 0;
       await prompt(h, sessionId, '/config');
       const cfg = JSON.parse(texts(h).replace(/^CONFIG /, ''));
@@ -124,9 +146,10 @@ describe('fakeAcpAgent', () => {
     });
 
     it('unknown model falls back to gpt-6-sol; no args -> defaults', async () => {
-      const h = start('codex', { args: ['-c', 'model="made-up"'] });
+      const h = start('codex', { env: { CODEX_CONFIG: '{"model":"made-up"}', INITIAL_AGENT_MODE: 'bogus' } });
       const { created } = await open(h);
       expect(created.configOptions.find((o: any) => o.id === 'model').currentValue).toBe('gpt-6-sol');
+      expect(created.modes.currentModeId).toBe('agent');
     });
 
     it('set_config_option updates and returns configOptions; bad value is an error', async () => {
@@ -241,9 +264,14 @@ describe('fakeAcpAgent', () => {
       const h = start('codex');
       const { sessionId } = await open(h);
       await prompt(h, sessionId, '/mode');
-      expect(h.updates.find((u) => u.sessionUpdate === 'current_mode_update')).toMatchObject({ currentModeId: 'full-access' });
+      // agent (the default) -> agent-full-access
+      expect(h.updates.find((u) => u.sessionUpdate === 'current_mode_update')).toMatchObject({ currentModeId: 'agent-full-access' });
       const cfg = h.updates.find((u) => u.sessionUpdate === 'config_option_update')!;
-      expect(cfg.configOptions.map((o: any) => o.id)).toEqual(['model', 'reasoning_effort', 'approval_preset']);
+      expect(cfg.configOptions.map((o: any) => o.id)).toEqual(['mode', 'collaboration_mode', 'model', 'reasoning_effort', 'fast-mode']);
+      expect(cfg.configOptions[0].currentValue).toBe('agent-full-access');
+      h.updates.length = 0;
+      await prompt(h, sessionId, '/mode workspace-write');
+      expect(h.updates.find((u) => u.sessionUpdate === 'current_mode_update')).toMatchObject({ currentModeId: 'workspace-write' });
     });
 
     it('/image counts image blocks', async () => {
@@ -265,7 +293,7 @@ describe('fakeAcpAgent', () => {
       const b = start('codex');
       await b.req('initialize', { protocolVersion: acp.PROTOCOL_VERSION, clientCapabilities: {} });
       const res = await b.req('session/load', { sessionId, cwd, mcpServers: [] });
-      expect(res.modes.currentModeId).toBe('auto');
+      expect(res.modes.currentModeId).toBe('agent');
       expect(b.updates.map((u) => u.sessionUpdate)).toEqual(['user_message_chunk', 'agent_message_chunk']);
       expect(b.updates[0]!.content.text).toBe('remember me');
       expect(b.updates[1]!.content.text).toBe('FAKE-ACP(codex): remember me');
@@ -373,12 +401,19 @@ describe('fakeAcpAgent', () => {
     it('builds argv/env for each profile and honours unavailable', () => {
       const base = { scriptPath: SCRIPT, stateDir };
       const codex = createAcpFixtureLauncher({ ...base, profile: 'codex' }).resolve(cwd, { model: 'gpt-6.1-sol', effort: 'high', permissionMode: 'plan', gitCeiling: '/x' });
-      expect(codex.ok && codex.spec.args).toEqual([
-        SCRIPT, '-c', 'model="gpt-6.1-sol"', '-c', 'model_reasoning_effort="high"', '-c', 'approval_policy="on-request"', '-c', 'sandbox_mode="read-only"',
-      ]);
-      expect(codex.ok && codex.spec.env).toMatchObject({ FAKE_ACP_PROFILE: 'codex', FAKE_ACP_STATE_DIR: stateDir, ELECTRON_RUN_AS_NODE: '1', GIT_CEILING_DIRECTORIES: '/x' });
+      expect(codex.ok && codex.spec.args).toEqual([SCRIPT]);
+      expect(codex.ok && codex.spec.env).toMatchObject({
+        FAKE_ACP_PROFILE: 'codex',
+        FAKE_ACP_STATE_DIR: stateDir,
+        ELECTRON_RUN_AS_NODE: '1',
+        GIT_CEILING_DIRECTORIES: '/x',
+        CODEX_PATH: FIXTURE_CODEX_PATH,
+        CODEX_CONFIG: '{"model":"gpt-6.1-sol","model_reasoning_effort":"high"}',
+        INITIAL_AGENT_MODE: 'read-only',
+      });
       const hermes = createAcpFixtureLauncher({ ...base, profile: 'hermes', env: { FAKE_ACP_NO_MODELS: '1' } }).resolve(cwd, { permissionMode: 'default' });
       expect(hermes.ok && hermes.spec.args).toEqual([SCRIPT]);
+      expect(hermes.ok && hermes.spec.env).not.toHaveProperty('INITIAL_AGENT_MODE');
       expect(hermes.ok && hermes.spec.env.FAKE_ACP_NO_MODELS).toBe('1');
       expect(createAcpFixtureLauncher({ ...base, profile: 'hermes', unavailable: 'not-logged-in' }).resolve(cwd, { permissionMode: 'default' })).toEqual({ ok: false, reason: 'not-logged-in' });
     });

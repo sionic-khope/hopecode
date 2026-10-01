@@ -61,6 +61,10 @@ test('Accounts: one section per agent with the "이 Mac에서 감지됨" card', 
   await expect(page.getByTestId('local-auth-claude-code')).toContainText('local@fixture.test');
   await expect(page.getByTestId('local-auth-codex')).toContainText('codex@fixture.test');
   await expect(page.getByTestId('local-auth-codex')).toContainText(/plus/i);
+  // The detected Codex engine (fixture: ChatGPT.app's codex) and its version.
+  await expect(page.getByTestId('local-auth-engine-codex')).toHaveText(
+    '/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex · codex-cli 0.159.2',
+  );
   await expect(page.getByTestId('local-auth-hermes')).toContainText('fixture-provider');
   await page.mouse.move(10, 700);
   await screenshot(page, 'v7-accounts-agents', SHOTS);
@@ -125,4 +129,22 @@ test('agents that are not installed / not logged in are disabled in the agent me
   await expect(page.getByTestId('local-auth-codex')).toHaveAttribute('data-state', 'logged-out');
   await expect(page.getByTestId('local-auth-hermes')).toHaveAttribute('data-state', 'not-installed');
   await expectNoSecrets(page);
+});
+
+test('no Codex engine (ChatGPT.app / codex CLI): Codex is disabled with the install hint', async () => {
+  await run.app.close();
+  run = await launch(sandbox, { env: { HOPECODE_FIXTURE_LOCAL_CLAUDE: '1', HOPECODE_FIXTURE_AGENTS: 'codex:not-installed' }, poolSize: 4 });
+  const { page } = run;
+  await openDraft(page);
+  await page.getByTestId('draft').locator('.hc-chip--agent').click();
+  const codex = page.getByRole('menu', { name: '에이전트' }).getByRole('menuitemradio', { name: /^Codex/ });
+  await expect(codex).toBeDisabled();
+  await expect(codex).toContainText('ChatGPT 앱 또는 Codex CLI 설치 필요');
+  await page.keyboard.press('Escape');
+
+  await openFromMore(page, '계정');
+  const card = page.getByTestId('local-auth-codex');
+  await expect(card).toHaveAttribute('data-state', 'not-installed');
+  await expect(card).toContainText('ChatGPT 앱 또는 Codex CLI(0.150.0 이상) 설치가 필요합니다');
+  await expect(page.getByTestId('local-auth-engine-codex')).toHaveCount(0);
 });
