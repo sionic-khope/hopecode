@@ -73,15 +73,18 @@ test('top-right toggle, live voice without code, menu cues, silent history, off 
       expect(box.y).toBeLessThan(60);
       await screenshot(page, 'v13-sound-toggle', SHOTS);
 
-      // Live reply in the thread on screen: voice blips, none inside the ``` block; send and done cues.
+      // Live reply in the thread on screen: voice blips, none inside the ``` block; a send cue and nothing at turn end.
       threadTitle = '[code] first';
       await startThread(page, sandbox, threadTitle);
       await expect(page.locator('.hc-messages')).toContainText('Call it with your name.');
       await clearLog(page);
       await sendMessage(page, '[code] again');
       await expect(page.locator('.hc-messages .hc-msg-user__bubble').last()).toHaveText('[code] again');
-      await expect.poll(async () => (await soundLog(page)).some((e) => e.kind === 'done')).toBe(true);
+      await expect(page.locator('.hc-messages')).toContainText('Call it with your name.');
+      await expect.poll(async () => (await soundLog(page)).some((e) => e.kind === 'voice')).toBe(true);
+      await page.waitForTimeout(400);
       const log = await soundLog(page);
+      expect(log.some((e) => e.kind === 'done')).toBe(false);
       expect(log.some((e) => e.kind === 'send')).toBe(true);
       const voice = log.filter((e) => e.kind === 'voice');
       expect(voice.length).toBeGreaterThan(0);

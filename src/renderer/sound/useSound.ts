@@ -1,10 +1,13 @@
 // Wires the sound engine to the app: voice blips from live `chat:event` text deltas (never from history loads, which
-// do not go through events), done when a turn finishes, and select / back for clicks and Escape anywhere in the
-// document. Mount once (App).
+// do not go through events) and select / back for clicks and Escape anywhere in the document. Mount once (App).
+//
+// Deltas arrive in bursts of many characters; their blips go through a short queue played one per VOICE_STEP_MS
+// (like a text box typing), never several at once. The queue is tiny so the voice never trails the text, and it is
+// dropped -- with the ringing blip cut -- when the turn ends or the thread leaves the screen. No cue at turn end.
 import { useEffect } from 'react';
 import { on } from '../api';
 import { useAppStore } from '../store';
-import { applySoundEnabled, playSfx, playVoice, windowFocused } from './engine';
+import { applySoundEnabled, playSfx, playVoice, stopVoice, windowFocused } from './engine';
 import { createVoiceState, feedVoice, type VoiceState } from './voicePlanner';
 
 /** What a click lands on that counts as "clickable" (gets select / back). */
@@ -49,6 +52,11 @@ function onKeyDown(e: KeyboardEvent): void {
   if (document.querySelector(OVERLAY)) playSfx('back');
 }
 
+/** One blip per this many ms while the queue has entries (about the game's text speed). */
+export const VOICE_STEP_MS = 66;
+/** Queued blips beyond this are dropped (oldest first): the voice keeps up with the text instead of trailing it. */
+export const VOICE_QUEUE_MAX = 3;
+
 /** Planner state per thread, for the reply item it is following. */
 interface Track {
   itemId: string | null;
@@ -58,14 +66,33 @@ interface Track {
 export function useSound(): void {
   useEffect(() => {
     const tracks = new Map<string, Track>();
-    const offEvents = on('chat:event', ({ threadId, event }) => {
-      if (event.type === 'turn-start') {
-        tracks.delete(threadId);
+    /** Pending blips of the one thread that may speak (the one on screen). */
+    let queue: { threadId: string; itemId: string; agent: Parameters<typeof playVoice>[0]; pos: number }[] = [];
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const silence = (): void => {
+      queue = [];
+      if (timer) clearInterval(timer);
+      timer = null;
+      stopVoice();
+    };
+    const speaking = (threadId: string): boolean => {
+      const s = useAppStore.getState();
+      return s.route === 'chat' && s.selectedThreadId === threadId && windowFocused();
+    };
+    const step = (): void => {
+      const next = queue.shift();
+      if (!next || !speaking(next.threadId)) {
+        silence();
         return;
       }
-      if (event.type === 'turn-end') {
+      playVoice(next.agent, { threadId: next.threadId, itemId: next.itemId, pos: next.pos });
+    };
+
+    const offEvents = on('chat:event', ({ threadId, event }) => {
+      if (event.type === 'turn-start' || event.type === 'turn-end') {
         tracks.delete(threadId);
-        if (event.ok && windowFocused()) playSfx('done');
+        if (queue[0]?.threadId === threadId || queue.length === 0) silence();
         return;
       }
       if (event.type !== 'text-delta') return;
@@ -82,19 +109,25 @@ export function useSound(): void {
       // Always feed the planner (code fences stay tracked); speak only for the thread on screen in a focused window.
       const { state, blips } = feedVoice(track.state, event.text, performance.now());
       track.state = state;
-      if (blips.length === 0) return;
-      const s = useAppStore.getState();
-      if (s.route !== 'chat' || s.selectedThreadId !== threadId || !windowFocused()) return;
-      const thread = s.threads.find((t) => t.id === threadId);
+      if (blips.length === 0 || !speaking(threadId)) return;
+      const thread = useAppStore.getState().threads.find((t) => t.id === threadId);
       if (!thread) return;
-      for (const pos of blips) playVoice(thread.agent, { threadId, itemId: event.itemId, pos });
+      if (queue.length > 0 && queue[0]!.threadId !== threadId) silence();
+      for (const pos of blips) queue.push({ threadId, itemId: event.itemId, agent: thread.agent, pos });
+      if (queue.length > VOICE_QUEUE_MAX) queue.splice(0, queue.length - VOICE_QUEUE_MAX);
+      if (!timer) {
+        step();
+        timer = setInterval(step, VOICE_STEP_MS);
+      }
     });
     const offStore = useAppStore.subscribe((s, prev) => {
       if (s.settings.soundEnabled !== prev.settings.soundEnabled) applySoundEnabled(s.settings.soundEnabled);
+      if (s.selectedThreadId !== prev.selectedThreadId || s.route !== prev.route) silence();
     });
     document.addEventListener('click', onClick, true);
     document.addEventListener('keydown', onKeyDown, true);
     return () => {
+      silence();
       offEvents();
       offStore();
       document.removeEventListener('click', onClick, true);

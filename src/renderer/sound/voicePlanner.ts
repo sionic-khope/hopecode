@@ -3,6 +3,8 @@
 // spaces / punctuation / line breaks, silence inside fenced and inline code, and a long reply fades out (each new
 // paragraph gets a short burst back).
 
+/** Typing time one character takes on the planner's clock (ms): a burst-delivered chunk is spread as if typed. */
+export const VOICE_CHAR_MS = 30;
 /** Shortest gap between two blips (ms). */
 export const VOICE_MIN_GAP_MS = 62;
 /** Rest after sentence punctuation / a line break (ms). */
@@ -38,6 +40,8 @@ export interface VoiceState {
   burst: number;
   /** Characters seen (position of the next character in the reply). */
   pos: number;
+  /** Typing clock (ms): never behind the arrival time, one VOICE_CHAR_MS per character. */
+  clock: number;
 }
 
 export function createVoiceState(): VoiceState {
@@ -53,6 +57,7 @@ export function createVoiceState(): VoiceState {
     newlines: 0,
     burst: 0,
     pos: 0,
+    clock: -Infinity,
   };
 }
 
@@ -69,15 +74,18 @@ export function strideAt(voiced: number): number {
 }
 
 /**
- * Feeds one text chunk that arrived at `now` (ms). Returns the next state and the reply positions (character index)
- * that blip. A chunk arrives at one instant, so it blips at most once (the minimum gap applies within it too).
+ * Feeds one text chunk that arrived at `arrivedAt` (ms). Returns the next state and the reply positions (character
+ * index) that blip. Timing runs on a typing clock (VOICE_CHAR_MS per character, never behind the arrival time), so a
+ * chunk delivered at once still blips at a steady, typed-out rate instead of once or all together.
  */
-export function feedVoice(prev: VoiceState, text: string, now: number): { state: VoiceState; blips: number[] } {
+export function feedVoice(prev: VoiceState, text: string, arrivedAt: number): { state: VoiceState; blips: number[] } {
   const s: VoiceState = { ...prev };
   const blips: number[] = [];
+  let now = Math.max(s.clock, arrivedAt);
   for (const ch of text) {
     const pos = s.pos;
     s.pos += ch.length;
+    now += VOICE_CHAR_MS;
     if (ch === '\n') {
       if (s.fenceLine) s.fence = !s.fence;
       s.line = '';
@@ -118,5 +126,6 @@ export function feedVoice(prev: VoiceState, text: string, now: number): { state:
     s.lastAt = now;
     if (s.burst > 0) s.burst--;
   }
+  s.clock = now;
   return { state: s, blips };
 }

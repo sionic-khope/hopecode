@@ -103,8 +103,13 @@ function slotBuffer(a: AudioContext, slot: ThemeSoundSlot): Promise<AudioBuffer 
   return hit;
 }
 
-/** Plays the slot's file when the theme folder has one; otherwise `synth`. */
-function playSlot(slots: ThemeSoundSlot[], synth: (a: AudioContext, out: GainNode) => void, rate = 1): void {
+/** Plays the slot's file when the theme folder has one; otherwise `synth`. `onSource` gets the file's source node. */
+function playSlot(
+  slots: ThemeSoundSlot[],
+  synth: (a: AudioContext, out: GainNode) => void,
+  rate = 1,
+  onSource?: (src: AudioBufferSourceNode) => void,
+): void {
   const io = audio();
   if (!io) return;
   const pending = slots.map((slot) => slotBuffer(io.ctx, slot)).find((p) => p !== null);
@@ -122,7 +127,31 @@ function playSlot(slots: ThemeSoundSlot[], synth: (a: AudioContext, out: GainNod
     src.playbackRate.value = rate;
     src.connect(io.out);
     src.start();
+    onSource?.(src);
   });
+}
+
+/** The voice file still ringing: the next blip cuts it, like the game's text writer (stop, then play). */
+let voiceSrc: AudioBufferSourceNode | null = null;
+
+function takeVoice(src: AudioBufferSourceNode): void {
+  stopVoice();
+  voiceSrc = src;
+  src.onended = () => {
+    if (voiceSrc === src) voiceSrc = null;
+  };
+}
+
+/** Silences the current voice blip (the reply finished, or the user switched away). */
+export function stopVoice(): void {
+  const src = voiceSrc;
+  voiceSrc = null;
+  if (!src) return;
+  try {
+    src.stop();
+  } catch {
+    // Already stopped.
+  }
 }
 
 type Wave = OscillatorType | 'pulse';
@@ -209,5 +238,5 @@ export function playVoice(agent: AgentKind, info: { threadId: string; itemId: st
   }
   const voice = VOICES[agent];
   const jitter = 1 + (Math.random() - 0.5) * 0.12;
-  playSlot([voice.slot, 'voice'], (a, o) => tone(a, o, voice.wave, [[voice.base * jitter, 0.04]], 0.18));
+  playSlot([voice.slot, 'voice'], (a, o) => tone(a, o, voice.wave, [[voice.base * jitter, 0.04]], 0.18), 1, takeVoice);
 }

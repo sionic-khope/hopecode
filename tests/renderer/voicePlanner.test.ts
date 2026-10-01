@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   VOICE_FADE_END,
   VOICE_FADE_START,
+  VOICE_CHAR_MS,
   VOICE_MIN_GAP_MS,
   createVoiceState,
   feedVoice,
@@ -35,12 +36,16 @@ describe('voice planner', () => {
     expect(h.length).toBeGreaterThanOrEqual(Math.floor(hangul.length / 3));
   });
 
-  it('keeps a minimum gap between blips and blips at most once per chunk', () => {
+  it('keeps a minimum gap on the typing clock; a chunk delivered at once is spread, not one blip or a pile', () => {
+    const minChars = Math.ceil(VOICE_MIN_GAP_MS / VOICE_CHAR_MS);
     const fast = stream('abcdefghijklmnopqrstuvwxyz'.repeat(4), 10).blips;
-    // 104 letters over ~1s at 10ms apart: the 62ms gap allows at most ~17.
-    expect(fast.length).toBeLessThanOrEqual(Math.ceil((104 * 10) / VOICE_MIN_GAP_MS) + 1);
-    const chunk = feedVoice(createVoiceState(), 'a long chunk of plain words arriving at once', 0);
-    expect(chunk.blips).toHaveLength(1);
+    for (let i = 1; i < fast.length; i++) expect(fast[i]! - fast[i - 1]!).toBeGreaterThanOrEqual(minChars);
+    const text = 'a long chunk of plain words arriving at once';
+    const chunk = feedVoice(createVoiceState(), text, 0);
+    expect(chunk.blips.length).toBeGreaterThan(1);
+    expect(chunk.blips.length).toBeLessThanOrEqual(Math.ceil(text.length / minChars));
+    // The clock ran ahead by the typed length, so a chunk right behind it continues the cadence.
+    expect(chunk.state.clock).toBe(text.length * VOICE_CHAR_MS);
   });
 
   it('never blips on spaces, punctuation or line breaks, and rests after them', () => {
