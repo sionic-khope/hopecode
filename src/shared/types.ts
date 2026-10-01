@@ -86,13 +86,23 @@ export interface Project {
   createdAt: number;
 }
 
+/** A pending prompt's attachment as state.json / `thread:updated` show it: metadata only, never content or path. */
+export interface PendingAttachment {
+  kind: AttachmentKind;
+  name: string;
+  mediaType: string;
+  /** Bytes. */
+  size: number;
+}
+
 export interface PendingPrompt {
   text: string;
   kind: 'original' | 'continue';
-  /** Composer image attachments sent with `text` (image content blocks). */
-  images?: ChatImage[];
-  /** Composer PDF / text attachments sent with `text` (document blocks; ACP resource blocks). */
-  files?: PromptFile[];
+  /**
+   * Attachments sent with `text`. Their content lives only in the runner's memory: after a restart it is gone and
+   * the resume asks for them again instead of sending without them.
+   */
+  attachments?: PendingAttachment[];
 }
 
 export type ThreadStatus = 'idle' | 'running' | 'waiting' | 'error';
@@ -261,12 +271,18 @@ export interface AppSettings {
    * only after `--version` reported a supported `codex-cli`.
    */
   codexPath: string;
+  /** 노트 모드 vaults (absolute folder paths the user picked in the native dialog). Changed only through `notes:*`. */
+  noteVaults: string[];
+  /** The vault the notes page shows ('' = none); always one of `noteVaults`. Changed only through `notes:*`. */
+  activeNoteVault: string;
   /** Settings schema revision (SETTINGS_REV); drives one-time default migrations. Not user-editable. */
   settingsRev: number;
 }
 
 /** Fields `settings:update` may change (ToS acknowledgement, pool membership and the revision have their own flows). */
-export type SettingsPatch = Partial<Omit<AppSettings, 'tosNoticeAcknowledged' | 'localClaudeInPool' | 'settingsRev'>>;
+export type SettingsPatch = Partial<
+  Omit<AppSettings, 'tosNoticeAcknowledged' | 'localClaudeInPool' | 'settingsRev' | 'noteVaults' | 'activeNoteVault'>
+>;
 
 export interface PersistedState {
   version: 1;
@@ -471,6 +487,10 @@ export interface ChatReducerState {
   seq: number;
   /** Background subagent tool items (result `async_launched`) awaiting their task_notification, by toolUseId. */
   backgroundTools?: Record<string, ToolItem>;
+  /** Decoded agent image bytes this turn added (reset per turn; MAX_TURN_IMAGE_BYTES). */
+  imageBytes?: number;
+  /** The "images dropped" notice of this turn was shown. */
+  imageBudgetNoticed?: boolean;
 }
 
 // ---------------------------------------------------------------------------

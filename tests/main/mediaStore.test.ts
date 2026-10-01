@@ -140,3 +140,53 @@ describe('subagent transcript collection (SDK parent_tool_use_id) survives the l
     expect(findSubagentNode(buildChatTree(reread), 'nope')).toBeNull();
   });
 });
+
+describe('media store caps and user images (security review M3 / L4 / L3)', () => {
+  /** Distinct valid PNGs (1×1 header + padding). */
+  const png = (bytes: number, tag: number) => {
+    const b = Buffer.alloc(bytes);
+    Buffer.from(PNG, 'base64').copy(b);
+    b[bytes - 1] = tag;
+    return b.toString('base64');
+  };
+
+  it('refuses a write once the thread folder would pass its cap (measured from disk the first time)', async () => {
+    const dir = join(root, 'media');
+    const first = createMediaStore(dir, () => {}, { maxThreadBytes: 2500 });
+    await first.put('t1', { mediaType: 'image/png', data: png(1000, 1) });
+    // A fresh store (app restart) counts what is already on disk.
+    const media = createMediaStore(dir, () => {}, { maxThreadBytes: 2500 });
+    await media.put('t1', { mediaType: 'image/png', data: png(1000, 2) });
+    await expect(media.put('t1', { mediaType: 'image/png', data: png(1000, 3) })).rejects.toThrow(/full/);
+    // The same content again writes nothing and is fine; another thread has its own budget.
+    await expect(media.put('t1', { mediaType: 'image/png', data: png(1000, 2) })).resolves.toMatch(/\.png$/);
+    await expect(media.put('t2', { mediaType: 'image/png', data: png(1000, 3) })).resolves.toMatch(/\.png$/);
+    await media.removeThread('t1');
+    await expect(media.put('t1', { mediaType: 'image/png', data: png(1000, 3) })).resolves.toMatch(/\.png$/);
+  });
+
+  it('user attachment images go to the store too; an older log with base64 user images still reads', async () => {
+    const media = createMediaStore(join(root, 'media'));
+    const log = createThreadLog(join(root, 'threads'), { media });
+    const user: ChatItem = { type: 'user', id: 'u1', text: 'see', images: [{ mediaType: 'image/png', data: PNG }], createdAt: 1 };
+    await log.append('t1', user);
+    const raw = readFileSync(join(root, 'threads', 't1.jsonl'), 'utf8');
+    expect(raw).not.toContain(PNG.slice(0, 40));
+    const [stored] = await log.read('t1');
+    expect(stored).toMatchObject({ type: 'user', images: [{ mediaType: 'image/png', data: '', ref: expect.stringMatching(/\.png$/) }] });
+
+    // Legacy line written before this change: base64 inline, read back unchanged.
+    writeFileSync(join(root, 'threads', 't2.jsonl'), `${JSON.stringify(user)}\n`);
+    expect((await log.read('t2'))[0]).toEqual(user);
+  });
+
+  it('image:copy / image:save refuse inline images whose bytes are not the declared type', async () => {
+    const thread = { id: 't1', cwd: root } as Thread;
+    const actions: ImageActions = { reveal: () => {}, copy: () => {}, save: async () => true };
+    const h = imageHandlers(() => thread, actions, createMediaStore(join(root, 'media')));
+    const gif = btoa('GIF89a\u0001\u0000\u0001\u0000');
+    await expect(h['image:copy']({ threadId: 't1', image: { mediaType: 'image/png', data: gif } })).rejects.toThrow(/invalid image/);
+    await expect(h['image:save']({ threadId: 't1', image: { mediaType: 'image/png', data: gif } })).rejects.toThrow(/invalid image/);
+    await expect(h['image:save']({ threadId: 't1', image: { mediaType: 'image/gif', data: gif } })).resolves.toEqual({ saved: true });
+  });
+});

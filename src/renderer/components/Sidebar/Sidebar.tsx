@@ -29,6 +29,7 @@ export interface SidebarProps extends ThreadRowHandlers {
   onOpenPrs: () => void;
   onOpenSchedule: () => void;
   onOpenPlugins: () => void;
+  onOpenNotes: () => void;
   onOpenAccounts: () => void;
   onOpenUsage: () => void;
   onOpenSettings: () => void;
@@ -60,6 +61,7 @@ export const Sidebar = memo(function Sidebar({
   onOpenPrs,
   onOpenSchedule,
   onOpenPlugins,
+  onOpenNotes,
   onOpenAccounts,
   onOpenUsage,
   onOpenSettings,
@@ -128,6 +130,7 @@ export const Sidebar = memo(function Sidebar({
         onOpenPrs={onOpenPrs}
         onOpenSchedule={onOpenSchedule}
         onOpenPlugins={onOpenPlugins}
+        onOpenNotes={onOpenNotes}
         onOpenAccounts={onOpenAccounts}
         onOpenUsage={onOpenUsage}
         onOpenSettings={onOpenSettings}

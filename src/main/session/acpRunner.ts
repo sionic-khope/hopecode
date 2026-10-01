@@ -126,7 +126,7 @@ export class AcpRunner implements AgentRunner {
     private readonly deps: AcpRunnerDeps,
   ) {
     this.agent = deps.agent;
-    this.reducer = initialAcpReducerState(threadId, 0);
+    this.reducer = initialAcpReducerState(threadId, 0, this.agent);
     this.timeouts = {
       initialize: ACP_INITIALIZE_TIMEOUT_MS,
       open: ACP_SESSION_OPEN_TIMEOUT_MS,
@@ -384,7 +384,7 @@ export class AcpRunner implements AgentRunner {
     this.turnNo += 1;
     // Chunks the agent sent between turns are confirmed (and persisted) before the reducer starts over.
     const settledTools = this.flushReducer();
-    this.reducer = { ...initialAcpReducerState(this.threadId, this.turnNo), settledTools };
+    this.reducer = { ...initialAcpReducerState(this.threadId, this.turnNo, this.agent), settledTools };
     // Checked again against what this session reported (the composer only knew the agent's defaults).
     const { blocks: prompt, dropped } = acpPromptBlocks(text, images, files, liteCaps(conn.init?.agentCapabilities?.promptCapabilities));
     if (dropped.length > 0) {
@@ -557,7 +557,7 @@ export class AcpRunner implements AgentRunner {
       this.sessionId = opened.sessionId;
       // Anything the previous connection's reducer still held is confirmed under its own id namespace first.
       this.flushReducer();
-      this.reducer = initialAcpReducerState(this.threadId, this.turnNo);
+      this.reducer = initialAcpReducerState(this.threadId, this.turnNo, this.agent);
       this.tag = randomUUID().slice(0, 8);
       // Slash commands come in a notification (possibly before this response); the last list stays until replaced.
       const knownCommands = this.controls().commands;
@@ -726,7 +726,7 @@ export class AcpRunner implements AgentRunner {
     if (this.replay) {
       // History is already in the thread log: only controls / context are kept.
       this.replay.count += 1;
-      const r = reduceAcpUpdate(initialAcpReducerState(this.threadId, 0), n.update, this.deps.now());
+      const r = reduceAcpUpdate(initialAcpReducerState(this.threadId, 0, this.agent), n.update, this.deps.now());
       this.applySignals(r.signals, true);
       return;
     }

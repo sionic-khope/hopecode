@@ -150,7 +150,7 @@ export function createPermissionBroker(deps: PermissionBrokerDeps): PermissionBr
           requestId: `acp-${randomUUID()}`,
           threadId,
           toolUseId: tool.toolCallId,
-          toolName: toolNameFor(tool.kind, title),
+          toolName: toolNameFor(tool.kind, title, agent),
           input: acpToolInput(title, tool.rawInput),
           title: title || undefined,
           hasSessionSuggestion: sessionOption !== null,

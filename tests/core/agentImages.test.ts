@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   MAX_AGENT_IMAGE_BASE64,
+  MAX_TURN_IMAGE_BYTES,
+  admitTurnImages,
   acpToolImages,
   imageCaption,
   imagesOfBlocks,
@@ -11,9 +13,11 @@ import {
 import { FIXTURE_PNG_BASE64 } from '../../src/main/fixtures/fakeQuery';
 
 const PNG = FIXTURE_PNG_BASE64;
-const JPEG = btoa(String.fromCharCode(0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46, 0x49, 0x46));
+// SOI, then an SOF0 frame header (1×1): the pixel size is read from it.
+const JPEG = btoa(String.fromCharCode(0xff, 0xd8, 0xff, 0xc0, 0, 0x0b, 8, 0, 1, 0, 1, 1, 1, 0x11, 0));
 const GIF = btoa('GIF89a\u0001\u0000\u0001\u0000');
-const WEBP = btoa('RIFF\u001a\u0000\u0000\u0000WEBPVP8 ');
+// VP8X header: canvas 1×1 (width-1 / height-1 as 24-bit little endian).
+const WEBP = btoa('RIFF\u001a\u0000\u0000\u0000WEBPVP8X\u000a\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000');
 const SVG = btoa('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
 
 describe('toAgentImage (whitelist + magic bytes + size cap)', () => {
@@ -65,5 +69,25 @@ describe('imageCaption', () => {
       'playwright · browser_take_screenshot · https://b.test/',
     );
     expect(imageCaption({ name: 'Read', input: { file_path: 'a.png' } })).toBeNull();
+  });
+});
+
+describe('toAgentImage pixel cap and the per-turn image budget (security review M1 / M3)', () => {
+  it('refuses a PNG whose IHDR declares a decompression bomb, and one with no readable size', () => {
+    const head = Buffer.from(PNG, 'base64');
+    const bomb = Buffer.from(head);
+    bomb.writeUInt32BE(100_000, 16);
+    bomb.writeUInt32BE(100_000, 20);
+    expect(toAgentImage('image/png', bomb.toString('base64'))).toBeNull();
+    expect(toAgentImage('image/png', btoa('\x89PNG\r\n\x1a\n'))).toBeNull();
+    expect(toAgentImage('image/png', PNG)).not.toBeNull();
+  });
+
+  it('admitTurnImages keeps images in order while the budget holds', () => {
+    const img = { mediaType: 'image/png' as const, data: 'A'.repeat(4 * 1024 * 1024) }; // 3 MB decoded
+    const r = admitTurnImages([img, img], MAX_TURN_IMAGE_BYTES - 4 * 1024 * 1024);
+    expect(r.kept).toHaveLength(1);
+    expect(r.dropped).toBe(1);
+    expect(r.used).toBe(MAX_TURN_IMAGE_BYTES - 1024 * 1024);
   });
 });

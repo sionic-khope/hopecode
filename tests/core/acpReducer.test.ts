@@ -535,6 +535,7 @@ describe('reduceAcpUpdate: tool images (image generation, MCP screenshots)', () 
 });
 
 describe('reduceAcpUpdate: Codex collab subagents (spawnAgent / wait)', () => {
+  const codex = initialAcpReducerState('t1', 1, 'codex');
   const states = (child: string, status: string, message: string | null = null) => ({ [child]: { status, message } });
   const spawnStart = { sessionUpdate: 'tool_call', toolCallId: 'sp', title: 'spawnAgent', kind: 'other', status: 'in_progress', rawInput: { prompt: 'Summarize README\nin one line', receiverThreadIds: [], agentsStates: {} } } as SessionUpdate;
   const spawnDone = { sessionUpdate: 'tool_call_update', toolCallId: 'sp', status: 'completed', rawInput: { receiverThreadIds: ['c1'], agentsStates: states('c1', 'running') } } as SessionUpdate;
@@ -542,7 +543,7 @@ describe('reduceAcpUpdate: Codex collab subagents (spawnAgent / wait)', () => {
   const waitDone = { sessionUpdate: 'tool_call_update', toolCallId: 'w', status: 'completed', rawInput: { receiverThreadIds: ['c1'], agentsStates: states('c1', 'completed', 'README has one line.') } } as SessionUpdate;
 
   it('a spawnAgent call is an Agent (subagent) card with type, task label and prompt', () => {
-    const r = run([spawnStart, spawnDone]);
+    const r = run([spawnStart, spawnDone], codex);
     const card = tools(r.events).at(-1)!;
     expect(card.name).toBe('Agent');
     expect(card.input).toMatchObject({ subagent_type: 'codex-agent', description: 'Summarize README', prompt: 'Summarize README\nin one line' });
@@ -551,7 +552,7 @@ describe('reduceAcpUpdate: Codex collab subagents (spawnAgent / wait)', () => {
   });
 
   it('wait reports the spawned agent running, then done with its message as the result', () => {
-    const r = run([spawnStart, spawnDone, waitStart]);
+    const r = run([spawnStart, spawnDone, waitStart], codex);
     const running = tools(r.events).filter((t) => t.toolUseId === 'sp').at(-1)!;
     expect(running.taskStatus).toBe('running');
     const done = run([waitDone], r.state);
@@ -561,9 +562,74 @@ describe('reduceAcpUpdate: Codex collab subagents (spawnAgent / wait)', () => {
   });
 
   it('an aborted turn stops a spawned agent still running', () => {
-    const r = run([spawnStart, spawnDone, waitStart]);
+    const r = run([spawnStart, spawnDone, waitStart], codex);
     const fin = finalizeAcpTurn(r.state, 'cancelled', 5000);
     const stopped = fin.events.flatMap((e) => (e.type === 'item-upsert' && e.item.type === 'tool' && e.item.toolUseId === 'sp' ? [e.item] : []));
     expect(stopped.at(-1)).toMatchObject({ taskStatus: 'stopped' });
+  });
+});
+
+describe('reduceAcpUpdate: image caps and spawnAgent spoofing (security review M3 / L6)', () => {
+  const bigPng = (bytes: number, tag: number) => {
+    const head = Buffer.from(PNG, 'base64');
+    const buf = Buffer.alloc(bytes);
+    head.copy(buf);
+    buf[bytes - 1] = tag;
+    return buf.toString('base64');
+  };
+  const imageContent = (data: string) => [{ type: 'content', content: { type: 'image', mimeType: 'image/png', data } }];
+  const notices = (events: ChatEvent[]) => events.flatMap((e) => (e.type === 'item-upsert' && e.item.type === 'notice' ? [e.item] : []));
+
+  it('an update repeating the card images keeps the earlier array and is not charged again', () => {
+    const big = bigPng(9 * 1024 * 1024, 1);
+    const updates = [
+      { sessionUpdate: 'tool_call', toolCallId: 'c', title: 'shot', kind: 'other', status: 'in_progress', content: imageContent(big) },
+      ...Array.from({ length: 10 }, () => ({ sessionUpdate: 'tool_call_update', toolCallId: 'c', status: 'in_progress', content: imageContent(big) })),
+    ] as SessionUpdate[];
+    const r = run(updates);
+    const cards = tools(r.events);
+    expect(cards.every((c) => c.images === cards[0]!.images)).toBe(true);
+    expect(r.state.imageBytes).toBe(9 * 1024 * 1024);
+    expect(notices(r.events)).toHaveLength(0);
+  });
+
+  it('tool images past the per-turn budget are dropped with one notice', () => {
+    const updates = Array.from({ length: 9 }, (_, i) => ({
+      sessionUpdate: 'tool_call',
+      toolCallId: `c${i}`,
+      title: 'shot',
+      kind: 'other',
+      status: 'completed',
+      content: imageContent(bigPng(9 * 1024 * 1024, i)),
+    })) as SessionUpdate[];
+    const r = run(updates);
+    expect(tools(r.events).filter((c) => c.images?.length === 1)).toHaveLength(7);
+    expect(notices(r.events)).toHaveLength(1);
+  });
+
+  it('agent_message_chunk images count against the per-turn count and byte budget', () => {
+    const chunk = (data: string) => ({ sessionUpdate: 'agent_message_chunk', content: { type: 'image', mimeType: 'image/png', data } }) as SessionUpdate;
+    const many = run(Array.from({ length: 40 }, () => chunk(PNG)));
+    const images = (events: ChatEvent[]) => events.filter((e) => e.type === 'item-upsert' && e.item.type === 'assistant-text' && e.item.images);
+    expect(images(many.events)).toHaveLength(32);
+    expect(notices(many.events)).toHaveLength(1);
+    const big = run(Array.from({ length: 9 }, (_, i) => chunk(bigPng(9 * 1024 * 1024, i))));
+    expect(images(big.events)).toHaveLength(7);
+    expect(notices(big.events)).toHaveLength(1);
+  });
+
+  it('only a Codex tool titled spawnAgent becomes a subagent; rawInput cannot spoof the title', () => {
+    const spoof = { sessionUpdate: 'tool_call', toolCallId: 's', title: 'ls', kind: 'execute', status: 'in_progress', rawInput: { title: 'spawnAgent', prompt: 'x' } } as SessionUpdate;
+    const codex = tools(run([spoof], initialAcpReducerState('t1', 1, 'codex')).events)[0]!;
+    expect(codex.name).toBe('Bash');
+    expect(codex.input.title).toBe('ls');
+    expect(codex.input.subagent_type).toBeUndefined();
+
+    const hermesSpawn = { sessionUpdate: 'tool_call', toolCallId: 'h', title: 'spawnAgent', kind: 'other', status: 'in_progress', rawInput: { prompt: 'x' } } as SessionUpdate;
+    const hermes = tools(run([hermesSpawn], initialAcpReducerState('t1', 1, 'hermes')).events)[0]!;
+    expect(hermes.name).toBe('spawnAgent');
+    expect(hermes.input.subagent_type).toBeUndefined();
+    expect(toolNameFor('other', 'spawnAgent', 'codex')).toBe('Agent');
+    expect(toolNameFor('other', 'spawnAgent', 'hermes')).toBe('spawnAgent');
   });
 });

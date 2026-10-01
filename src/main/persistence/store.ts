@@ -11,6 +11,7 @@ import { sanitizeSettings } from '../../core/settings';
 import type { PersistedState, Thread } from '../../shared/types';
 import type { Store, Unsubscribe } from '../contracts';
 import { PRIVATE_FILE_MODE, mkdirPrivate } from './jsonl';
+import { toPublicThread } from './publicThread';
 
 const SAVE_DEBOUNCE_MS = 250;
 
@@ -35,7 +36,7 @@ function migrateThread(raw: Thread): Thread {
   const projectId = typeof t.projectId === 'string' ? t.projectId : null;
   const { acp, ...rest } = t;
   const keepAcp = typeof acp === 'object' && acp !== null && !Array.isArray(acp);
-  return {
+  return toPublicThread({
     ...rest,
     projectId,
     agent,
@@ -43,7 +44,7 @@ function migrateThread(raw: Thread): Thread {
     archived: t.archived === true,
     effort,
     ...(keepAcp ? { acp } : {}),
-  };
+  });
 }
 
 /** Best-effort migration: unknown/missing fields fall back to defaults rather than throwing. */
@@ -95,7 +96,8 @@ export function createStore(filePath: string, opts: StoreOptions = {}): Store {
   async function writeOnce(): Promise<void> {
     await mkdirPrivate(dirname(filePath));
     const tmp = `${filePath}.tmp-${process.pid}-${randomUUID()}`;
-    const data = JSON.stringify(state, null, 2);
+    // Pending attachment content never reaches the disk (runner memory only): metadata is all that is written.
+    const data = JSON.stringify({ ...state, threads: state.threads.map(toPublicThread) }, null, 2);
     try {
       const fh = await open(tmp, 'w', PRIVATE_FILE_MODE);
       try {

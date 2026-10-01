@@ -3,6 +3,7 @@
 // extension + magic bytes (core/attachments). The renderer gets an id and a preview; `chat:send` / `thread:start`
 // resolve the ids back to the validated content, so nothing the renderer sends is trusted as file content.
 import { randomUUID } from 'node:crypto';
+import { constants } from 'node:fs';
 import { open, realpath, stat } from 'node:fs/promises';
 import { basename, isAbsolute } from 'node:path';
 import {
@@ -13,6 +14,7 @@ import {
   classifyAttachment,
   decodeText,
   formatBytes,
+  imagePixelProblem,
   sizeProblem,
   type ImageMediaType,
 } from '../../core/attachments';
@@ -26,10 +28,18 @@ interface Entry {
   info: AttachmentInfo;
   image?: ChatImage;
   file?: PromptFile;
+  /** When it was added (TTL). */
+  at: number;
 }
 
 /** Entries kept for composers that have not sent yet (oldest dropped first). */
 const MAX_ENTRIES = 64;
+/** An attachment never sent is forgotten after this long. */
+export const ATTACHMENT_TTL_MS = 30 * 60 * 1000;
+/** Bytes of every held attachment together (oldest dropped first). */
+export const MAX_HELD_BYTES = 200 * 1024 * 1024;
+/** Read-only, never blocking on a FIFO / device swapped in after the checks, never through a symlink. */
+const OPEN_FLAGS = constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW;
 const MAX_NAME_CHARS = 255;
 
 export class AttachmentError extends Error {
@@ -53,8 +63,27 @@ export interface Resolved {
 
 export class AttachmentStore {
   private readonly entries = new Map<string, Entry>();
+  private heldBytes = 0;
 
-  constructor(private readonly opts: { resizeImage?: ImageResizer } = {}) {}
+  constructor(private readonly opts: { resizeImage?: ImageResizer; now?: () => number } = {}) {}
+
+  private now(): number {
+    return this.opts.now?.() ?? Date.now();
+  }
+
+  private drop(id: string): void {
+    const entry = this.entries.get(id);
+    if (!entry) return;
+    this.entries.delete(id);
+    this.heldBytes -= entry.info.size;
+  }
+
+  /** Expired entries out, then the oldest until the count and byte caps hold (Map order = insertion order). */
+  private prune(): void {
+    const cutoff = this.now() - ATTACHMENT_TTL_MS;
+    for (const [id, entry] of this.entries) if (entry.at <= cutoff) this.drop(id);
+    while (this.entries.size > MAX_ENTRIES || this.heldBytes > MAX_HELD_BYTES) this.drop(this.entries.keys().next().value as string);
+  }
 
   /** A picked / dropped file: absolute path -> real path -> regular file within the read cap -> typed content. */
   async fromPath(path: unknown): Promise<AttachmentInfo> {
@@ -73,7 +102,9 @@ export class AttachmentStore {
     if (pre.isDirectory()) throw new AttachmentError('폴더는 첨부할 수 없습니다');
     if (!pre.isFile()) throw new AttachmentError('일반 파일만 첨부할 수 있습니다');
     if (pre.size > MAX_ATTACH_READ_BYTES) throw new AttachmentError(`${formatBytes(MAX_ATTACH_READ_BYTES)}보다 큽니다`);
-    const fh = await open(real, 'r');
+    const fh = await open(real, OPEN_FLAGS).catch(() => {
+      throw new AttachmentError('일반 파일만 첨부할 수 있습니다');
+    });
     let bytes: Buffer;
     try {
       const st = await fh.stat();
@@ -116,8 +147,13 @@ export class AttachmentStore {
     return { attachments, rejected };
   }
 
-  /** Content of `ids` in order; null when an id is unknown (expired) or the message exceeds the count / total cap. */
-  resolve(ids: readonly string[]): Resolved | null {
+  /**
+   * Content of `ids` in order; null when an id is unknown (expired) or the message exceeds the count / total cap.
+   * A successful resolve hands the content over: the entries are forgotten (one send per attachment). `accept`
+   * may still refuse the set (agent cannot take it): null, and the entries stay.
+   */
+  resolve(ids: readonly string[], accept: (r: Resolved) => boolean = () => true): Resolved | null {
+    this.prune();
     if (ids.length > MAX_ATTACHMENTS || new Set(ids).size !== ids.length) return null;
     const out: Resolved = { images: [], files: [], infos: [] };
     let total = 0;
@@ -129,12 +165,17 @@ export class AttachmentStore {
       if (entry.image) out.images.push(entry.image);
       if (entry.file) out.files.push(entry.file);
     }
-    return total > MAX_ATTACH_TOTAL_BYTES ? null : out;
+    if (total > MAX_ATTACH_TOTAL_BYTES || !accept(out)) return null;
+    for (const id of ids) this.drop(id);
+    return out;
   }
 
   private add(name: string, raw: Buffer, path: string | undefined): AttachmentInfo {
     const typed = classifyAttachment(name, raw);
     if (!typed.ok) throw new AttachmentError(typed.reason);
+    // Header only: a bitmap too large to decode is refused before anything (resizer, renderer) decodes it.
+    const pixels = typed.kind === 'image' ? imagePixelProblem(raw) : null;
+    if (pixels) throw new AttachmentError(pixels);
     let bytes = raw;
     let mediaType = typed.mediaType;
     let resized = false;
@@ -158,7 +199,7 @@ export class AttachmentStore {
       linkable: path !== undefined,
       ...(resized ? { resized } : {}),
     };
-    const entry: Entry = { info };
+    const entry: Entry = { info, at: this.now() };
     if (typed.kind === 'image') {
       const image: ChatImage = { mediaType: mediaType as ImageMediaType, data: bytes.toString('base64') };
       entry.image = image;
@@ -168,7 +209,8 @@ export class AttachmentStore {
       entry.file = { kind: typed.kind, name, mediaType, size: bytes.length, data, ...(path ? { path } : {}) };
     }
     this.entries.set(info.id, entry);
-    while (this.entries.size > MAX_ENTRIES) this.entries.delete(this.entries.keys().next().value as string);
+    this.heldBytes += info.size;
+    this.prune();
     return info;
   }
 }

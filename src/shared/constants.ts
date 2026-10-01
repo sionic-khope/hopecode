@@ -98,8 +98,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
   codexDefaultModel: CODEX_DEFAULT_MODEL,
   codexDefaultEffort: CODEX_DEFAULT_EFFORT,
   codexPath: '',
+  noteVaults: [],
+  activeNoteVault: '',
   settingsRev: SETTINGS_REV,
 };
+
+/** Registered note vaults at most. */
+export const NOTE_VAULTS_MAX = 20;
 
 /** Startup model probe: give up on `initializationResult()` after this long (the cached / fallback list stays). */
 export const MODEL_PROBE_TIMEOUT_MS = 30_000;

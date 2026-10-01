@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   MAX_ATTACH_TOTAL_BYTES,
   MAX_ATTACHMENTS,
+  MAX_IMAGE_PIXELS,
   MAX_IMAGE_ATTACH_BYTES,
   MAX_PDF_BYTES,
   MAX_TEXT_BYTES,
@@ -13,6 +14,8 @@ import {
   defaultPromptCaps,
   extOf,
   fileUri,
+  imageDimensions,
+  imagePixelProblem,
   liteCaps,
   sizeProblem,
   sniffMagic,
@@ -158,5 +161,44 @@ describe('prompt blocks', () => {
     ]);
     expect(dropped).toEqual(['이미지 1', 'clip.txt']);
     expect(fileUri('/a/#b?.txt')).toBe('file:///a/%23b%3F.txt');
+  });
+});
+
+describe('imageDimensions: header-only pixel size (security review M1)', () => {
+  const u32 = (n: number) => [(n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff];
+  const u16le = (n: number) => [n & 0xff, (n >> 8) & 0xff];
+  const u24le = (n: number) => [n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff];
+  /** PNG signature + IHDR only: no pixel data at all. */
+  const pngHeader = (w: number, h: number) => bytes([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13], 'IHDR', u32(w), u32(h), [8, 6, 0, 0, 0]);
+
+  it('reads PNG / GIF / JPEG (SOFn after APPn) / WebP VP8, VP8L and VP8X sizes', () => {
+    expect(imageDimensions(pngHeader(640, 480))).toEqual({ width: 640, height: 480 });
+    expect(imageDimensions(bytes('GIF89a', u16le(300), u16le(200)))).toEqual({ width: 300, height: 200 });
+    const app0 = [0xff, 0xe0, 0, 16, ...Array.from('JFIF\0', (c) => c.charCodeAt(0)), 1, 1, 0, 0, 1, 0, 1, 0, 0];
+    const sof2 = [0xff, 0xc2, 0, 11, 8, 0x04, 0x38, 0x07, 0x80, 1, 1, 0x11, 0];
+    expect(imageDimensions(bytes([0xff, 0xd8], app0, sof2))).toEqual({ width: 1920, height: 1080 });
+    const vp8 = bytes('RIFF', [0, 0, 0, 0], 'WEBPVP8 ', [0, 0, 0, 0], [0, 0, 0], [0x9d, 0x01, 0x2a], u16le(800), u16le(600));
+    expect(imageDimensions(vp8)).toEqual({ width: 800, height: 600 });
+    // VP8L: 14-bit width-1 / height-1 packed after the 0x2f signature (here 100 × 50).
+    const w = 99;
+    const h = 49;
+    const bits = w | (h << 14);
+    const vp8l = bytes('RIFF', [0, 0, 0, 0], 'WEBPVP8L', [0, 0, 0, 0], [0x2f, bits & 0xff, (bits >> 8) & 0xff, (bits >> 16) & 0xff, (bits >>> 24) & 0xff]);
+    expect(imageDimensions(vp8l)).toEqual({ width: 100, height: 50 });
+    const vp8x = bytes('RIFF', [0, 0, 0, 0], 'WEBPVP8X', [10, 0, 0, 0], [0, 0, 0, 0], u24le(4095), u24le(2047));
+    expect(imageDimensions(vp8x)).toEqual({ width: 4096, height: 2048 });
+  });
+
+  it('refuses a huge PNG header (IHDR only, no pixels) and images whose size cannot be read', () => {
+    const bomb = pngHeader(100_000, 100_000);
+    expect(bomb.length).toBeLessThan(64);
+    expect(imageDimensions(bomb)).toEqual({ width: 100_000, height: 100_000 });
+    expect(imagePixelProblem(bomb)).toMatch(/해상도가 너무 큽니다/);
+    expect(imagePixelProblem(pngHeader(10_000, 5_000))).toBeNull();
+    expect(imagePixelProblem(pngHeader(MAX_IMAGE_PIXELS / 1000 + 1, 1000))).not.toBeNull();
+    expect(imagePixelProblem(PNG)).toMatch(/읽을 수 없습니다/);
+    expect(imagePixelProblem(JPEG)).toMatch(/읽을 수 없습니다/);
+    expect(imagePixelProblem(WEBP)).toMatch(/읽을 수 없습니다/);
+    expect(imagePixelProblem(pngHeader(0, 10))).not.toBeNull();
   });
 });

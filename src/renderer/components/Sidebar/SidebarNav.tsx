@@ -2,11 +2,11 @@ import { memo, useRef, useState, type ReactNode } from 'react';
 import type { Account } from '../../../shared/types';
 import { Menu, type MenuSection } from '../common';
 import { GlyphChart, GlyphInfo, GlyphKeyboard, GlyphPeople, GlyphSettings } from '../common/glyphs';
-import { IconArchive, IconClock, IconCompose, IconDots, IconPlug, IconPlusCircle, IconPullRequest, IconSearch } from './icons';
+import { IconArchive, IconClock, IconCompose, IconDots, IconNote, IconPlug, IconPlusCircle, IconPullRequest, IconSearch } from './icons';
 import './SidebarNav.css';
 
 /** Main-area page the nav highlights. */
-export type NavPage = 'draft' | 'prs' | 'schedule' | 'plugins' | 'accounts' | 'settings' | null;
+export type NavPage = 'draft' | 'prs' | 'schedule' | 'plugins' | 'notes' | 'accounts' | 'settings' | null;
 
 export interface SidebarNavProps {
   active: NavPage;
@@ -17,6 +17,7 @@ export interface SidebarNavProps {
   onOpenPrs: () => void;
   onOpenSchedule: () => void;
   onOpenPlugins: () => void;
+  onOpenNotes: () => void;
   onOpenAccounts: () => void;
   onOpenUsage: () => void;
   onOpenSettings: () => void;
@@ -26,7 +27,7 @@ export interface SidebarNavProps {
 }
 
 /**
- * Codex-style nav: 새 채팅 (⌘N) · 검색 (⌘K, opens the palette on thread search) · 풀 리퀘스트 · 예약 · 플러그인,
+ * Codex-style nav: 새 채팅 (⌘N) · 검색 (⌘K, opens the palette on thread search) · 풀 리퀘스트 · 예약 · 플러그인 · 노트,
  * then a collapsed 더보기 menu for the less frequent pages (계정, 사용량, 설정, 단축키, 앱 정보, 보관된 스레드).
  */
 export const SidebarNav = memo(function SidebarNav({
@@ -38,6 +39,7 @@ export const SidebarNav = memo(function SidebarNav({
   onOpenPrs,
   onOpenSchedule,
   onOpenPlugins,
+  onOpenNotes,
   onOpenAccounts,
   onOpenUsage,
   onOpenSettings,
@@ -114,6 +116,7 @@ export const SidebarNav = memo(function SidebarNav({
       {page('prs', '풀 리퀘스트', <IconPullRequest />, onOpenPrs)}
       {page('schedule', '예약', <IconClock />, onOpenSchedule)}
       {page('plugins', '플러그인', <IconPlug />, onOpenPlugins)}
+      {page('notes', '노트', <IconNote />, onOpenNotes)}
       <button
         ref={moreRef}
         type="button"

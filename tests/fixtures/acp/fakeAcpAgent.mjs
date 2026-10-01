@@ -216,6 +216,20 @@ function sleep(ms, signal) {
 
 const prompts = new Map(); // sessionId -> AbortController of the running prompt
 
+/** First line of a 노트 모드 prompt (src/core/notes/notePrompt.ts NOTE_PROMPT_HEAD). */
+const NOTE_PROMPT_HEAD = '너는 학습 노트를 쓰는 기술 문서 작성자다.';
+
+/** Same answers as src/main/fixtures/noteFixture.ts, with a `CODEX` tag so e2e can tell the engines apart. */
+function noteAnswer(prompt) {
+  const mode = /## 작업 \(이 섹션\)/.test(prompt) ? 'section' : /## 작업 \(전체 수정\)/.test(prompt) ? 'rewrite' : 'write';
+  const request = (/## 요청\n([^\n]*)/.exec(prompt)?.[1] ?? '').trim();
+  const target = /<target>\n([\s\S]*?)<\/target>/.exec(prompt)?.[1] ?? '';
+  const heading = /^(#{1,6} .*)$/m.exec(target)?.[1] ?? null;
+  if (mode === 'section') return `${heading ?? '### 고친 범위'}\n\nCODEX-SECTION: ${request} 요청대로 다시 쓴 섹션이다.\n`;
+  if (mode === 'rewrite') return `# 전체 수정본\n\nCODEX-REWRITE: ${request} 요청대로 문서 전체를 다시 썼다.\n`;
+  return `# ${request}\n\nCODEX-WRITE: ${request}를 공부하기 위한 노트다.\n\n### 1. 핵심 개념\n\n- fixture 정의다.\n`;
+}
+
 function textOf(blocks) {
   return (blocks ?? [])
     .filter((b) => b.type === 'text')
@@ -283,6 +297,19 @@ async function runTurn(s, params, cx, signal) {
 
   s.history.push({ role: 'user', text });
   const word = text.trim().split(/\s+/)[0] ?? '';
+
+  // 노트 모드 request (src/main/fixtures/noteFixture.ts mirrors this answer for the Claude fixture).
+  if (text.startsWith(NOTE_PROMPT_HEAD)) {
+    const answer = noteAnswer(text);
+    const size = Math.max(1, Math.ceil(answer.length / 8));
+    const delayMs = text.includes('[slow]') ? 400 : 40;
+    for (let i = 0; i < answer.length; i += size) {
+      await sleep(delayMs, signal);
+      if (signal.aborted) return finish('cancelled');
+      await say(answer.slice(i, i + size));
+    }
+    return finish();
+  }
 
   if (text.includes('[whoami]')) {
     await say(whoami(s));

@@ -133,6 +133,81 @@ export function sniffMagic(bytes: Uint8Array): ImageMediaType | 'application/pdf
   return null;
 }
 
+/**
+ * Largest image (width × height) decoded or shown anywhere: a few KB of crafted header can otherwise declare a
+ * gigapixel bitmap (decompression bomb) that nativeImage / Chromium would allocate in full.
+ */
+export const MAX_IMAGE_PIXELS = 50_000_000;
+
+const u16be = (b: Uint8Array, i: number) => (b[i]! << 8) | b[i + 1]!;
+const u16le = (b: Uint8Array, i: number) => b[i]! | (b[i + 1]! << 8);
+const u24le = (b: Uint8Array, i: number) => b[i]! | (b[i + 1]! << 8) | (b[i + 2]! << 16);
+const u32be = (b: Uint8Array, i: number) => ((b[i]! << 24) >>> 0) + ((b[i + 1]! << 16) | (b[i + 2]! << 8) | b[i + 3]!);
+
+/** JPEG frame size from the first SOFn marker (header walk only, no entropy data decoded). */
+function jpegDimensions(b: Uint8Array): { width: number; height: number } | null {
+  let i = 2;
+  while (i + 3 < b.length) {
+    if (b[i] !== 0xff) return null;
+    const marker = b[i + 1]!;
+    if (marker === 0xff) {
+      i += 1; // fill byte
+      continue;
+    }
+    // Standalone markers (TEM, RSTn) carry no length.
+    if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+      i += 2;
+      continue;
+    }
+    if (marker === 0xd9 || marker === 0xda) return null; // EOI / SOS before any frame header
+    const len = u16be(b, i + 2);
+    if (len < 2) return null;
+    const isSof = marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+    if (isSof) {
+      if (i + 9 > b.length) return null;
+      return { height: u16be(b, i + 5), width: u16be(b, i + 7) };
+    }
+    i += 2 + len;
+  }
+  return null;
+}
+
+/**
+ * Pixel size declared by an image's header (PNG IHDR, GIF logical screen, JPEG SOFn, WebP VP8 / VP8L / VP8X), read
+ * without decoding anything; null when the header is missing, truncated or not one of those formats.
+ */
+export function imageDimensions(b: Uint8Array): { width: number; height: number } | null {
+  const type = sniffMagic(b);
+  let dims: { width: number; height: number } | null = null;
+  if (type === 'image/png') {
+    if (b.length >= 24 && startsWith(b, ascii('IHDR'), 12)) dims = { width: u32be(b, 16), height: u32be(b, 20) };
+  } else if (type === 'image/gif') {
+    if (b.length >= 10) dims = { width: u16le(b, 6), height: u16le(b, 8) };
+  } else if (type === 'image/jpeg') {
+    dims = jpegDimensions(b);
+  } else if (type === 'image/webp') {
+    if (startsWith(b, ascii('VP8 '), 12)) {
+      if (b.length >= 30 && startsWith(b, [0x9d, 0x01, 0x2a], 23)) dims = { width: u16le(b, 26) & 0x3fff, height: u16le(b, 28) & 0x3fff };
+    } else if (startsWith(b, ascii('VP8L'), 12)) {
+      if (b.length >= 25 && b[20] === 0x2f) {
+        const [b1, b2, b3, b4] = [b[21]!, b[22]!, b[23]!, b[24]!];
+        dims = { width: 1 + (b1 | ((b2 & 0x3f) << 8)), height: 1 + ((b2 >> 6) | (b3 << 2) | ((b4 & 0x0f) << 10)) };
+      }
+    } else if (startsWith(b, ascii('VP8X'), 12)) {
+      if (b.length >= 30) dims = { width: 1 + u24le(b, 24), height: 1 + u24le(b, 27) };
+    }
+  }
+  return dims && dims.width > 0 && dims.height > 0 ? dims : null;
+}
+
+/** Why an image may not be decoded / shown (unreadable header, more than MAX_IMAGE_PIXELS), or null. */
+export function imagePixelProblem(b: Uint8Array): string | null {
+  const dims = imageDimensions(b);
+  if (!dims) return '이미지 크기를 읽을 수 없습니다';
+  if (dims.width * dims.height > MAX_IMAGE_PIXELS) return `이미지 해상도가 너무 큽니다 (${dims.width}×${dims.height})`;
+  return null;
+}
+
 /** UTF-8 text without NUL bytes, or null (binary / another encoding). A leading BOM is dropped. */
 export function decodeText(bytes: Uint8Array): string | null {
   if (bytes.includes(0)) return null;

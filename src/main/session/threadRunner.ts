@@ -46,6 +46,7 @@ import { claudeConfigDirFor } from '../accounts/localDefault';
 import { scratchDir as defaultScratchDir } from '../paths';
 import { changedImagesBetween, type ImageSnapshot } from '../images/imageFiles';
 import { claudePromptContent } from '../../core/attachments';
+import { toPublicPendingPrompt, toPublicThread } from '../persistence/publicThread';
 import type { PermissionBroker } from './permissionBroker';
 import type { SyncTranscriptFn } from './transcriptSync';
 
@@ -103,6 +104,39 @@ interface TurnState {
   imagesBefore: ImageSnapshot | null;
   done: Promise<void>;
   resolve: () => void;
+}
+
+/** A prompt as the runner sends it: PendingPrompt plus the attachment content (kept in memory only). */
+interface TurnPrompt {
+  text: string;
+  kind: PendingPrompt['kind'];
+  images?: ChatImage[];
+  files?: PromptFile[];
+}
+
+/** Content of a waiting prompt's attachments (never in the Thread: state.json / thread:updated get metadata). */
+interface PendingContent {
+  images: ChatImage[];
+  files: PromptFile[];
+}
+
+const ATTACHMENTS_LOST_TEXT = '대기 중이던 메시지의 첨부가 앱 재시작으로 사라져 보내지 않았습니다. 첨부를 다시 올려 주세요.';
+
+/** The Thread form of `prompt`: text, kind and attachment metadata. */
+function publicPrompt(prompt: TurnPrompt): PendingPrompt {
+  return toPublicPendingPrompt({
+    text: prompt.text,
+    kind: prompt.kind,
+    attachments: [
+      ...(prompt.images ?? []).map((img, i) => ({
+        kind: 'image' as const,
+        name: `이미지 ${i + 1}`,
+        mediaType: img.mediaType,
+        size: Math.floor((img.data.length * 3) / 4),
+      })),
+      ...(prompt.files ?? []).map(({ kind, name, mediaType, size }) => ({ kind, name, mediaType, size })),
+    ],
+  })!;
 }
 
 interface SwitchedFrom {
@@ -184,6 +218,8 @@ export class ThreadRunner implements AgentRunner {
   private readonly closingQueries = new Set<ActiveQuery>();
   /** Query being prepared (close/sync awaits) for this account; account removal waits for it. */
   private preparing: { accountId: string; done: Promise<unknown> } | null = null;
+  /** Attachments of the waiting prompt (memory only; null after a restart even when the prompt lists some). */
+  private pendingContent: PendingContent | null = null;
 
   constructor(
     readonly threadId: string,
@@ -199,11 +235,17 @@ export class ThreadRunner implements AgentRunner {
     const attached = { ...(images.length > 0 ? { images } : {}), ...(files.length > 0 ? { files } : {}) };
     if (thread.status === 'waiting') {
       const prev = thread.pendingPrompt;
+      const content: PendingContent = {
+        images: [...(this.pendingContent?.images ?? []), ...images],
+        files: [...(this.pendingContent?.files ?? []), ...files],
+      };
+      this.pendingContent = content.images.length + content.files.length > 0 ? content : null;
+      // Metadata of attachments whose content is gone (restart) stays listed: the resume then refuses to send.
+      const listed = [...(prev?.attachments ?? []), ...(publicPrompt({ text, kind: 'original', images, files }).attachments ?? [])];
       const merged: PendingPrompt = {
         text: prev?.kind === 'continue' ? `${CONTINUE_PROMPT}\n\n${text}` : text,
         kind: 'original',
-        ...(prev?.images || images.length > 0 ? { images: [...(prev?.images ?? []), ...images] } : {}),
-        ...(prev?.files || files.length > 0 ? { files: [...(prev?.files ?? []), ...files] } : {}),
+        ...(listed.length > 0 ? { attachments: listed } : {}),
       };
       this.patch({ pendingPrompt: merged });
       this.emitItem({ type: 'user', id: this.newId('user'), text, createdAt: this.deps.now(), ...userAttachments(images, files) });
@@ -232,7 +274,20 @@ export class ThreadRunner implements AgentRunner {
     }
     const current = this.thread();
     if (current.status !== 'waiting') return;
-    const prompt = current.pendingPrompt;
+    const pending = current.pendingPrompt;
+    const content = this.pendingContent;
+    const listed = pending?.attachments?.length ?? 0;
+    if (pending && listed > 0 && (!content || content.images.length + content.files.length !== listed)) {
+      // Attachment content never leaves memory: after a restart it is gone, and the message is not sent without it.
+      this.deps.onWaiting(this.threadId, false);
+      this.pendingContent = null;
+      this.patch({ status: 'error', waitingUntil: null, pendingPrompt: null });
+      this.notice('error', ATTACHMENTS_LOST_TEXT);
+      return;
+    }
+    const prompt: TurnPrompt | null = pending
+      ? { text: pending.text, kind: pending.kind, ...(content && content.images.length > 0 ? { images: content.images } : {}), ...(content && content.files.length > 0 ? { files: content.files } : {}) }
+      : null;
     const decision = this.pick(new Set());
     if (decision.type === 'waiting') {
       if (due) this.patch({ waitingUntil: decision.until });
@@ -240,6 +295,7 @@ export class ThreadRunner implements AgentRunner {
     }
     this.deps.onWaiting(this.threadId, false);
     if (decision.type === 'none' || !prompt) {
+      this.pendingContent = null;
       this.patch({ status: 'idle', waitingUntil: null, pendingPrompt: null });
       if (decision.type === 'none') {
         this.notice(
@@ -251,6 +307,7 @@ export class ThreadRunner implements AgentRunner {
       }
       return;
     }
+    this.pendingContent = null;
     this.patch({ waitingUntil: null });
     this.abortRequested = false;
     await this.runTurn(prompt, new Set(), null, null);
@@ -260,6 +317,7 @@ export class ThreadRunner implements AgentRunner {
     const thread = this.thread();
     if (thread.status === 'waiting') {
       this.deps.onWaiting(this.threadId, false);
+      this.pendingContent = null;
       this.patch({ status: 'idle', pendingPrompt: null, waitingUntil: null });
       return;
     }
@@ -421,7 +479,7 @@ export class ThreadRunner implements AgentRunner {
   }
 
   private async runTurn(
-    prompt: PendingPrompt,
+    prompt: TurnPrompt,
     tried: Set<string>,
     switchedFrom: SwitchedFrom | null,
     userText: string | null,
@@ -442,7 +500,9 @@ export class ThreadRunner implements AgentRunner {
     }
 
     if (decision.type === 'waiting') {
-      this.patch({ status: 'waiting', waitingUntil: decision.until, pendingPrompt: prompt });
+      const kept = { images: prompt.images ?? [], files: prompt.files ?? [] };
+      this.pendingContent = kept.images.length + kept.files.length > 0 ? kept : null;
+      this.patch({ status: 'waiting', waitingUntil: decision.until, pendingPrompt: publicPrompt(prompt) });
       this.deps.onWaiting(this.threadId, true);
       const pinnedHome = this.deps.store.get().settings.autoSwitchAccounts === false && this.candidateAccounts(this.thread()).length === 1;
       const who = pinnedHome ? `${this.candidateAccounts(this.thread())[0]?.alias ?? '이'} 계정이 한도에 도달했습니다` : '모든 계정이 한도에 도달했습니다';
@@ -453,7 +513,7 @@ export class ThreadRunner implements AgentRunner {
 
     const accountId = decision.accountId;
     this.busy = true;
-    this.patch({ status: 'running', activeAccountId: accountId, pendingPrompt: prompt, waitingUntil: null });
+    this.patch({ status: 'running', activeAccountId: accountId, pendingPrompt: publicPrompt(prompt), waitingUntil: null });
     if (switchedFrom) {
       const from = this.account(switchedFrom.accountId)?.alias ?? switchedFrom.accountId;
       const to = this.account(accountId)?.alias ?? accountId;
@@ -514,7 +574,8 @@ export class ThreadRunner implements AgentRunner {
     this.flushPartial(active);
     active.flushedPartialId = null;
     // `output` is emitted once per reducer state; re-arm it per turn (gotOutput decides the retry prompt).
-    active.reducer = { ...active.reducer, outputEmitted: false };
+    // The agent image budget is per turn too.
+    active.reducer = { ...active.reducer, outputEmitted: false, imageBytes: 0, imageBudgetNoticed: false };
 
     this.emitEvent({ type: 'turn-start', accountId });
     active.input.push({
@@ -533,7 +594,7 @@ export class ThreadRunner implements AgentRunner {
     return { accepted: true };
   }
 
-  private async finishTurn(turn: TurnState, prompt: PendingPrompt, tried: Set<string>): Promise<void> {
+  private async finishTurn(turn: TurnState, prompt: TurnPrompt, tried: Set<string>): Promise<void> {
     await turn.done;
     if (this.turn === turn) this.turn = null;
     this.flushPartial(turn.active);
@@ -555,7 +616,7 @@ export class ThreadRunner implements AgentRunner {
         this.patch({ status: 'idle', pendingPrompt: null });
         return;
       }
-      const retry: PendingPrompt = turn.gotOutput ? { text: CONTINUE_PROMPT, kind: 'continue' } : prompt;
+      const retry: TurnPrompt = turn.gotOutput ? { text: CONTINUE_PROMPT, kind: 'continue' } : prompt;
       const nextTried = new Set(tried).add(turn.accountId);
       await this.runTurn(retry, nextTried, { accountId: turn.accountId, reason, info: turn.lastRateLimit }, null);
       return;
@@ -888,7 +949,8 @@ export class ThreadRunner implements AgentRunner {
 
   private patch(patch: Partial<Thread>): void {
     const thread = this.deps.store.patchThread(this.threadId, patch);
-    this.deps.broadcaster.emit('thread:updated', { ...thread });
+    // Defense in depth: whatever the patch held, the broadcast carries pending attachment metadata only.
+    this.deps.broadcaster.emit('thread:updated', toPublicThread({ ...thread }));
   }
 
   /** patch() for error paths: the thread may already be deleted. */
@@ -934,7 +996,7 @@ export class ThreadRunner implements AgentRunner {
 }
 
 /** SDK user content for a prompt: plain text, or image / document blocks followed by the text. */
-function promptContent(prompt: PendingPrompt): SDKUserMessage['message']['content'] {
+function promptContent(prompt: TurnPrompt): SDKUserMessage['message']['content'] {
   return claudePromptContent(prompt.text, prompt.images, prompt.files);
 }
 

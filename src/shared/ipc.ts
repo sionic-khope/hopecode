@@ -37,6 +37,17 @@ import type {
   UsageSample,
 } from './types';
 import type { PluginInventory, PullRequestList, Schedule, ScheduleInput } from './nav';
+import type {
+  NoteAiEvent,
+  NoteAiStartRequest,
+  NoteChange,
+  NoteChatItem,
+  NoteDirListing,
+  NoteEntry,
+  NoteFile,
+  NoteGitStatus,
+  NoteSearchResult,
+} from './notes';
 import type { ThemeOverlay } from './theme';
 
 /** renderer -> main (`ipcRenderer.invoke`). `req: void` means no argument. */
@@ -222,6 +233,38 @@ export interface InvokeMap {
    * The renderer never sends a path. `ok: false` without `error` = the dialog was cancelled.
    */
   'thread:exportMarkdown': { req: { threadId: string }; res: { ok: true; path: string } | { ok: false; error?: string } };
+
+  // 노트 모드: paths are relative to the active vault (settings.activeNoteVault); main contains every one of them.
+  /** Native folder picker; the chosen folder is registered and becomes the active vault. Unchanged when cancelled. */
+  'notes:addVault': { req: void; res: AppSettings };
+  /** Switches to a registered vault (absolute path from settings.noteVaults). */
+  'notes:selectVault': { req: { path: string }; res: AppSettings };
+  /** Unregisters a vault (nothing on disk is touched). */
+  'notes:removeVault': { req: { path: string }; res: AppSettings };
+  /** One folder level of the active vault (`dir: ''` = its root): folders and `.md` files, hidden folders left out. */
+  'notes:listDir': { req: { dir: string }; res: NoteDirListing };
+  /** `.md` files of the active vault whose name contains `query` (case-insensitive). */
+  'notes:search': { req: { query: string }; res: NoteSearchResult };
+  'notes:read': { req: { path: string }; res: NoteFile };
+  /** Atomic write (temp file + rename) of an existing or new `.md` file, 2 MB max. */
+  'notes:write': { req: { path: string; text: string }; res: { mtimeMs: number } };
+  /** New empty `.md` file (`.md` appended when missing) or folder; refused when the name exists. */
+  'notes:create': { req: { path: string; kind: 'file' | 'dir' }; res: NoteEntry };
+  /** Renames inside the same folder (`name` is a single segment; files keep `.md`). */
+  'notes:rename': { req: { path: string; name: string }; res: NoteEntry };
+  /** Moves a file or folder to the Trash. The renderer confirms first. */
+  'notes:trash': { req: { path: string }; res: void };
+  /** A link in a note: opened in the browser (https only); false when refused. */
+  'notes:openLink': { req: { url: string }; res: boolean };
+  'notes:gitStatus': { req: void; res: NoteGitStatus };
+  /** `git add` + `git commit` of the changed `.md` files of the active vault only. Never pushes. */
+  'notes:commit': { req: { message: string }; res: GitActionResult<{ sha: string; files: number }> };
+  /** The note's AI conversation summary (stored in the app data folder, never in the vault). */
+  'notes:chat': { req: { path: string }; res: NoteChatItem[] };
+  /** Starts a note AI request; its text streams as `notes:ai` events. */
+  'notes:aiStart': { req: NoteAiStartRequest; res: { ok: true } | { ok: false; error: string } };
+  /** Stops a running request; what streamed so far stays. */
+  'notes:aiStop': { req: { requestId: string }; res: void };
 }
 
 /** main -> renderer (`webContents.send`). */
@@ -261,6 +304,10 @@ export interface EventMap {
   'agent:controls': { threadId: string; controls: AcpControls };
   /** An agent's account usage changed (null = unavailable, hide the meters). */
   'agentUsage:updated': { agent: AgentKind; snapshot: AgentUsageSnapshot | null };
+  /** Files of the active vault changed on disk (fs watch, debounced). */
+  'notes:changed': NoteChange;
+  /** Streamed text / end of a note AI request. */
+  'notes:ai': NoteAiEvent;
 }
 
 export type InvokeChannel = keyof InvokeMap;
@@ -346,6 +393,22 @@ export const INVOKE_CHANNELS = [
   'git:pushPr',
   'git:createBranch',
   'thread:exportMarkdown',
+  'notes:addVault',
+  'notes:selectVault',
+  'notes:removeVault',
+  'notes:listDir',
+  'notes:search',
+  'notes:read',
+  'notes:write',
+  'notes:create',
+  'notes:rename',
+  'notes:trash',
+  'notes:openLink',
+  'notes:gitStatus',
+  'notes:commit',
+  'notes:chat',
+  'notes:aiStart',
+  'notes:aiStop',
 ] as const satisfies readonly InvokeChannel[];
 
 export const EVENT_CHANNELS = [
@@ -372,6 +435,8 @@ export const EVENT_CHANNELS = [
   'agents:updated',
   'agent:controls',
   'agentUsage:updated',
+  'notes:changed',
+  'notes:ai',
 ] as const satisfies readonly EventChannel[];
 
 type Missing<All, Listed> = Exclude<All, Listed>;

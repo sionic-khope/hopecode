@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState, type ClipboardEvent, type DragEvent } from 'react';
 import type { AcpPromptCaps, AgentKind, AttachRejection, AttachResult, AttachmentInfo, ChatFileMeta } from '../../../shared/types';
 import { AGENTS } from '../../../shared/agents';
-import { MAX_ATTACH_READ_BYTES, admitAttachments, extOf, formatBytes, unsupportedReason } from '../../../core/attachments';
+import { MAX_ATTACHMENTS, MAX_ATTACH_READ_BYTES, admitAttachments, extOf, formatBytes, unsupportedReason } from '../../../core/attachments';
 import { attachDropped, invoke } from '../../api';
 import { ipcErrorMessage } from '../../errors';
 import { playSfx } from '../../sound/engine';
@@ -27,7 +27,12 @@ function problemText(problems: readonly AttachRejection[]): string | null {
 async function readPasted(files: File[]): Promise<{ blobs: { name: string; bytes: Uint8Array }[]; rejected: AttachRejection[] }> {
   const blobs: { name: string; bytes: Uint8Array }[] = [];
   const rejected: AttachRejection[] = [];
-  for (const file of files) {
+  for (const [i, file] of files.entries()) {
+    // Main refuses a paste of more than MAX_ATTACHMENTS items outright; the rest get their reason here.
+    if (i >= MAX_ATTACHMENTS) {
+      rejected.push({ name: file.name, reason: `한 메시지에 ${MAX_ATTACHMENTS}개까지 첨부할 수 있습니다` });
+      continue;
+    }
     if (file.size > MAX_ATTACH_READ_BYTES) {
       rejected.push({ name: file.name, reason: `${formatBytes(MAX_ATTACH_READ_BYTES)}보다 큽니다` });
       continue;

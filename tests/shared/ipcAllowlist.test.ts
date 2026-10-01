@@ -1449,6 +1449,39 @@ describe('attach:* and attachment sends', () => {
     expect(noImages.sent).toHaveLength(0);
   });
 
+  it('attach:paste / attach:drop refuse more than MAX_ATTACHMENTS items or an oversized item (L1)', async () => {
+    const { ipcMain } = setup();
+    const many = Array.from({ length: 11 }, (_, i) => ({ name: `f${i}.txt`, bytes: new TextEncoder().encode('x') }));
+    await expect(ipcMain.invoke('attach:paste', { files: many })).rejects.toBeInstanceOf(InvalidIpcRequestError);
+    const huge = new Uint8Array(20 * 1024 * 1024 + 1);
+    await expect(ipcMain.invoke('attach:paste', { files: [{ name: 'a.pdf', bytes: huge }] })).rejects.toBeInstanceOf(InvalidIpcRequestError);
+    const paths = Array.from({ length: 6 }, (_, i) => `/tmp/p${i}.txt`);
+    await expect(ipcMain.invoke('attach:drop', { paths, files: many.slice(0, 5) })).rejects.toBeInstanceOf(InvalidIpcRequestError);
+  });
+
+  it('chat:send: inline images must match their magic bytes, the message total is capped, ids are one-shot (L1 / L3 / L5)', async () => {
+    const { ipcMain, attachments, sent } = setup();
+    const gif = Buffer.from('GIF89a\u0001\u0000\u0001\u0000', 'latin1').toString('base64');
+    await expect(ipcMain.invoke('chat:send', { threadId: 't1', text: 'x', images: [{ mediaType: 'image/png', data: gif }] })).rejects.toBeInstanceOf(
+      InvalidIpcRequestError,
+    );
+    const bigPng = (tag: number) => {
+      const b = Buffer.alloc(4_000_000);
+      Buffer.from(PNG_B64, 'base64').copy(b);
+      b[b.length - 1] = tag;
+      return { mediaType: 'image/png', data: b.toString('base64') };
+    };
+    const inline = Array.from({ length: 5 }, (_, i) => bigPng(i));
+    const doc = attachments.fromBytes('spec.pdf', new Uint8Array(Buffer.concat([Buffer.from(pdf()), Buffer.alloc(2 * 1024 * 1024)])));
+    await expect(ipcMain.invoke('chat:send', { threadId: 't1', text: 'x', images: inline, attachmentIds: [doc.id] })).rejects.toBeInstanceOf(
+      InvalidIpcRequestError,
+    );
+    expect(sent).toHaveLength(0);
+    const small = attachments.fromBytes('a.txt', new TextEncoder().encode('a'));
+    expect(await ipcMain.invoke('chat:send', { threadId: 't1', text: 'x', attachmentIds: [small.id] })).toEqual({ accepted: true });
+    expect(await ipcMain.invoke('chat:send', { threadId: 't1', text: 'x', attachmentIds: [small.id] })).toEqual({ accepted: false, reason: 'attachment' });
+  });
+
   it('thread:start with an unknown attachment creates nothing', async () => {
     const { ipcMain, services } = setup();
     const before = services.store.get().threads.length;

@@ -2,6 +2,7 @@
 // Paths come from the renderer: every one is resolved inside the thread's own folder (imageFiles.resolveThreadImage).
 import { basename, extname } from 'node:path';
 import type { InvokeResponse } from '../../shared/ipc';
+import { imagePixelProblem, sniffMagic } from '../../core/attachments';
 import type { ChatImage, Thread } from '../../shared/types';
 import { MAX_IMAGE_BYTES, readThreadImage, readThreadImageDataUrl, resolveThreadImage } from '../images/imageFiles';
 import type { MediaStore } from '../images/mediaStore';
@@ -23,17 +24,33 @@ export const MAX_CHAT_IMAGES = 8;
 export const MAX_CHAT_IMAGE_BASE64 = Math.ceil((5 * 1024 * 1024 * 4) / 3);
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 
+/**
+ * A renderer-supplied inline image: allowed type, base64 within `maxBase64`, magic bytes that match the declared
+ * type, and a header whose pixel size stays within MAX_IMAGE_PIXELS (nothing decodes a bitmap bomb later).
+ */
 export function isChatImage(v: unknown, maxBase64: number = MAX_CHAT_IMAGE_BASE64): v is ChatImage {
   if (!isPlainObject(v)) return false;
   const { mediaType, data } = v as Record<string, unknown>;
-  return (
-    typeof mediaType === 'string' &&
-    CHAT_IMAGE_TYPES.has(mediaType) &&
-    typeof data === 'string' &&
-    data.length > 0 &&
-    data.length <= maxBase64 &&
-    BASE64.test(data)
-  );
+  if (
+    !(
+      typeof mediaType === 'string' &&
+      CHAT_IMAGE_TYPES.has(mediaType) &&
+      typeof data === 'string' &&
+      data.length > 0 &&
+      data.length <= maxBase64 &&
+      BASE64.test(data)
+    )
+  ) {
+    return false;
+  }
+  const bytes = Buffer.from(data, 'base64');
+  return sniffMagic(bytes) === mediaType && imagePixelProblem(bytes) === null;
+}
+
+/** Decoded bytes of a base64 payload (no padding counted). */
+export function base64Bytes(data: string): number {
+  const pad = data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0;
+  return Math.floor((data.length * 3) / 4) - pad;
 }
 
 export function isChatImageList(v: unknown): v is ChatImage[] {
@@ -102,7 +119,10 @@ export function imageHandlers(
     },
 
     'image:copy': async (req) => {
-      await actions.copy((await bitmapOf('image:copy', req)).buffer);
+      const { buffer } = await bitmapOf('image:copy', req);
+      // The clipboard copy decodes the bitmap in main: never one past the pixel cap (thread-folder files included).
+      assertReq('image:copy', imagePixelProblem(buffer) === null, 'image too large to copy');
+      await actions.copy(buffer);
     },
 
     'image:save': async (req) => {

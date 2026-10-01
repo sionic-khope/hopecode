@@ -1,7 +1,15 @@
 // ACP `session/update` -> ChatEvent mapping (plan 2.4). Pure: the SDK is imported for types only.
 import type { SessionUpdate, StopReason } from '@agentclientprotocol/sdk';
 import type { AcpCommandLite, ChatEvent, ChatImage, ChatItem, ToolFileDiff, ToolItem } from '../shared/types';
-import { acpToolImages, mcpBlocks, mcpText, toAgentImage } from './agentImages';
+import {
+  IMAGE_BUDGET_NOTICE,
+  MAX_MESSAGE_IMAGES_PER_TURN,
+  acpToolImages,
+  admitTurnImages,
+  mcpBlocks,
+  mcpText,
+  toAgentImage,
+} from './agentImages';
 import type {
   AcpReducerState,
   AcpReduceResult,
@@ -29,9 +37,10 @@ const CODEX_SPAWN_TITLE = 'spawnAgent';
 /** Subagent type the card / sprite shows for a Codex-spawned agent. */
 export const CODEX_SUBAGENT_TYPE = 'codex-agent';
 
-export const initialAcpReducerState: InitialAcpReducerStateFn = (threadId, turn) => ({
+export const initialAcpReducerState: InitialAcpReducerStateFn = (threadId, turn, agent) => ({
   threadId,
   turn,
+  ...(agent ? { agent } : {}),
   streamingItemId: null,
   streamingMessageId: null,
   streamingText: '',
@@ -52,8 +61,9 @@ const TOOL_NAMES: Readonly<Record<string, string>> = {
   switch_mode: 'Mode',
 };
 
-export const toolNameFor: ToolNameForFn = (kind, title) =>
-  title === CODEX_SPAWN_TITLE ? 'Agent' : (kind && TOOL_NAMES[kind]) || title.slice(0, 40);
+/** `spawnAgent` is a subagent (`Agent`) only on Codex: another agent naming a tool so is just that tool. */
+export const toolNameFor: ToolNameForFn = (kind, title, agent) =>
+  agent === 'codex' && title === CODEX_SPAWN_TITLE ? 'Agent' : (kind && TOOL_NAMES[kind]) || title.slice(0, 40);
 
 const cap = (text: string, max: number) => (text.length > max ? text.slice(0, max) : text);
 
@@ -114,10 +124,14 @@ function rawOutputText(rawOutput: unknown): string {
   }
 }
 
-/** `{title, kind, locations}` plus the agent's rawInput when it is a small object. */
+/**
+ * `{title, kind, locations}` plus the agent's rawInput when it is a small object. `title` only ever comes from the
+ * update's own title (a rawInput `title` key is dropped), so rawInput cannot turn a tool into a Codex spawn card.
+ */
 function buildInput(
   prev: Record<string, unknown> | undefined,
   src: { title?: string | null; kind?: string | null; locations?: unknown; rawInput?: unknown },
+  agent: AcpReducerState['agent'],
 ): Record<string, unknown> {
   let input: Record<string, unknown> = { ...(prev ?? {}) };
   if (isRecord(src.rawInput)) {
@@ -128,13 +142,17 @@ function buildInput(
       /* circular / unserializable: dropped below */
     }
     // Spread (not Object.assign): an own `__proto__` key stays a plain property.
-    if (size <= MAX_RAW_INPUT_CHARS) input = { ...input, ...src.rawInput };
-    else input.rawInputTruncated = true;
+    if (size <= MAX_RAW_INPUT_CHARS) {
+      const { title: _rawTitle, ...raw } = src.rawInput;
+      input = { ...input, ...raw };
+    } else {
+      input.rawInputTruncated = true;
+    }
   }
   if (typeof src.title === 'string') input.title = cap(src.title, MAX_LABEL_CHARS);
   if (typeof src.kind === 'string') input.kind = cap(src.kind, MAX_LABEL_CHARS);
   if (Array.isArray(src.locations)) input.locations = src.locations.slice(0, MAX_LIST_ITEMS);
-  if (input.title === CODEX_SPAWN_TITLE) {
+  if (agent === 'codex' && input.title === CODEX_SPAWN_TITLE) {
     // Subagent card fields (core/subagents): type, short task label, the full prompt for the detail view.
     const prompt = typeof input.prompt === 'string' ? input.prompt : '';
     input.subagent_type = CODEX_SUBAGENT_TYPE;
@@ -164,11 +182,8 @@ function collabState(state: unknown): { taskStatus: NonNullable<ToolItem['taskSt
   }
 }
 
-/** Images of a tool call update, falling back to the card's earlier ones. */
-function toolImages(content: unknown, rawOutput: unknown, prev: ChatImage[] | undefined): { images?: ChatImage[] } {
-  const images = acpToolImages(content, rawOutput);
-  if (images.length > 0) return { images };
-  return prev ? { images: prev } : {};
+function sameImages(a: readonly ChatImage[], b: readonly ChatImage[] | undefined): boolean {
+  return !!b && a.length === b.length && a.every((img, i) => img.mediaType === b[i]!.mediaType && img.data === b[i]!.data);
 }
 
 const MAX_COMMAND_NAME_CHARS = 64;
@@ -275,6 +290,32 @@ export const reduceAcpUpdate: ReduceAcpUpdateFn = (state, update, now): AcpReduc
     events.push({ type: 'item-upsert', item });
   };
 
+  /** Images dropped over the turn's budget / count: one notice per turn. */
+  const imagesDropped = () => {
+    if (next.imageBudgetNoticed) return;
+    next = { ...next, imageBudgetNoticed: true };
+    pushNotice('warn', IMAGE_BUDGET_NOTICE);
+  };
+
+  /**
+   * Images of a tool call update, falling back to the card's earlier ones. An update repeating the card's images
+   * keeps the earlier array (not charged again); only images new to the card count against the turn's budget.
+   */
+  const toolImages = (content: unknown, rawOutput: unknown, prev: ChatImage[] | undefined): { images?: ChatImage[] } => {
+    const found = acpToolImages(content, rawOutput);
+    if (found.length === 0 || sameImages(found, prev)) return prev ? { images: prev } : {};
+    const known = new Set((prev ?? []).map((img) => img.data));
+    const admitted = admitTurnImages(
+      found.filter((img) => !known.has(img.data)),
+      next.imageBytes ?? 0,
+    );
+    next = { ...next, imageBytes: admitted.used };
+    if (admitted.dropped > 0) imagesDropped();
+    const kept = new Set(admitted.kept);
+    const images = found.filter((img) => known.has(img.data) || kept.has(img));
+    return images.length > 0 ? { images } : prev ? { images: prev } : {};
+  };
+
   const upsertPlan = (entries: unknown) => {
     const item = planItem(next, entries, now);
     if (item) events.push({ type: 'item-upsert', item });
@@ -288,6 +329,7 @@ export const reduceAcpUpdate: ReduceAcpUpdateFn = (state, update, now): AcpReduc
   const syncSpawned = (source: ToolItem) => {
     const states = source.input.agentsStates;
     if (!isRecord(states)) return;
+    if (next.agent !== 'codex') return;
     const isSpawn = source.input.title === CODEX_SPAWN_TITLE;
     for (const [childId, raw] of Object.entries(states)) {
       const state = collabState(raw);
@@ -318,10 +360,17 @@ export const reduceAcpUpdate: ReduceAcpUpdateFn = (state, update, now): AcpReduc
         appendText(`[${name}](${block.uri})`, u.messageId);
       } else if (block?.type === 'image') {
         // An image the agent sends as message content: its own item between the text runs around it.
+        // Counted per turn and charged to the same byte budget as tool images.
         const image = toAgentImage(block.mimeType, block.data);
         if (image) {
-          settleText();
-          events.push({ type: 'item-upsert', item: { type: 'assistant-text', id: allocId('image'), text: '', images: [image], createdAt: now } });
+          const admitted = admitTurnImages([image], next.imageBytes ?? 0);
+          if ((next.messageImages ?? 0) >= MAX_MESSAGE_IMAGES_PER_TURN || admitted.dropped > 0) {
+            imagesDropped();
+          } else {
+            next = { ...next, imageBytes: admitted.used, messageImages: (next.messageImages ?? 0) + 1 };
+            settleText();
+            events.push({ type: 'item-upsert', item: { type: 'assistant-text', id: allocId('image'), text: '', images: [image], createdAt: now } });
+          }
         }
       }
       break;
@@ -336,8 +385,8 @@ export const reduceAcpUpdate: ReduceAcpUpdateFn = (state, update, now): AcpReduc
         type: 'tool',
         id: `tool-${next.turn}-${toolCallId}`,
         toolUseId: toolCallId,
-        name: toolNameFor(u.kind, typeof u.title === 'string' ? u.title : ''),
-        input: buildInput(undefined, u),
+        name: toolNameFor(u.kind, typeof u.title === 'string' ? u.title : '', next.agent),
+        input: buildInput(undefined, u, next.agent),
         ...(diffs.length > 0 ? { diffs } : {}),
         ...toolImages(u.content, u.rawOutput, undefined),
         createdAt: now,
@@ -363,7 +412,7 @@ export const reduceAcpUpdate: ReduceAcpUpdateFn = (state, update, now): AcpReduc
         const diffs = contentDiffs(content);
         const item: ToolItem = {
           ...settled,
-          input: buildInput(settled.input, u),
+          input: buildInput(settled.input, u, next.agent),
           ...(diffs.length > 0 ? { diffs } : {}),
           ...toolImages(u.content, u.rawOutput, settled.images),
         };
@@ -389,8 +438,8 @@ export const reduceAcpUpdate: ReduceAcpUpdateFn = (state, update, now): AcpReduc
         type: 'tool',
         id: prev?.id ?? `tool-${next.turn}-${toolCallId}`,
         toolUseId: toolCallId,
-        name: prev && !u.kind && !u.title ? prev.name : toolNameFor(kind as never, title),
-        input: buildInput(prev?.input, u),
+        name: prev && !u.kind && !u.title ? prev.name : toolNameFor(kind as never, title, next.agent),
+        input: buildInput(prev?.input, u, next.agent),
         ...(diffs.length > 0 ? { diffs } : prev?.diffs ? { diffs: prev.diffs } : {}),
         ...toolImages(u.content, u.rawOutput, prev?.images),
         createdAt: prev?.createdAt ?? now,

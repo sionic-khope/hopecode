@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { chmodSync, mkdirSync, readFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { app, BrowserWindow, dialog, ipcMain, Menu, powerMonitor, shell, clipboard, ClipboardItem, nativeImage } from 'electron';
 import {
   CLIENT_APP_NAME,
@@ -78,10 +78,14 @@ import { PR_URL_HOSTS } from './ipc/navHandlers';
 import { createThreadSearchIndex } from './nav/threadSearchIndex';
 import { readPluginInventory } from './plugins/pluginInventory';
 import { AttachmentStore } from './attachments/attachmentStore';
-import type { ImageMediaType } from '../core/attachments';
+import { imagePixelProblem, type ImageMediaType } from '../core/attachments';
 import { createSlashCommandService } from './commands/slashCommands';
 import { createGhPrSource } from './prs/prService';
 import { createScheduler } from './schedule/scheduler';
+import { createNoteWatcher } from './notes/noteWatcher';
+import { createNoteChats } from './notes/noteChats';
+import { createNoteGit } from './notes/noteGit';
+import { runNoteAi } from './notes/noteAi';
 
 const require = createRequire(import.meta.url);
 
@@ -198,6 +202,8 @@ async function showMessage(opts: Electron.MessageBoxOptions): Promise<number> {
  * PNG stays PNG when it can, otherwise JPEG. null when the image cannot be decoded or never fits.
  */
 function resizeWithNativeImage(bytes: Buffer, mediaType: ImageMediaType, maxBytes: number): { bytes: Buffer; mediaType: ImageMediaType } | null {
+  // Header check before nativeImage decodes in main (decompression bomb); AttachmentStore checked already.
+  if (imagePixelProblem(bytes)) return null;
   const image = nativeImage.createFromBuffer(bytes);
   if (image.isEmpty()) return null;
   const { width, height } = image.getSize();
@@ -546,6 +552,13 @@ async function startServices(): Promise<Services> {
   });
   tickSchedules = () => scheduler.tick();
 
+  // 노트 모드: the active vault's watcher, and one signal that stops every note AI request on quit.
+  const notesWatcher = createNoteWatcher(
+    (change) => broadcaster.emit('notes:changed', change),
+    (message, err) => console.error(message, err ?? ''),
+  );
+  const notesAbort = new AbortController();
+
   const unregisterIpc = registerIpc(ipcMain, {
     store,
     threadLog,
@@ -642,6 +655,49 @@ async function startServices(): Promise<Services> {
         },
       },
     },
+    notes: {
+      async pickFolder() {
+        // Test runs never open a dialog: the seam answers with an e2e-set folder or HOPECODE_FIXTURE_NOTES.
+        if (fixtures || headless) return globalThis.__hopecodeFixtureNoteVault ?? devEnv('HOPECODE_FIXTURE_NOTES') ?? null;
+        const win = focusedWindow();
+        const opts: Electron.OpenDialogOptions = { title: '노트 폴더 선택', buttonLabel: '선택', properties: ['openDirectory', 'createDirectory'] };
+        const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
+        return res.canceled ? null : (res.filePaths[0] ?? null);
+      },
+      async trash(abs) {
+        if (fixtures || headless) {
+          // Test runs never fill the user's Trash: the entry moves into HOPECODE_HOME.
+          const dir = join(hopecodeHome(), 'fixture-trash', randomUUID());
+          await mkdir(dir, { recursive: true });
+          await rename(abs, join(dir, basename(abs)));
+          return;
+        }
+        await shell.trashItem(abs);
+      },
+      openExternal: (url) => (fixtures || headless ? isSafeExternalUrl(url) : openExternalSafe(url)),
+      git: createNoteGit(gitEnv),
+      chats: createNoteChats(join(dataDir, 'notes', 'chats')),
+      watcher: notesWatcher,
+      runAi: (run, onDelta, signal) =>
+        runNoteAi(
+          {
+            query,
+            listAccounts: () => accountPool.list(),
+            usage: poller,
+            shellEnv,
+            claudeBinary: fixtures ? { resolvePath: () => 'claude' } : claudeBinary,
+            appVersion: app.getVersion(),
+            codexLauncher: acpLaunchers.codex,
+            codexUsable: () => localAuth.availability('codex').usable,
+            runDir: join(hopecodeHome(), 'run', 'notes'),
+            now: Date.now,
+            log: (message, err) => console.error(message, err ?? ''),
+          },
+          run,
+          onDelta,
+          AbortSignal.any([signal, notesAbort.signal]),
+        ),
+    },
     provideThreadStart: (start) => {
       startThread = start;
     },
@@ -671,6 +727,8 @@ async function startServices(): Promise<Services> {
     broadcaster,
     async dispose() {
       poller.stop();
+      notesAbort.abort();
+      notesWatcher.dispose();
       agentUsage.dispose();
       scheduler.stop();
       await scheduler.flush().catch((err: unknown) => console.error('[hopecode] schedule flush failed', err));
@@ -681,6 +739,7 @@ async function startServices(): Promise<Services> {
       await store.flush().catch((err: unknown) => console.error('[hopecode] store flush failed', err));
     },
     async forceStop() {
+      notesAbort.abort();
       session.abortAll();
       ptyManager.killAll();
       await Promise.race([

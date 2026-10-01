@@ -147,7 +147,7 @@ export function defaultDraftProjectId(projects: readonly Project[], threads: rea
   return newest?.id ?? null;
 }
 
-export type Route = 'chat' | 'accounts' | 'settings' | 'prs' | 'schedule' | 'plugins';
+export type Route = 'chat' | 'accounts' | 'settings' | 'prs' | 'schedule' | 'plugins' | 'notes';
 
 /** Right panel content (null = panel closed). The terminal lives in its own bottom panel (`terminalOpen`). */
 export type PanelTab = 'changes';

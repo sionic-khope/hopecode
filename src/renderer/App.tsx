@@ -12,6 +12,7 @@ import { SettingsPage } from './components/Settings/SettingsPage';
 import { PluginsPage } from './components/Nav/PluginsPage';
 import { PullRequestsPage } from './components/Nav/PullRequestsPage';
 import { SchedulePage } from './components/Nav/SchedulePage';
+import { NotesPage } from './components/Notes/NotesPage';
 import type { NavPage } from './components/Sidebar/SidebarNav';
 import type { PullRequestInfo } from '../shared/nav';
 import { AboutModal, ShortcutsModal } from './components/Shell/AppModals';
@@ -22,7 +23,7 @@ import { BottomPanel, forgetTerminalSize } from './components/Shell/BottomPanel'
 import { NEEDS_FORCE } from './components/Sidebar/ItemMenu';
 import { ProfileRow } from './components/Sidebar/ProfileRow';
 import { Sidebar } from './components/Sidebar/Sidebar';
-import { IconClock, IconCompose, IconPlug, IconPullRequest, IconSidebar } from './components/Sidebar/icons';
+import { IconClock, IconCompose, IconNote, IconPlug, IconPullRequest, IconSidebar } from './components/Sidebar/icons';
 import { StatusLine } from './components/StatusLine/StatusLine';
 import {
   GlyphChanges,
@@ -286,6 +287,7 @@ export function App() {
   const onOpenPrs = useCallback(() => useAppStore.getState().setRoute('prs'), []);
   const onOpenSchedule = useCallback(() => useAppStore.getState().setRoute('schedule'), []);
   const onOpenPlugins = useCallback(() => useAppStore.getState().setRoute('plugins'), []);
+  const onOpenNotes = useCallback(() => useAppStore.getState().setRoute('notes'), []);
   const onBackToChat = useCallback(() => useAppStore.getState().setRoute('chat'), []);
   // "이 PR로 새 채팅": a draft in the PR's project whose worktree starts from the PR branch.
   const onNewChatFromPr = useCallback((projectId: string, pr: PullRequestInfo) => {
@@ -450,6 +452,7 @@ export function App() {
       { id: 'prs', title: '풀 리퀘스트', group: '작업', icon: <IconPullRequest />, keywords: ['pull request', 'pr', 'github', 'gh'], run: onOpenPrs },
       { id: 'schedule', title: '예약', group: '작업', icon: <IconClock />, keywords: ['schedule', 'cron', 'automation'], run: onOpenSchedule },
       { id: 'plugins', title: '플러그인', group: '작업', icon: <IconPlug />, keywords: ['plugins', 'skills', 'mcp', 'hooks'], run: onOpenPlugins },
+      { id: 'notes', title: '노트', group: '작업', icon: <IconNote />, keywords: ['notes', 'markdown', 'study', '노트'], run: onOpenNotes },
       {
         id: 'panel-changes',
         title: panel === 'changes' ? '변경사항 패널 닫기' : '변경사항 패널 열기',
@@ -500,6 +503,7 @@ export function App() {
     onOpenPrs,
     onOpenSchedule,
     onOpenPlugins,
+    onOpenNotes,
     editors,
     settings.defaultEditor,
     panel,
@@ -563,6 +567,7 @@ export function App() {
               onOpenPrs={onOpenPrs}
               onOpenSchedule={onOpenSchedule}
               onOpenPlugins={onOpenPlugins}
+              onOpenNotes={onOpenNotes}
               onOpenAccounts={onOpenAccounts}
               onOpenUsage={onOpenUsage}
               onOpenSettings={onOpenSettings}
@@ -676,6 +681,8 @@ export function App() {
               />
             ) : route === 'plugins' ? (
               <PluginsPage homeDir={homeDir} onBack={onBackToChat} />
+            ) : route === 'notes' ? (
+              <NotesPage settings={settings} models={models} defaultModelLabel={defaultModelLabel} homeDir={homeDir} />
             ) : route === 'settings' ? (
               <SettingsPage
                 settings={settings}

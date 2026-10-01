@@ -25,7 +25,7 @@ export interface GitPublisher {
   createPr(cwd: string, opts: { title: string; body: string; base: string; head: string }): Promise<string | null>;
 }
 
-interface RunResult {
+export interface RunResult {
   ok: boolean;
   code: number;
   stdout: string;
@@ -36,7 +36,7 @@ const MAX_BUFFER = 256 * 1024 * 1024;
 /** Untracked files are read at most this far for line counts / synthesized diffs. */
 const READ_CAP = 2 * 1024 * 1024;
 
-function run(cmd: string, args: string[], cwd: string, env: Record<string, string> | undefined, timeout?: number): Promise<RunResult> {
+export function run(cmd: string, args: string[], cwd: string, env: Record<string, string> | undefined, timeout?: number): Promise<RunResult> {
   return new Promise((done) => {
     execFile(
       cmd,
@@ -51,7 +51,7 @@ function run(cmd: string, args: string[], cwd: string, env: Record<string, strin
 }
 
 /** Last few stderr lines joined (git puts the actual reason last). */
-function shortError(text: string): string {
+export function shortError(text: string): string {
   return text.trim().split('\n').slice(-3).join(' ').trim();
 }
 

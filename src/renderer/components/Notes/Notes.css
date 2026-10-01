@@ -1,0 +1,728 @@
+/* 노트 모드: tree | editor | AI panel. Same dark world as the chat: black side panes, a near-black writing well,
+   square pixel frames, yellow for the selected row and the AI target frame, cyan inline code. */
+.hc-notes {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  font-family: var(--font-ui);
+  font-size: var(--text-md);
+  color: var(--label);
+}
+
+/* ---- top bar --------------------------------------------------------------------------------------------- */
+.hc-notes__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--toolbar-h);
+  padding: 0 var(--space-3);
+  border-bottom: 2px solid var(--separator);
+  background: var(--bg-pane-header);
+}
+.hc-notes__vault {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--control-h-sm);
+  padding: 0 var(--space-2);
+  border: none;
+  background: var(--bg-control);
+  box-shadow: inset 0 0 0 2px var(--separator);
+  color: var(--label);
+  font: inherit;
+  cursor: pointer;
+  max-width: 220px;
+}
+.hc-notes__vault span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hc-notes__vault:hover,
+.hc-notes__vault[aria-expanded='true'] {
+  background: var(--bg-control-hover);
+}
+.hc-notes__vault:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.hc-notes__vault-chevron {
+  transform: rotate(90deg);
+  width: 10px;
+  height: 10px;
+  color: var(--label-tertiary);
+}
+.hc-notes__path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--label-secondary);
+}
+.hc-notes__save {
+  flex-shrink: 0;
+  color: var(--label-tertiary);
+  font-size: var(--text-xs);
+}
+.hc-notes__save--dirty,
+.hc-notes__save--saving {
+  color: var(--warn-text);
+}
+.hc-notes__save--saved {
+  color: var(--ok-text);
+}
+.hc-notes__save--error {
+  color: var(--crit-text);
+}
+.hc-notes__spacer {
+  flex: 1;
+}
+.hc-notes__count {
+  min-width: 18px;
+  padding: 0 4px;
+  background: var(--select);
+  color: var(--label-on-select);
+  text-align: center;
+}
+.hc-notes__commit-note {
+  color: var(--label-secondary);
+  font-size: var(--text-xs);
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hc-notes__notice {
+  padding: var(--space-2) var(--space-4);
+  background: var(--crit-bg);
+  color: var(--crit-text);
+  cursor: pointer;
+}
+
+/* ---- panes ----------------------------------------------------------------------------------------------- */
+.hc-notes__panes {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+}
+.hc-notes__tree,
+.hc-notes__chat {
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg-canvas);
+  display: flex;
+  flex-direction: column;
+}
+.hc-notes__editor {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg-window);
+  display: flex;
+  flex-direction: column;
+}
+.hc-notes__resizer {
+  cursor: col-resize;
+  background: var(--separator);
+  background-clip: content-box;
+  padding: 0 2px;
+  touch-action: none;
+}
+.hc-notes__resizer:hover {
+  background-color: var(--select);
+}
+.hc-notes__placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  color: var(--label-secondary);
+  z-index: 1;
+}
+
+/* ---- empty state (no vault) -------------------------------------------------------------------------------- */
+.hc-notes--empty {
+  align-items: center;
+  justify-content: center;
+}
+.hc-notes__setup {
+  max-width: 460px;
+  padding: var(--space-8);
+  box-shadow: var(--shadow-dialog);
+  background: var(--bg-card);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+.hc-notes__setup-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  line-height: var(--lh-2xl);
+}
+.hc-notes__setup-lede {
+  margin: 0;
+  color: var(--label-secondary);
+  line-height: var(--lh-md);
+}
+.hc-notes__setup-error {
+  margin: 0;
+  color: var(--crit-text);
+}
+
+/* ---- tree ------------------------------------------------------------------------------------------------ */
+.hc-notetree {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+.hc-notetree__tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: var(--space-2);
+}
+.hc-notetree__search {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--control-h-sm);
+  padding: 0 var(--space-2);
+  background: var(--bg-input);
+  box-shadow: inset 0 0 0 2px var(--separator);
+  color: var(--label-tertiary);
+}
+.hc-notetree__search:focus-within {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.hc-notetree__search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--label);
+  font: inherit;
+  outline: none;
+}
+.hc-notetree__target {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 var(--space-2) var(--space-1);
+  padding: 2px var(--space-2);
+  background: var(--bg-card-muted);
+  color: var(--label-secondary);
+  font-size: var(--text-xs);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.hc-notetree__target span {
+  color: var(--label-tertiary);
+}
+.hc-notetree__target-clear {
+  margin-left: auto;
+  border: none;
+  background: none;
+  color: var(--label-tertiary);
+  cursor: pointer;
+  font: inherit;
+}
+.hc-notetree__notice {
+  margin: 0 var(--space-2) var(--space-2);
+  padding: var(--space-2);
+  background: var(--crit-bg);
+  color: var(--crit-text);
+  cursor: pointer;
+}
+.hc-notetree__list,
+.hc-notetree__group {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.hc-notetree__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: var(--space-6);
+}
+.hc-notetree__row,
+.hc-notetree__result {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 var(--space-2) 0 calc(var(--space-2) + var(--depth, 0) * 14px);
+  border: none;
+  background: none;
+  color: var(--label-secondary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+}
+.hc-notetree__row:hover,
+.hc-notetree__result:hover {
+  background: var(--bg-sidebar-hover);
+  color: var(--label);
+}
+.hc-notetree__row:focus-visible,
+.hc-notetree__result:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--select);
+}
+.hc-notetree__row--active {
+  background: var(--bg-sidebar-sel);
+  color: var(--label-selected);
+  box-shadow: inset 2px 0 0 var(--select);
+}
+.hc-notetree__row--dir-selected {
+  color: var(--label);
+}
+.hc-notetree__row--muted {
+  color: var(--label-tertiary);
+  cursor: default;
+}
+.hc-notetree__row--muted:hover {
+  background: none;
+  color: var(--label-tertiary);
+}
+.hc-notetree__row--edit {
+  cursor: default;
+}
+.hc-notetree__row--edit:hover {
+  background: none;
+}
+.hc-notetree__chevron {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  color: var(--label-tertiary);
+  transition: transform var(--motion-1) var(--ease-soft);
+}
+.hc-notetree__chevron--open {
+  transform: rotate(90deg);
+}
+.hc-notetree__chevron-gap {
+  flex-shrink: 0;
+  width: 10px;
+}
+.hc-notetree__icon {
+  flex-shrink: 0;
+  color: var(--label-tertiary);
+}
+.hc-notetree__row--active .hc-notetree__icon {
+  color: var(--select);
+}
+.hc-notetree__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hc-notetree__dir {
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--label-tertiary);
+  font-size: var(--text-xs);
+}
+.hc-notetree__more {
+  display: none;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: var(--label-tertiary);
+  cursor: pointer;
+}
+.hc-notetree__row:hover .hc-notetree__more,
+.hc-notetree__row:focus-within .hc-notetree__more {
+  display: inline-flex;
+}
+.hc-notetree__more:hover {
+  color: var(--label);
+}
+.hc-notetree__edit {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 0;
+}
+.hc-notetree__input {
+  width: 100%;
+  height: 24px;
+  padding: 0 6px;
+  border: none;
+  background: var(--bg-input);
+  box-shadow: inset 0 0 0 2px var(--select);
+  color: var(--label);
+  font: inherit;
+  outline: none;
+}
+.hc-notetree__error {
+  color: var(--crit-text);
+  font-size: var(--text-xs);
+  white-space: normal;
+}
+.hc-notetree__confirm {
+  margin: 0;
+  line-height: var(--lh-md);
+  color: var(--label-secondary);
+  word-break: break-all;
+}
+.hc-notetree__confirm strong {
+  color: var(--label);
+}
+
+/* ---- editor (CodeMirror) ----------------------------------------------------------------------------------- */
+.hc-note-editor {
+  flex: 1;
+  min-height: 0;
+}
+.hc-note-editor[hidden] {
+  display: none;
+}
+.hc-note-editor .cm-md-h {
+  font-family: var(--font-display);
+  font-weight: var(--weight-semibold);
+}
+.hc-note-editor .cm-md-h1 {
+  font-size: 24px;
+  line-height: 40px;
+  padding-top: 8px;
+}
+.hc-note-editor .cm-md-h2 {
+  font-size: 20px;
+  line-height: 34px;
+  padding-top: 6px;
+}
+.hc-note-editor .cm-md-h3 {
+  font-size: 18px;
+  line-height: 30px;
+  padding-top: 4px;
+  color: var(--select);
+}
+.hc-note-editor .cm-md-h4,
+.hc-note-editor .cm-md-h5,
+.hc-note-editor .cm-md-h6 {
+  font-size: 15px;
+  color: var(--label-secondary);
+}
+.hc-note-editor .cm-md-code {
+  font-family: var(--font-mono);
+  font-size: var(--mono-sm);
+  color: var(--cyan);
+  background: var(--bg-code);
+  padding: 1px 3px;
+}
+.hc-note-editor .cm-md-codeblock {
+  font-family: var(--font-mono);
+  font-size: var(--mono-sm);
+  line-height: var(--lh-mono-sm);
+  background: var(--bg-code);
+  box-shadow: inset 2px 0 0 var(--line-strong);
+}
+.hc-note-editor .cm-md-codeblock-first {
+  padding-top: 4px;
+}
+.hc-note-editor .cm-md-codeblock-last {
+  padding-bottom: 4px;
+}
+.hc-note-editor .cm-md-codelang {
+  font-family: var(--font-ui);
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-tag);
+  text-transform: uppercase;
+  color: var(--label-tertiary);
+}
+.hc-note-editor .cm-md-quote {
+  box-shadow: inset 3px 0 0 var(--accent);
+  color: var(--label-secondary);
+  padding-left: 44px;
+}
+.hc-note-editor .cm-md-link {
+  color: var(--accent-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.hc-note-editor .cm-md-bullet {
+  color: var(--select);
+  display: inline-block;
+  width: 0.9em;
+}
+.hc-note-editor .cm-md-task {
+  margin: 0 6px 0 0;
+  vertical-align: -2px;
+  accent-color: var(--select);
+  cursor: pointer;
+}
+.hc-note-editor .cm-md-hr {
+  display: inline-block;
+  width: 100%;
+  height: 0;
+  border-top: 2px dashed var(--line-strong);
+  vertical-align: middle;
+}
+.hc-note-editor .cm-md-table {
+  font-family: var(--font-mono);
+  font-size: var(--mono-sm);
+  background: var(--bg-card-muted);
+}
+.hc-note-editor .cm-md-table-delim {
+  color: var(--label-tertiary);
+}
+/* AI target: the yellow pixel frame drawn on the framed lines. */
+.hc-note-editor .cm-note-target {
+  background: rgba(255, 225, 77, 0.06);
+  box-shadow:
+    inset 3px 0 0 var(--select),
+    inset -3px 0 0 var(--select);
+}
+.hc-note-editor .cm-note-target--first {
+  box-shadow:
+    inset 3px 0 0 var(--select),
+    inset -3px 0 0 var(--select),
+    inset 0 3px 0 var(--select);
+}
+.hc-note-editor .cm-note-target--last {
+  box-shadow:
+    inset 3px 0 0 var(--select),
+    inset -3px 0 0 var(--select),
+    inset 0 -3px 0 var(--select);
+}
+.hc-note-editor .cm-note-target--first.cm-note-target--last {
+  box-shadow: inset 0 0 0 3px var(--select);
+}
+
+/* ---- read-only preview ------------------------------------------------------------------------------------- */
+.hc-note-preview {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.hc-note-preview__body {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 28px 32px 30vh;
+  font-family: var(--font-chat);
+  font-size: var(--text-chat);
+  line-height: var(--lh-chat);
+}
+.hc-note-preview__body h1,
+.hc-note-preview__body h2,
+.hc-note-preview__body h3,
+.hc-note-preview__body h4 {
+  font-family: var(--font-display);
+  margin: 1.2em 0 0.5em;
+}
+.hc-note-preview__body h1 {
+  font-size: 24px;
+  line-height: 36px;
+}
+.hc-note-preview__body h2 {
+  font-size: 20px;
+  line-height: 30px;
+}
+.hc-note-preview__body h3 {
+  font-size: 18px;
+  line-height: 28px;
+  color: var(--select);
+}
+.hc-note-preview__body code {
+  font-family: var(--font-mono);
+  font-size: var(--mono-sm);
+  color: var(--cyan);
+  background: var(--bg-code);
+  padding: 1px 3px;
+}
+.hc-note-preview__body pre {
+  background: var(--bg-code);
+  padding: var(--space-3);
+  overflow-x: auto;
+  box-shadow: inset 2px 0 0 var(--line-strong);
+}
+.hc-note-preview__body pre code {
+  background: none;
+  padding: 0;
+  color: var(--label);
+}
+.hc-note-preview__body blockquote {
+  margin: 0;
+  padding-left: var(--space-4);
+  box-shadow: inset 3px 0 0 var(--accent);
+  color: var(--label-secondary);
+}
+.hc-note-preview__body a {
+  color: var(--accent-text);
+}
+.hc-note-preview__body table {
+  border-collapse: collapse;
+  font-size: var(--text-md);
+}
+.hc-note-preview__body th,
+.hc-note-preview__body td {
+  border: 2px solid var(--separator);
+  padding: 4px 8px;
+}
+.hc-note-preview__body hr {
+  border: none;
+  border-top: 2px dashed var(--line-strong);
+}
+.hc-note-preview__img {
+  color: var(--label-tertiary);
+}
+
+/* ---- AI panel -------------------------------------------------------------------------------------------- */
+.hc-notechat {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.hc-notechat__head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  border-bottom: 2px solid var(--separator);
+}
+.hc-notechat__title {
+  font-family: var(--font-pixel);
+  letter-spacing: var(--tracking-tag);
+  color: var(--select);
+}
+.hc-notechat__sub {
+  color: var(--label-tertiary);
+  font-size: var(--text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hc-notechat__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.hc-notechat__empty {
+  color: var(--label-secondary);
+  line-height: var(--lh-md);
+}
+.hc-notechat__empty b {
+  color: var(--label);
+}
+.hc-notechat__item {
+  padding: var(--space-2) var(--space-3);
+  line-height: var(--lh-md);
+  word-break: break-word;
+}
+.hc-notechat__item--user {
+  align-self: flex-end;
+  max-width: 88%;
+  background: var(--bubble);
+  box-shadow: inset 0 0 0 2px var(--line-strong);
+}
+.hc-notechat__item--assistant {
+  color: var(--label-secondary);
+  box-shadow: inset 2px 0 0 var(--ok);
+}
+.hc-notechat__item--stopped {
+  box-shadow: inset 2px 0 0 var(--warn);
+}
+.hc-notechat__item--error {
+  box-shadow: inset 2px 0 0 var(--crit);
+  color: var(--crit-text);
+}
+.hc-notechat__item--running {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--select);
+}
+.hc-notechat__dot {
+  width: 8px;
+  height: 8px;
+  background: var(--select);
+  animation: hc-notechat-blink 1s var(--ease-pixel) infinite;
+}
+@keyframes hc-notechat-blink {
+  50% {
+    opacity: 0.2;
+  }
+}
+.hc-notechat__mode {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 4px;
+  background: var(--select);
+  color: var(--label-on-select);
+  font-size: var(--text-2xs);
+}
+.hc-notechat__error {
+  margin: 0 var(--space-3) var(--space-2);
+  padding: var(--space-2);
+  background: var(--crit-bg);
+  color: var(--crit-text);
+}
+.hc-notechat__compose {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-3);
+}
+.hc-notechat__modes {
+  align-self: flex-start;
+}
+
+/* ---- commit dialog --------------------------------------------------------------------------------------- */
+.hc-notes__commit-files {
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  list-style: none;
+  max-height: 160px;
+  overflow-y: auto;
+  color: var(--label-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--mono-sm);
+}
+.hc-notes__commit-input {
+  width: 100%;
+  height: var(--control-h);
+  padding: 0 var(--space-2);
+  border: none;
+  background: var(--bg-input);
+  box-shadow: inset 0 0 0 2px var(--separator);
+  color: var(--label);
+  font: inherit;
+}
+.hc-notes__commit-input:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--accent);
+}

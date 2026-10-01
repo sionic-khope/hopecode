@@ -148,6 +148,8 @@ declare global {
   var __hopecodeFixtureBypassAnswer: boolean | undefined;
   /** e2e only (`electronApp.evaluate`): what the file picker returns; unset = the folder's README.md. */
   var __hopecodeFixturePickFiles: string[] | undefined;
+  /** e2e only (`electronApp.evaluate`): the folder the note vault picker returns; unset = HOPECODE_FIXTURE_NOTES. */
+  var __hopecodeFixtureNoteVault: string | undefined;
 }
 
 /**

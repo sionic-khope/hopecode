@@ -17,6 +17,8 @@ import type {
 } from '@anthropic-ai/claude-agent-sdk';
 import type { RateLimitInfoLite, StructuredPatchHunk } from '../../shared/types';
 import type { QueryFn } from '../contracts';
+import { NOTE_PROMPT_HEAD } from '../../core/notes/notePrompt';
+import { noteFixtureAnswer, noteFixtureChunks } from './noteFixture';
 
 export const FAKE_CLI_VERSION = '2.1.282';
 export const FAKE_DEFAULT_MODEL = 'claude-fable-5-1';
@@ -779,6 +781,21 @@ export function createFixtureScenario(): FakeScenario {
   const exhaustRejections = new Map<string, number>();
   return ({ prompt, blocks, options, configDir, model, permissionMode, effort }) => {
     const resetsAt = Math.floor(Date.now() / 1000) + 3600;
+    // 노트 모드: the note answer streamed in timed chunks (`[slow]` in the request: slow enough to stop mid-way).
+    if (typeof options.systemPrompt === 'string' && options.systemPrompt.startsWith(NOTE_PROMPT_HEAD)) {
+      const answer = noteFixtureAnswer(prompt);
+      const delayMs = prompt.includes('[slow]') ? 400 : 40;
+      return [
+        ...noteFixtureChunks(answer).map(
+          (text): FakeStep => ({
+            type: 'emit',
+            delayMs,
+            message: { type: 'stream_event', event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } } },
+          }),
+        ),
+        { type: 'emit', message: { type: 'assistant', parent_tool_use_id: null, message: { role: 'assistant', content: [{ type: 'text', text: answer }] } } },
+      ];
+    }
     if (prompt.includes('[exhaust]') && (exhaustRejections.get(prompt) ?? 0) < 2) {
       exhaustRejections.set(prompt, (exhaustRejections.get(prompt) ?? 0) + 1);
       const soon = Math.floor(Date.now() / 1000) + 10;

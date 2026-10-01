@@ -2,7 +2,7 @@
 // here so every path shares the same rules — PNG / JPEG / GIF / WebP only (declared type AND magic bytes), never
 // SVG, at most MAX_AGENT_IMAGE_BYTES decoded. Pure: renderer-safe, no Buffer.
 import type { ChatImage, ChatItem, ToolItem } from '../shared/types';
-import { sniffMagic } from './attachments';
+import { imageDimensions, imagePixelProblem, sniffMagic } from './attachments';
 
 export const AGENT_IMAGE_TYPES: ReadonlySet<string> = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 
@@ -12,12 +12,19 @@ export const MAX_AGENT_IMAGE_BYTES = 10 * 1024 * 1024;
 export const MAX_AGENT_IMAGE_BASE64 = Math.ceil((MAX_AGENT_IMAGE_BYTES * 4) / 3) + 4;
 /** Images kept per chat item. */
 export const MAX_IMAGES_PER_ITEM = 8;
+/** Decoded bytes of agent images one turn may add to the chat (past it they are dropped with one notice). */
+export const MAX_TURN_IMAGE_BYTES = 64 * 1024 * 1024;
+/** Images an agent may send as message content (not tool results) in one turn. */
+export const MAX_MESSAGE_IMAGES_PER_TURN = 32;
+export const IMAGE_BUDGET_NOTICE = '이번 턴의 에이전트 이미지가 한도(개수·64 MB)를 넘어 나머지는 표시하지 않습니다.';
 
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
+/** Base64 prefix decoded to find an image's pixel size. */
+const HEADER_CHARS = 64 * 1024;
 
-/** First bytes of a base64 payload (enough for the magic numbers). */
-function headBytes(data: string): Uint8Array {
-  const head = data.slice(0, 24);
+/** First bytes of a base64 payload (24 chars: enough for the magic numbers). */
+function headBytes(data: string, chars = 24): Uint8Array {
+  const head = data.slice(0, chars - (chars % 4));
   try {
     const bin = atob(head);
     const out = new Uint8Array(bin.length);
@@ -40,7 +47,35 @@ export function toAgentImage(mediaType: unknown, data: unknown): ChatImage | nul
   if (payload.length === 0 || payload.length > MAX_AGENT_IMAGE_BASE64 || payload.length % 4 === 1) return null;
   if (!BASE64.test(payload)) return null;
   if (sniffMagic(headBytes(payload)) !== type) return null;
+  // Pixel size from the header (no decode): a short prefix covers PNG / GIF / WebP and most JPEGs; a JPEG whose
+  // frame header sits behind large metadata is read in full. Unknown size or a bitmap bomb is refused.
+  let head = headBytes(payload, Math.min(payload.length, HEADER_CHARS));
+  if (imageDimensions(head) === null && payload.length > HEADER_CHARS) head = headBytes(payload, payload.length);
+  if (imagePixelProblem(head) !== null) return null;
   return { mediaType: type as ChatImage['mediaType'], data: payload };
+}
+
+/** Decoded size of a base64 image payload. */
+export function imageByteSize(image: Pick<ChatImage, 'data'>): number {
+  const d = image.data;
+  const pad = d.endsWith('==') ? 2 : d.endsWith('=') ? 1 : 0;
+  return Math.max(0, Math.floor((d.length * 3) / 4) - pad);
+}
+
+/**
+ * Per-turn image budget: keeps `images` in order while `used` + their bytes stays within MAX_TURN_IMAGE_BYTES.
+ * `dropped` = how many did not fit (the caller says so once per turn).
+ */
+export function admitTurnImages(images: readonly ChatImage[], used: number): { kept: ChatImage[]; used: number; dropped: number } {
+  const kept: ChatImage[] = [];
+  let total = used;
+  for (const image of images) {
+    const size = imageByteSize(image);
+    if (total + size > MAX_TURN_IMAGE_BYTES) continue;
+    kept.push(image);
+    total += size;
+  }
+  return { kept, used: total, dropped: images.length - kept.length };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

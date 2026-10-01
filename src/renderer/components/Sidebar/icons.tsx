@@ -258,3 +258,14 @@ export function IconPlusCircle(props: IconProps) {
     </svg>
   );
 }
+
+/** "노트": a page with a pen across its corner. */
+export function IconNote(props: IconProps) {
+  return (
+    <svg {...navBase} {...props}>
+      <path d="M13 3.5H5.5a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V9" />
+      <path d="M7.25 8h3.5M7.25 11h5" />
+      <path d="m16.4 2.9.7.7a1 1 0 0 1 0 1.4l-5.4 5.4-2.1.7.7-2.1 5.4-5.4a1 1 0 0 1 1.4 0Z" />
+    </svg>
+  );
+}

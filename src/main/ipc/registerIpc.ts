@@ -37,10 +37,11 @@ import {
 import { createScratchDir, removeScratchDir, scratchGitCeiling } from '../scratch/scratchDirs';
 import { draftAgentDefaults, isFullAccessMode, SETTABLE_CONFIG_CATEGORIES } from '../../core/agentDefaults';
 import { NAV_CHANNELS, buildNavHandlers, type NavChannel, type NavHandlers, type NavServices } from './navHandlers';
-import { imageHandlers, isChatImageList, type ImageActions } from './imageHandlers';
+import { NOTES_CHANNELS, buildNotesHandlers, type NotesChannel, type NotesHandlers, type NotesServices } from './notesHandlers';
+import { base64Bytes, imageHandlers, isChatImageList, type ImageActions } from './imageHandlers';
 import type { MediaStore } from '../images/mediaStore';
 import { AttachmentStore, type Resolved } from '../attachments/attachmentStore';
-import { MAX_ATTACHMENTS, unsupportedReason } from '../../core/attachments';
+import { MAX_ATTACH_READ_BYTES, MAX_ATTACH_TOTAL_BYTES, MAX_ATTACHMENTS, unsupportedReason } from '../../core/attachments';
 import type { SlashCommandService } from '../commands/slashCommands';
 import {
   CODEX_MODEL_PATTERN,
@@ -157,6 +158,8 @@ export interface RegisterIpcServices {
   testMode?: boolean;
   /** ⌘K thread search, 풀 리퀘스트, 예약, 플러그인 (navHandlers.ts). */
   nav?: NavServices;
+  /** 노트 모드 (notesHandlers.ts); absent = every notes:* channel refuses. */
+  notes?: NotesServices;
   /** Receives the `thread:start` handler so main-side callers (예약) start threads the way a draft does. */
   provideThreadStart?: (start: (req: ThreadStartRequest) => Promise<ThreadStartResult>) => void;
   /** Lightbox "Finder에서 보기" / "복사" / "저장" (Electron shell + clipboard + save dialog). */
@@ -204,7 +207,7 @@ export function mentionPath(file: string, base: string): string {
   return /\s/.test(path) ? `@"${path}"` : `@${path}`;
 }
 
-function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
+function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel | NotesChannel> {
   const {
     store,
     threadLog,
@@ -261,18 +264,22 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
    */
   function resolveAttachments(ids: string[], agent: AgentKind, acp: Thread['acp']): Resolved | null {
     if (ids.length === 0) return { images: [], files: [], infos: [] };
-    const resolved = attachments.resolve(ids);
-    if (!resolved) return null;
     const caps = acp?.promptCapabilities ?? null;
-    return resolved.infos.some((a) => unsupportedReason(agent, caps, a, AGENTS[agent].name) !== null) ? null : resolved;
+    return attachments.resolve(ids, (r) => r.infos.every((a) => unsupportedReason(agent, caps, a, AGENTS[agent].name) === null));
   }
 
-  /** Bytes items of `attach:paste` / `attach:drop`. */
+  /** Bytes items of `attach:paste` / `attach:drop`: at most MAX_ATTACHMENTS, each within the read cap. */
   function blobsOf(channel: string, v: unknown): { name: string; bytes: Uint8Array }[] {
     assertReq(
       channel,
       Array.isArray(v) && v.every((b) => isPlainObject(b) && isString(b.name) && b.bytes instanceof Uint8Array),
       'files must be { name, bytes } items',
+    );
+    assertReq(channel, (v as unknown[]).length <= MAX_ATTACHMENTS, 'too many files');
+    assertReq(
+      channel,
+      (v as { name: string; bytes: Uint8Array }[]).every((b) => b.name.length <= 4096 && b.bytes.byteLength <= MAX_ATTACH_READ_BYTES),
+      'file too large',
     );
     return v as { name: string; bytes: Uint8Array }[];
   }
@@ -770,14 +777,19 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
       assertReq('chat:send', images === undefined || isChatImageList(images), 'invalid images');
       const ids = attachmentIdsOf('chat:send', req as Record<string, unknown>);
       const { threadId, text } = req as { threadId: string; text: string };
+      const inlineBytes = (images ?? []).reduce((sum, image) => sum + base64Bytes(image.data), 0);
+      assertReq('chat:send', inlineBytes <= MAX_ATTACH_TOTAL_BYTES, 'images too large');
       if (ids.length === 0) {
         return images && images.length > 0 ? sessionManager.send(threadId, text, images) : sessionManager.send(threadId, text);
       }
       const thread = requireThread('chat:send', threadId);
+      // Count / total checked before resolving: a refused send keeps the composer's attachments alive.
+      assertReq('chat:send', (images?.length ?? 0) + ids.length <= MAX_ATTACHMENTS, 'too many images');
       const resolved = resolveAttachments(ids, thread.agent, thread.acp);
       if (!resolved) return { accepted: false, reason: 'attachment' };
       const allImages = [...(images ?? []), ...resolved.images];
-      assertReq('chat:send', allImages.length <= MAX_ATTACHMENTS, 'too many images');
+      const total = inlineBytes + resolved.infos.reduce((sum, a) => sum + a.size, 0);
+      assertReq('chat:send', allImages.length <= MAX_ATTACHMENTS && total <= MAX_ATTACH_TOTAL_BYTES, 'attachments too large');
       return sessionManager.send(threadId, text, allImages, resolved.files);
     },
 
@@ -807,6 +819,7 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
       assertReq('attach:drop', isPlainObject(req) && isStringArray(req.paths), 'paths required');
       const r = req as { paths: string[]; files?: unknown };
       const files = blobsOf('attach:drop', r.files ?? []);
+      assertReq('attach:drop', r.paths.length + files.length <= MAX_ATTACHMENTS, 'too many files');
       const items = [...r.paths.map((path) => ({ path })), ...files.map((f) => ({ blob: f }))];
       return attachments.collect(
         items,
@@ -1245,7 +1258,17 @@ export function registerIpc(ipcMain: IpcMainLike, services: RegisterIpcServices)
           },
         ]),
       ) as unknown as NavHandlers);
-  const handlers = { ...core, ...nav } as unknown as Record<string, (req: unknown) => Promise<unknown>>;
+  const notes: NotesHandlers = services.notes
+    ? buildNotesHandlers(services.store, services.broadcaster, services.notes)
+    : (Object.fromEntries(
+        NOTES_CHANNELS.map((ch) => [
+          ch,
+          async () => {
+            throw new Error(`${ch} unavailable`);
+          },
+        ]),
+      ) as unknown as NotesHandlers);
+  const handlers = { ...core, ...nav, ...notes } as unknown as Record<string, (req: unknown) => Promise<unknown>>;
 
   for (const channel of INVOKE_CHANNELS) {
     ipcMain.handle(channel, (event, req) => {

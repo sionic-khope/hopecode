@@ -9,7 +9,7 @@ import type {
   ToolItem,
   TurnEndReason,
 } from '../shared/types';
-import { MAX_AGENT_IMAGE_BASE64, toAgentImage } from './agentImages';
+import { IMAGE_BUDGET_NOTICE, MAX_AGENT_IMAGE_BASE64, MAX_IMAGES_PER_ITEM, admitTurnImages, toAgentImage } from './agentImages';
 
 /** SDK messages are consumed structurally; type-only import keeps core free of runtime SDK deps. */
 export type SdkMessageLike = SDKMessage;
@@ -55,6 +55,7 @@ export function extractToolResultImages(content: unknown, toolUseResult: unknown
   const images: ChatImage[] = [];
   if (Array.isArray(content)) {
     for (const block of content) {
+      if (images.length >= MAX_IMAGES_PER_ITEM) break;
       if (!block || typeof block !== 'object' || (block as { type?: unknown }).type !== 'image') continue;
       const source = (block as { source?: Record<string, unknown> }).source;
       if (!source || source.type !== 'base64') continue;
@@ -203,7 +204,14 @@ export function reduceSdkMessage(state: ChatReducerState, msg: SdkMessageLike, n
             const result = extractToolResultText(block.content);
             const isError = block.is_error === true;
             const patch = extractStructuredPatch(m.tool_use_result);
-            const images = extractToolResultImages(block.content, m.tool_use_result);
+            // Per-turn byte budget (the runner resets it each turn); past it images are dropped with one notice.
+            const admitted = admitTurnImages(extractToolResultImages(block.content, m.tool_use_result), next.imageBytes ?? 0);
+            const images = admitted.kept;
+            next = { ...next, imageBytes: admitted.used };
+            if (admitted.dropped > 0 && !next.imageBudgetNoticed) {
+              next = { ...next, imageBudgetNoticed: true };
+              events.push({ type: 'item-upsert', item: { type: 'notice', id: allocId('notice'), level: 'warn', text: IMAGE_BUDGET_NOTICE, createdAt: now } });
+            }
             const background = !isError && isAsyncLaunch(m.tool_use_result);
             const updated: ToolItem = {
               ...pending,

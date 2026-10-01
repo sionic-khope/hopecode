@@ -98,7 +98,8 @@ describe('turn-end image detection', () => {
 });
 
 describe('chat:send image validation', () => {
-  const image = { mediaType: 'image/png', data: 'iVBORw0KGgo=' };
+  // 1×1 PNG: magic bytes and a readable IHDR are required.
+  const image = { mediaType: 'image/png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==' };
   it('accepts up to 8 base64 images of the API media types', () => {
     expect(isChatImageList([image])).toBe(true);
     expect(isChatImageList(Array.from({ length: MAX_CHAT_IMAGES }, () => image))).toBe(true);

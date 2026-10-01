@@ -5,7 +5,8 @@ import type { ChatReducerState } from '../../src/shared/types';
 const NOW = 1_000_000_000_000;
 /** Real image headers: the reducer checks magic bytes (core/agentImages). */
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
-const WEBP = 'UklGRhoAAABXRUJQVlA4IA==';
+// RIFF / WEBP / VP8X with a 1×1 canvas (the pixel size must be readable).
+const WEBP = btoa('RIFF\u001a\u0000\u0000\u0000WEBPVP8X\u000a\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000');
 
 function msg(partial: Record<string, unknown>): SdkMessageLike {
   return partial as unknown as SdkMessageLike;
@@ -369,5 +370,50 @@ describe('reduceSdkMessage: subagents (parent_tool_use_id) and images', () => {
     expect(settled.state.backgroundTools?.bg).toBeUndefined();
     // A notification for an unknown tool changes nothing.
     expect(reduceSdkMessage(settled.state, msg({ type: 'system', subtype: 'task_notification', tool_use_id: 'nope', status: 'failed' }), NOW).events).toEqual([]);
+  });
+});
+
+describe('reduceSdkMessage: agent image caps (security review M3)', () => {
+  /** A valid 1×1 PNG header padded to `bytes` (distinct per `tag`): counts against the budget like a real one. */
+  const bigPng = (bytes: number, tag: number) => {
+    const head = Buffer.from(PNG, 'base64');
+    const buf = Buffer.alloc(bytes);
+    head.copy(buf);
+    buf[bytes - 1] = tag;
+    return buf.toString('base64');
+  };
+  const imageResult = (toolUseId: string, data: string[]) =>
+    msg({
+      type: 'user',
+      message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: toolUseId, content: data.map((d) => ({ type: 'image', source: { type: 'base64', media_type: 'image/png', data: d } })) }] },
+    });
+
+  it('keeps at most MAX_IMAGES_PER_ITEM images of one tool result', () => {
+    let s = reduceSdkMessage(createChatReducerState('t1'), assistantToolUse('shots', 'mcp__x__shot', {}), NOW).state;
+    const r = reduceSdkMessage(s, imageResult('shots', Array.from({ length: 12 }, () => PNG)), NOW);
+    s = r.state;
+    expect((r.events[0] as any).item.images).toHaveLength(8);
+  });
+
+  it('drops images past the per-turn byte budget with one notice', () => {
+    let s = createChatReducerState('t1');
+    const events: any[] = [];
+    for (let i = 0; i < 9; i++) {
+      s = reduceSdkMessage(s, assistantToolUse(`img${i}`, 'mcp__x__shot', {}), NOW).state;
+      const r = reduceSdkMessage(s, imageResult(`img${i}`, [bigPng(9 * 1024 * 1024, i)]), NOW);
+      s = r.state;
+      events.push(...r.events);
+    }
+    const tools = events.filter((e) => e.item.type === 'tool');
+    expect(tools.filter((e) => e.item.images?.length === 1)).toHaveLength(7);
+    expect(tools.filter((e) => !e.item.images)).toHaveLength(2);
+    const notices = events.filter((e) => e.item.type === 'notice');
+    expect(notices).toHaveLength(1);
+    expect(notices[0].item).toMatchObject({ level: 'warn', text: expect.stringContaining('64 MB') });
+    // The runner re-arms the budget per turn.
+    s = { ...s, imageBytes: 0, imageBudgetNoticed: false };
+    s = reduceSdkMessage(s, assistantToolUse('next', 'mcp__x__shot', {}), NOW).state;
+    const next = reduceSdkMessage(s, imageResult('next', [bigPng(9 * 1024 * 1024, 99)]), NOW);
+    expect((next.events[0] as any).item.images).toHaveLength(1);
   });
 });

@@ -45,6 +45,13 @@ export interface AcpReducerState {
   settledTools: Record<string, ToolItem>; // keyed by settledKey(toolCallId)
   /** Monotonic counter for deterministic ids. */
   seq: number;
+  /** Agent of the connection: Codex-only mappings (spawnAgent -> subagent card) apply only to `codex`. */
+  agent?: AcpAgentKind;
+  /** Decoded agent image bytes this turn added (MAX_TURN_IMAGE_BYTES) and the image items sent as message content. */
+  imageBytes?: number;
+  messageImages?: number;
+  /** The "images dropped" notice of this turn was shown. */
+  imageBudgetNoticed?: boolean;
 }
 
 /** Side information the runner applies to the thread (never rendered as chat items). */
@@ -75,10 +82,10 @@ export type FinalizeAcpTurnFn = (
   now: number,
 ) => { state: AcpReducerState; events: ChatEvent[] };
 
-export type InitialAcpReducerStateFn = (threadId: string, turn: number) => AcpReducerState;
+export type InitialAcpReducerStateFn = (threadId: string, turn: number, agent?: AcpAgentKind) => AcpReducerState;
 
 /** ACP tool kind -> ToolCard name (`read` -> `Read`, ..., unknown -> first 40 chars of the title). */
-export type ToolNameForFn = (kind: ToolKind | null | undefined, title: string) => string;
+export type ToolNameForFn = (kind: ToolKind | null | undefined, title: string, agent?: AgentKind) => string;
 
 // ---------------------------------------------------------------------------
 // Permissions (core/acpPermission.ts)

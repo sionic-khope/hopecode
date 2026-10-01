@@ -2,7 +2,7 @@
 // only `{mediaType, data: '', ref}` so screenshots never bloat or leak through the JSONL; the renderer reads the
 // file back with `image:read {threadId, ref}`. Content-addressed: re-appending the same item rewrites nothing.
 import { createHash } from 'node:crypto';
-import { readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { MAX_AGENT_IMAGE_BYTES, toAgentImage } from '../../core/agentImages';
 import { sniffMagic } from '../../core/attachments';
@@ -23,6 +23,8 @@ const TYPE_BY_EXT: Readonly<Record<string, ChatImage['mediaType']>> = {
   webp: 'image/webp',
 };
 const REF_RE = /^([0-9a-f]{64})\.(png|jpg|gif|webp)$/;
+/** Bytes of one thread's media folder; a write past it is refused (a looping agent cannot fill the disk). */
+export const MAX_THREAD_MEDIA_BYTES = 500 * 1024 * 1024;
 
 export class MediaRefError extends Error {
   constructor(message: string) {
@@ -46,8 +48,28 @@ export function isMediaRef(ref: unknown): ref is string {
   return typeof ref === 'string' && REF_RE.test(ref);
 }
 
-export function createMediaStore(dir: string, log: (message: string, err?: unknown) => void = () => {}): MediaStore {
+export function createMediaStore(
+  dir: string,
+  log: (message: string, err?: unknown) => void = () => {},
+  opts: { maxThreadBytes?: number } = {},
+): MediaStore {
+  const maxThreadBytes = opts.maxThreadBytes ?? MAX_THREAD_MEDIA_BYTES;
   const threadDir = (threadId: string) => join(dir, assertSafeId(threadId, 'threadId'));
+  /** Folder size per thread, measured once from disk and then kept up to date by put / removeThread. */
+  const usage = new Map<string, number>();
+
+  async function folderBytes(threadId: string): Promise<number> {
+    const known = usage.get(threadId);
+    if (known !== undefined) return known;
+    const folder = threadDir(threadId);
+    let total = 0;
+    for (const name of await readdir(folder).catch(() => [] as string[])) {
+      const st = await stat(join(folder, name)).catch(() => null);
+      if (st?.isFile()) total += st.size;
+    }
+    usage.set(threadId, total);
+    return total;
+  }
 
   async function put(threadId: string, image: ChatImage): Promise<string> {
     const valid = toAgentImage(image.mediaType, image.data);
@@ -62,8 +84,11 @@ export function createMediaStore(dir: string, log: (message: string, err?: unkno
       () => false,
     );
     if (!exists) {
+      const used = await folderBytes(threadId);
+      if (used + buffer.length > maxThreadBytes) throw new MediaRefError('thread media folder full');
       await mkdirPrivate(folder);
       await writeFile(path, buffer, { mode: PRIVATE_FILE_MODE });
+      usage.set(threadId, used + buffer.length);
     }
     return ref;
   }
@@ -102,7 +127,8 @@ export function createMediaStore(dir: string, log: (message: string, err?: unkno
     put,
     read,
     async externalize(threadId, item) {
-      if ((item.type !== 'tool' && item.type !== 'assistant-text') || !item.images || item.images.length === 0) return item;
+      // User attachments too: no image is written into the log as base64 (older logs that have some still read).
+      if ((item.type !== 'tool' && item.type !== 'assistant-text' && item.type !== 'user') || !item.images || item.images.length === 0) return item;
       if (item.images.every((image) => image.ref && !image.data)) return item;
       const images = await storeAll(threadId, item.images);
       const { images: _inline, ...rest } = item;
@@ -110,6 +136,7 @@ export function createMediaStore(dir: string, log: (message: string, err?: unkno
     },
     async removeThread(threadId) {
       await rm(threadDir(threadId), { recursive: true, force: true });
+      usage.delete(threadId);
     },
   };
 }

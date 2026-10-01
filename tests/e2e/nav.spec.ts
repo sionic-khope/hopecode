@@ -72,7 +72,7 @@ test('nav: five entries in order, ⌘K hint, and the 더보기 menu', async () =
   const { page } = run;
   const nav = page.getByTestId('sidebar-nav');
   const labels = await nav.locator(':scope > button .hc-nav__label').allTextContents();
-  expect(labels).toEqual(['새 채팅', '검색', '풀 리퀘스트', '예약', '플러그인', '더보기']);
+  expect(labels).toEqual(['새 채팅', '검색', '풀 리퀘스트', '예약', '플러그인', '노트', '더보기']);
   await expect(nav.getByRole('button', { name: /^검색/ }).locator('kbd')).toHaveText('⌘K');
   await expect(nav.getByRole('button', { name: /^검색/ }).locator('kbd')).toBeVisible();
   // ⌘N shows on hover next to the round +.

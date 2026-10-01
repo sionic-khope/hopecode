@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, truncateSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { AttachmentStore, safeName } from '../../src/main/attachments/attachmentStore';
+import { ATTACHMENT_TTL_MS, AttachmentStore, MAX_HELD_BYTES, safeName } from '../../src/main/attachments/attachmentStore';
 import { MAX_ATTACH_READ_BYTES, MAX_ATTACHMENTS, MAX_IMAGE_ATTACH_BYTES, MAX_TEXT_BYTES } from '../../src/core/attachments';
 import { FIXTURE_PNG_BASE64 } from '../../src/main/fixtures/fakeQuery';
 
@@ -117,5 +117,57 @@ describe('AttachmentStore.fromBytes / collect / resolve', () => {
     expect(store.resolve([a.id, 'nope'])).toBeNull();
     expect(store.resolve([a.id, a.id])).toBeNull();
     expect(store.resolve(Array.from({ length: MAX_ATTACHMENTS + 1 }, (_, i) => `id${i}`))).toBeNull();
+  });
+});
+
+describe('AttachmentStore: pixel cap, one-shot resolve, TTL and byte cap (security review M1 / L1)', () => {
+  /** PNG signature + IHDR declaring `w`×`h`, no pixel data. */
+  const pngHeader = (w: number, h: number) => {
+    const b = Buffer.from(PNG.subarray(0, 33));
+    b.writeUInt32BE(w, 16);
+    b.writeUInt32BE(h, 20);
+    return b;
+  };
+
+  it('refuses a decompression-bomb header (paste and file) before the resizer ever sees it', async () => {
+    const calls: number[] = [];
+    const store = new AttachmentStore({ resizeImage: (bytes) => (calls.push(bytes.length), null) });
+    const bomb = Buffer.concat([pngHeader(100_000, 100_000), Buffer.alloc(MAX_IMAGE_ATTACH_BYTES)]);
+    expect(() => store.fromBytes('image.png', new Uint8Array(bomb))).toThrow(/해상도가 너무 큽니다/);
+    await expect(store.fromPath(file('bomb.png', bomb))).rejects.toMatchObject({ reason: expect.stringMatching(/해상도가 너무 큽니다/) });
+    expect(calls).toEqual([]);
+  });
+
+  it('a successful resolve forgets the entries; a refused one keeps them', () => {
+    const store = new AttachmentStore();
+    const a = store.fromBytes('a.txt', new TextEncoder().encode('a'));
+    expect(store.resolve([a.id], () => false)).toBeNull();
+    expect(store.resolve([a.id])?.files).toHaveLength(1);
+    expect(store.resolve([a.id])).toBeNull();
+  });
+
+  it('entries expire after the TTL', () => {
+    let now = 1_000;
+    const store = new AttachmentStore({ now: () => now });
+    const a = store.fromBytes('a.txt', new TextEncoder().encode('a'));
+    const b = store.fromBytes('b.txt', new TextEncoder().encode('b'));
+    now += ATTACHMENT_TTL_MS - 1;
+    expect(store.resolve([a.id])).not.toBeNull();
+    now += 1;
+    expect(store.resolve([b.id])).toBeNull();
+  });
+
+  it('drops the oldest entries once the held bytes pass the cap', () => {
+    const store = new AttachmentStore();
+    const pdf = (i: number) => {
+      const b = Buffer.alloc(19 * 1024 * 1024);
+      b.write('%PDF-1.4\n');
+      b[b.length - 1] = i;
+      return new Uint8Array(b);
+    };
+    const ids = Array.from({ length: 11 }, (_, i) => store.fromBytes(`f${i}.pdf`, pdf(i)).id);
+    expect(11 * 19 * 1024 * 1024).toBeGreaterThan(MAX_HELD_BYTES);
+    expect(store.resolve([ids[0]!])).toBeNull();
+    expect(store.resolve([ids[10]!])).not.toBeNull();
   });
 });

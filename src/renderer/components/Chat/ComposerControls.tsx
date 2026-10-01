@@ -365,6 +365,7 @@ export const AgentChip = memo(function AgentChip({
   onChange,
   localAuth = [],
   onRecheck,
+  agents,
 }: {
   value: AgentKind;
   /** Absent: the thread already runs with this agent (static chip). */
@@ -373,6 +374,8 @@ export const AgentChip = memo(function AgentChip({
   localAuth?: readonly LocalAuthInfo[];
   /** "상태 다시 확인" (agents:recheck); shown while some agent is unavailable. */
   onRecheck?: () => void;
+  /** Agents the picker offers (default: all). */
+  agents?: readonly AgentKind[];
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLButtonElement>(null);
@@ -385,7 +388,7 @@ export const AgentChip = memo(function AgentChip({
       </span>
     );
   }
-  const rows = agentMenuState(localAuth);
+  const rows = agentMenuState(localAuth).filter((r) => !agents || agents.includes(r.agent));
   const anyUnavailable = rows.some((r) => r.disabled);
   const sections: MenuSection[] = [
     {
