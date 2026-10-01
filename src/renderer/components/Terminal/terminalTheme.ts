@@ -12,7 +12,7 @@ function cssVar(name: string, fallback: string): string {
 
 /**
  * Dark xterm theme sourced from tokens.css: black canvas, white text, the yellow block cursor and the --ansi-* ramp
- * (violet blue, cyan, the soul red ...). Fallbacks repeat the token values for a DOM without tokens.css.
+ * (blue, cyan, the soul red ...). Fallbacks repeat the token values for a DOM without tokens.css.
  */
 export function resolveTerminalTheme(): ITheme {
   const background = cssVar('--bg-terminal', '#000000');
@@ -22,12 +22,12 @@ export function resolveTerminalTheme(): ITheme {
     foreground,
     cursor: cssVar('--cursor-terminal', '#ffe14d'),
     cursorAccent: background,
-    selectionBackground: cssVar('--selection-terminal', 'rgba(155, 77, 255, 0.4)'),
+    selectionBackground: cssVar('--selection-terminal', 'rgba(255, 225, 77, 0.3)'),
     black: cssVar('--ansi-black', '#000000'),
     red: cssVar('--ansi-red', '#ff3b4e'),
     green: cssVar('--ansi-green', '#3ce07a'),
     yellow: cssVar('--ansi-yellow', '#ffe14d'),
-    blue: cssVar('--ansi-blue', '#9b4dff'),
+    blue: cssVar('--ansi-blue', '#4fa8ff'),
     magenta: cssVar('--ansi-magenta', '#ff6bd5'),
     cyan: cssVar('--ansi-cyan', '#4fe3f0'),
     white: cssVar('--ansi-white', '#b8b0cc'),
@@ -35,7 +35,7 @@ export function resolveTerminalTheme(): ITheme {
     brightRed: cssVar('--ansi-bright-red', '#ff6b79'),
     brightGreen: cssVar('--ansi-bright-green', '#5cf097'),
     brightYellow: cssVar('--ansi-bright-yellow', '#fff08a'),
-    brightBlue: cssVar('--ansi-bright-blue', '#b077ff'),
+    brightBlue: cssVar('--ansi-bright-blue', '#8cc6ff'),
     brightMagenta: cssVar('--ansi-bright-magenta', '#ff9ae3'),
     brightCyan: cssVar('--ansi-bright-cyan', '#8ff0f7'),
     brightWhite: cssVar('--ansi-bright-white', '#ffffff'),

@@ -1,4 +1,4 @@
-/* Command palette (⌘K). Same family as .hc-modal: a dimmed backdrop, a white-framed black box with a hard violet drop,
+/* Command palette (⌘K). Same family as .hc-modal: a dimmed backdrop, a white-framed black box with a hard gray drop,
    the heart cursor on the active result. Anchored high (~14vh) so the field sits where the eye already is. Tokens only. */
 
 .hc-palette-backdrop {

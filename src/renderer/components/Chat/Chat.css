@@ -1,5 +1,5 @@
 /* Conversation as an RPG dialogue: the agent's portrait box beside a white-framed dialogue box ("* CLAUDE" name tag on
-   its first line), the user's lines in a violet frame, tool / diff / permission cards in 2px pixel frames, the composer
+   its first line), the user's lines in a yellow frame, tool / diff / permission cards in 2px pixel frames, the composer
    as the input box and the draft screen. Tokens only. */
 
 /* ---------- ChatView ---------- */
@@ -176,7 +176,7 @@
   align-items: flex-end;
   gap: var(--space-1);
 }
-/* The user's line: a violet-framed box on the right. */
+/* The user's line: a yellow-framed box on the right. */
 .hc-msg-user__bubble {
   max-width: 78%;
   padding: 12px 16px;
@@ -774,8 +774,8 @@
   box-shadow: var(--focus-ring);
 }
 
-/* Square send / stop: a violet block with a bevel and a hard drop; the glyph is the heart sprite (white
-   silhouette, so an overlay heart.png reads on violet too). Pressing sinks the block onto its shadow. */
+/* Square send / stop: a yellow block with a bevel and a hard drop; the glyph is the heart sprite (red
+   silhouette, so an overlay heart.png reads on yellow too). Pressing sinks the block onto its shadow. */
 .hc-send {
   all: unset;
   box-sizing: border-box;
@@ -1249,7 +1249,7 @@ button.hc-chip--warn[aria-expanded='true'] {
   font-weight: var(--weight-regular);
   font-variant-numeric: tabular-nums;
 }
-/* Running call: a violet pixel bar steps along the card's top edge. */
+/* Running call: a cyan pixel bar steps along the card's top edge. */
 .hc-tool--running::before {
   content: '';
   position: absolute;

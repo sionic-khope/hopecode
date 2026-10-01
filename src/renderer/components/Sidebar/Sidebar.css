@@ -477,7 +477,7 @@
 .hc-thread-wrap:hover .hc-thread {
   background: var(--bg-sidebar-hover);
 }
-/* Selected thread: a violet-framed wash, yellow text and the heart cursor in the gutter. */
+/* Selected thread: a yellow-framed wash, yellow text and the heart cursor in the gutter. */
 .hc-thread--selected,
 .hc-thread-wrap:hover .hc-thread--selected {
   background: var(--bg-sidebar-sel);

@@ -1,6 +1,6 @@
 // v12 "Dark World": the pixel RPG theme on every surface. Captures draft, conversation (dialogue box + tool + diff),
 // the PARTY line, a menu with the heart cursor, the error card, settings, accounts, the bottom terminal and the command
-// palette, and checks the tokens the language depends on (black panes, pixel faces, violet primary, yellow selection).
+// palette, and checks the tokens the language depends on (black panes, pixel faces, yellow primary and selection).
 import { expect, test, type Page } from '@playwright/test';
 import {
   bottomTerminal,
@@ -87,7 +87,7 @@ test('conversation: dialogue box with the * CLAUDE tag, yellow user box, framed 
   expect(await style(page, '.hc-diff__row--add', 'background-color')).toBe('rgb(13, 42, 23)');
   expect(await style(page, '.hc-diff__row--del', 'color')).toBe('rgb(255, 107, 121)');
   expect(await style(page, '.app__thread-name', 'font-family')).toMatch(/^"?Galmuri11"?,/);
-  // The selected thread: violet frame, yellow text, heart cursor.
+  // The selected thread: yellow frame, yellow text, heart cursor.
   const row = page.getByTestId('sidebar').locator('.hc-thread--selected');
   expect(await row.evaluate((el) => getComputedStyle(el).color)).toBe('rgb(255, 225, 77)');
   expect(await row.evaluate((el) => getComputedStyle(el, '::before').opacity)).toBe('1');
@@ -122,7 +122,7 @@ test('subagents: the PARTY line with re-inked characters', async () => {
   await screenshot(page, 'v12-party', SHOTS);
 });
 
-test('menu: framed popover, the heart on the checked item, hard violet drop', async () => {
+test('menu: framed popover, the heart on the checked item, hard gray drop', async () => {
   const { page } = run;
   await openDraft(page);
   await page.getByTestId('draft').locator('.hc-chip--folder').click();
@@ -134,7 +134,7 @@ test('menu: framed popover, the heart on the checked item, hard violet drop', as
   expect(await checked.evaluate((el) => getComputedStyle(el, '::before').opacity)).toBe('1');
   const shadow = await page.locator('.hc-popover').filter({ has: menu }).evaluate((el) => getComputedStyle(el).boxShadow);
   expect(shadow).toContain('rgb(255, 255, 255)');
-  expect(shadow).toContain('rgb(74, 31, 148)');
+  expect(shadow).toContain('rgb(58, 58, 58)');
   await screenshot(page, 'v12-menu', SHOTS);
   await page.keyboard.press('Escape');
   await expect(menu).toHaveCount(0);
