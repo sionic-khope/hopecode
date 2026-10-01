@@ -147,6 +147,8 @@ test('codex: first send creates a worktree and streams; spawn env carries GPT-6.
   const { page } = run;
   ids['codex'] = await startAgentThread(page, 'Codex', 'hello codex');
   await expect(messages(page)).toContainText('FAKE-ACP(codex): hello codex');
+  // Speaker label beside the avatar on the first reply.
+  await expect(page.locator('.hc-agent-name').first()).toHaveText('Codex');
   const thread = await threadById(page, ids['codex']);
   expect(thread).toMatchObject({ agent: 'codex', model: 'gpt-6.1-sol', effort: 'high', permissionMode: 'default' });
   expect((thread!['worktree'] as { branch: string }).branch).toMatch(/^hopecode\//);
@@ -245,6 +247,8 @@ test('hermes: system default model (reported by the agent), ACP mode chip, scena
   await chooseFixtureFolder(page, sandbox);
   await sendMessage(page, 'hello hermes');
   await expect(messages(page)).toContainText('FAKE-ACP(hermes): hello hermes');
+  // Speaker label beside the avatar on the first reply.
+  await expect(page.locator('.hc-agent-name').first()).toHaveText('Hermes');
   const created = (await bootstrapState(page)).threads.find((t) => t.title === 'hello hermes')!;
   ids['hermes'] = created.id;
   expect(await threadById(page, created.id)).toMatchObject({ agent: 'hermes', model: '', effort: null });

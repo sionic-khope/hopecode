@@ -81,6 +81,16 @@
 .hc-agent-row--lead .hc-agent-row__body {
   padding-top: 2px;
 }
+/* Speaker label beside the avatar: small, quiet, then the reply. */
+.hc-agent-name {
+  margin-top: 4px;
+  margin-bottom: -4px;
+  font-size: var(--text-xs);
+  line-height: 20px;
+  font-weight: var(--weight-semibold);
+  color: var(--label-secondary);
+  letter-spacing: 0.01em;
+}
 
 /* ---------- Message actions (hover) ---------- */
 .hc-msg-actions {

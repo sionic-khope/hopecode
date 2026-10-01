@@ -182,6 +182,9 @@ export function MessageList({
 }
 
 /** Agent column: avatar gutter (filled on the first item of a run) + content. */
+/** Short speaker label shown beside the avatar on the first item of an agent run. */
+const AGENT_SHORT_NAME: Record<AgentKind, string> = { 'claude-code': 'Claude', codex: 'Codex', hermes: 'Hermes' };
+
 function AgentRow({ agent, leadsRun, children }: { agent: AgentKind; leadsRun: boolean; children: ReactNode }) {
   return (
     <div className={`hc-agent-row hc-msg-enter${leadsRun ? ' hc-agent-row--lead' : ''}`}>
@@ -192,7 +195,14 @@ function AgentRow({ agent, leadsRun, children }: { agent: AgentKind; leadsRun: b
           </span>
         ) : null}
       </span>
-      <div className="hc-agent-row__body">{children}</div>
+      <div className="hc-agent-row__body">
+        {leadsRun ? (
+          <span className="hc-agent-name" data-agent={agent}>
+            {AGENT_SHORT_NAME[agent]}
+          </span>
+        ) : null}
+        {children}
+      </div>
     </div>
   );
 }

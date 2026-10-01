@@ -48,6 +48,8 @@ test('first turn: streaming text, Edit tool card, permission 허용, diff lines,
   const messages = page.locator('.hc-messages');
   await expect(messages.locator('.hc-msg-user__bubble')).toHaveText('Please update the README greeting');
   await expect(messages).toContainText('I will update the README greeting.');
+  // Speaker label beside the avatar on the first reply.
+  await expect(page.locator('.hc-agent-name').first()).toHaveText('Claude');
 
   const permission = page.locator('.hc-permission');
   await expect(permission).toBeVisible();
