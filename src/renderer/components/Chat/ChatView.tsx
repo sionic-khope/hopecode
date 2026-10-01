@@ -9,6 +9,7 @@ import { MessageList } from './MessageList';
 import { ToolPathContext, TurnLiveContext } from './ToolCard';
 import type { ErrorCardActions } from './ErrorCard';
 import { Composer } from './Composer';
+import type { SlashSource } from './SlashMenu';
 import { AcpModelChip, AgentChip, AgentModeChip, FolderTag, ModelPicker, NO_PROJECT_LABEL, PermissionChip, SystemModelTag } from './ComposerControls';
 import { agentModeChip, codexThreadChip, hermesModelChip } from './acpChips';
 import './Chat.css';
@@ -120,6 +121,14 @@ export function ChatView({
     };
   }, [lastUser, running, onSend, threadId, onRetryInNewSession, thread]);
   const features = AGENTS[thread.agent].features;
+  const acpCommands = thread.acp?.controls?.commands;
+  const slash = useMemo<SlashSource>(
+    () =>
+      thread.agent === 'claude-code'
+        ? { kind: 'claude', threadId: thread.id }
+        : { kind: 'acp', agentName: AGENTS[thread.agent].name, commands: acpCommands },
+    [thread.agent, thread.id, acpCommands],
+  );
   const codex = thread.agent === 'codex' ? codexThreadChip(thread) : null;
   const modeChip = features.agentModes ? agentModeChip(thread.acp) : null;
 
@@ -184,6 +193,8 @@ export function ChatView({
         canChangeFolder={false}
         prefill={prefill}
         onPrefillApplied={clearPrefill}
+        slash={slash}
+        homeDir={homeDir}
         leading={
           <>
             <AgentChip value={thread.agent} />

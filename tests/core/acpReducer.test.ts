@@ -85,7 +85,7 @@ describe('text streaming', () => {
     expect(r.state.imageNoticeShown).toBe(true);
   });
 
-  it('ignores thoughts and user chunks', () => {
+  it('ignores thoughts and user chunks (a command list is a signal, never a chat event)', () => {
     const r = run([
       { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'hmm' } },
       { sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'hi' } },
@@ -94,7 +94,7 @@ describe('text streaming', () => {
       { sessionUpdate: 'totally_new' } as unknown as SessionUpdate,
     ]);
     expect(r.events).toEqual([]);
-    expect(r.signals).toEqual([]);
+    expect(r.signals).toEqual([{ type: 'commands', commands: [] }]);
   });
 
   it('does not mutate the input state', () => {
@@ -419,5 +419,58 @@ describe('settled tools (late updates)', () => {
     const notice = r.events.flatMap((e) => (e.type === 'item-upsert' && e.item.type === 'notice' ? [e.item] : []))[0]!;
     expect(notice.text).toHaveLength(256);
     expect(({} as { polluted?: unknown }).polluted).toBeUndefined();
+  });
+});
+
+describe('available_commands_update', () => {
+  it('emits the full command list as a signal (no chat events), hint from unstructured input', () => {
+    const { events, signals } = run([
+      {
+        sessionUpdate: 'available_commands_update',
+        availableCommands: [
+          { name: 'review', description: 'Review changes', input: { hint: 'optional instructions' } },
+          { name: 'init', description: 'Create AGENTS.md', _meta: { x: 1 } },
+        ],
+      } as SessionUpdate,
+    ]);
+    expect(events).toEqual([]);
+    expect(signals).toEqual([
+      {
+        type: 'commands',
+        commands: [
+          { name: 'review', description: 'Review changes', hint: 'optional instructions' },
+          { name: 'init', description: 'Create AGENTS.md', hint: null },
+        ],
+      },
+    ]);
+  });
+
+  it('drops malformed rows, duplicates and names with spaces; strips a leading slash; caps descriptions', () => {
+    const { signals } = run([
+      {
+        sessionUpdate: 'available_commands_update',
+        availableCommands: [
+          { name: '/plan', description: 'x'.repeat(5000), input: { hint: '  ' } },
+          { name: 'plan', description: 'dup' },
+          { name: 'two words', description: 'bad' },
+          { name: 42, description: 'bad' },
+          null,
+          { name: '', description: 'empty' },
+          { name: 'nodesc' },
+        ],
+      } as unknown as SessionUpdate,
+    ]);
+    const s = signals[0];
+    expect(s?.type).toBe('commands');
+    if (s?.type !== 'commands') return;
+    expect(s.commands.map((c) => c.name)).toEqual(['plan', 'nodesc']);
+    expect(s.commands[0]!.description).toHaveLength(1000);
+    expect(s.commands[0]!.hint).toBeNull();
+    expect(s.commands[1]!.description).toBe('');
+  });
+
+  it('an empty list is still reported (it replaces the previous one)', () => {
+    const { signals } = run([{ sessionUpdate: 'available_commands_update', availableCommands: [] } as SessionUpdate]);
+    expect(signals).toEqual([{ type: 'commands', commands: [] }]);
   });
 });

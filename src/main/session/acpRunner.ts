@@ -558,7 +558,9 @@ export class AcpRunner implements AgentRunner {
       this.flushReducer();
       this.reducer = initialAcpReducerState(this.threadId, this.turnNo);
       this.tag = randomUUID().slice(0, 8);
-      const controls = controlsFrom(this.threadId, opened.res);
+      // Slash commands come in a notification (possibly before this response); the last list stays until replaced.
+      const knownCommands = this.controls().commands;
+      const controls: AcpControls = { ...controlsFrom(this.threadId, opened.res), ...(knownCommands ? { commands: knownCommands } : {}) };
       this.patchAcp({ sessionId: opened.sessionId, controls });
       this.broadcastControls(controls);
       await this.applyAfterOpen(conn, abort.signal, spawnedWith);
@@ -751,6 +753,8 @@ export class AcpRunner implements AgentRunner {
       else if (s.type === 'config') {
         this.updateControls({ configOptions: s.configOptions });
         this.syncThreadConfig(s.configOptions);
+      } else if (s.type === 'commands') {
+        this.updateControls({ commands: s.commands });
       } else if (s.type === 'mode') {
         const previous = this.controls().currentModeId;
         this.updateControls({ currentModeId: s.currentModeId });

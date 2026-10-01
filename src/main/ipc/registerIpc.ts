@@ -38,10 +38,12 @@ import { createScratchDir, removeScratchDir, scratchGitCeiling } from '../scratc
 import { draftAgentDefaults, isFullAccessMode, SETTABLE_CONFIG_CATEGORIES } from '../../core/agentDefaults';
 import { NAV_CHANNELS, buildNavHandlers, type NavChannel, type NavHandlers, type NavServices } from './navHandlers';
 import { imageHandlers, isChatImageList, type ImageActions } from './imageHandlers';
+import type { SlashCommandService } from '../commands/slashCommands';
 import {
   CODEX_MODEL_PATTERN,
   DEFAULT_THREAD_TITLE,
   DRAFT_PTY_SESSION_ID,
+  SAFE_ID_PATTERN,
   USAGE_HISTORY_RETENTION_MS,
 } from '../../shared/constants';
 import { AGENTS, DEFAULT_AGENT, isAgentKind } from '../../shared/agents';
@@ -156,6 +158,8 @@ export interface RegisterIpcServices {
   provideThreadStart?: (start: (req: ThreadStartRequest) => Promise<ThreadStartResult>) => void;
   /** Lightbox "Finder에서 보기" / "복사" (Electron shell + clipboard). */
   images?: ImageActions;
+  /** Composer `/` picker (commands/slashCommands.ts); absent = no Claude commands listed. */
+  slashCommands?: SlashCommandService;
   /** Local theme folder scan (theme/themeProtocol.ts); absent = no overlay. */
   themeOverlay?: () => Promise<ThemeOverlay>;
 }
@@ -744,6 +748,27 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel> {
     },
 
     'models:list': async () => sessionManager.listModels(),
+
+    'commands:list': async (req) => {
+      const safeId = (v: unknown) => v === undefined || (isString(v) && SAFE_ID_PATTERN.test(v));
+      assertReq(
+        'commands:list',
+        isPlainObject(req) && safeId(req.threadId) && safeId(req.projectId),
+        'threadId/projectId must be safe ids',
+      );
+      const { threadId, projectId } = req as { threadId?: string; projectId?: string };
+      const thread = threadId ? requireThread('commands:list', threadId) : null;
+      const project = thread
+        ? (store.get().projects.find((p) => p.id === thread.projectId) ?? null)
+        : projectId
+          ? requireProject('commands:list', projectId)
+          : null;
+      // Project skills / commands load only for a trusted folder (the SDK's settingSources rule).
+      const projectDir = project?.trusted ? (thread?.cwd ?? project.path) : null;
+      if (thread && thread.agent !== 'claude-code') return { commands: [], origin: 'scan' };
+      if (!s.slashCommands) return { commands: [], origin: 'scan' };
+      return s.slashCommands.list({ threadId: thread?.id ?? null, projectDir });
+    },
 
     'dialog:pickFiles': async (req) => {
       assertReq(

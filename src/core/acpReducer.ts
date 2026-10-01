@@ -1,6 +1,6 @@
 // ACP `session/update` -> ChatEvent mapping (plan 2.4). Pure: the SDK is imported for types only.
 import type { SessionUpdate, StopReason } from '@agentclientprotocol/sdk';
-import type { ChatEvent, ChatItem, ToolFileDiff, ToolItem } from '../shared/types';
+import type { AcpCommandLite, ChatEvent, ChatItem, ToolFileDiff, ToolItem } from '../shared/types';
 import type {
   AcpReducerState,
   AcpReduceResult,
@@ -129,6 +129,32 @@ function buildInput(
   if (typeof src.kind === 'string') input.kind = cap(src.kind, MAX_LABEL_CHARS);
   if (Array.isArray(src.locations)) input.locations = src.locations.slice(0, MAX_LIST_ITEMS);
   return input;
+}
+
+const MAX_COMMAND_NAME_CHARS = 64;
+const MAX_COMMAND_DESCRIPTION_CHARS = 1000;
+
+/**
+ * Agent-advertised slash commands, read defensively: a name is one token without the slash (a leading `/` is
+ * dropped), duplicates and malformed rows are skipped, everything is capped.
+ */
+export function toLiteCommands(raw: readonly unknown[]): AcpCommandLite[] {
+  const out: AcpCommandLite[] = [];
+  const seen = new Set<string>();
+  for (const c of raw) {
+    if (out.length >= MAX_LIST_ITEMS) break;
+    if (!isRecord(c) || typeof c.name !== 'string') continue;
+    const name = c.name.trim().replace(/^\//, '');
+    if (!name || /\s/.test(name) || name.length > MAX_COMMAND_NAME_CHARS || seen.has(name)) continue;
+    seen.add(name);
+    const hint = isRecord(c.input) && typeof c.input.hint === 'string' ? c.input.hint.trim() : '';
+    out.push({
+      name,
+      description: typeof c.description === 'string' ? cap(c.description, MAX_COMMAND_DESCRIPTION_CHARS) : '',
+      hint: hint ? cap(hint, MAX_LABEL_CHARS) : null,
+    });
+  }
+  return out;
 }
 
 const checklistMark = { completed: '[x]', in_progress: '[~]', pending: '[ ]' } as const;
@@ -321,6 +347,10 @@ export const reduceAcpUpdate: ReduceAcpUpdateFn = (state, update, now): AcpReduc
       if (Array.isArray(u.configOptions)) signals.push({ type: 'config', configOptions: toLiteOptions(u.configOptions) });
       break;
 
+    case 'available_commands_update':
+      if (Array.isArray(u.availableCommands)) signals.push({ type: 'commands', commands: toLiteCommands(u.availableCommands) });
+      break;
+
     case 'usage_update':
       if (typeof u.used === 'number' && typeof u.size === 'number' && u.size > 0) {
         signals.push({ type: 'context', percent: Math.max(0, Math.min(100, (u.used / u.size) * 100)) });
@@ -335,7 +365,7 @@ export const reduceAcpUpdate: ReduceAcpUpdateFn = (state, update, now): AcpReduc
       break;
     }
 
-    // user_message_chunk, agent_thought_chunk, plan_removed, available_commands_update, session_info_update,
+    // user_message_chunk, agent_thought_chunk, plan_removed, session_info_update,
     // compaction_* and unknown updates are not rendered.
     default:
       break;

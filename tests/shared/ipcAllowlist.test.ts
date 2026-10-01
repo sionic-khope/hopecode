@@ -201,6 +201,9 @@ function makeFakeServices(overrides: Partial<RegisterIpcServices> = {}): { servi
       async listModels() {
         return [];
       },
+      supportedCommands() {
+        return null;
+      },
       async closeThread() {},
       async closeAccount() {},
       pendingPermissions() {

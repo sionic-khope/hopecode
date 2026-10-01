@@ -4,6 +4,7 @@
 // the types here until the wave gate connects the implementations.
 import type { SessionUpdate, StopReason, ToolKind } from '@agentclientprotocol/sdk';
 import type {
+  AcpCommandLite,
   AcpConfigOptionLite,
   AcpPermissionOptionLite,
   AgentKind,
@@ -52,6 +53,8 @@ export interface AcpReducerState {
 export type AcpSignal =
   | { type: 'mode'; currentModeId: string }
   | { type: 'config'; configOptions: AcpConfigOptionLite[] }
+  /** `available_commands_update`: the full list (replaces the previous one). */
+  | { type: 'commands'; commands: AcpCommandLite[] }
   /** 0..100 from `usage_update` (`used / size * 100`). */
   | { type: 'context'; percent: number };
 

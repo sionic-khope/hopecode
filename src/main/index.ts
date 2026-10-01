@@ -75,6 +75,7 @@ import { createFixturePrSource } from './fixtures/fixturePrs';
 import { PR_URL_HOSTS } from './ipc/navHandlers';
 import { createThreadSearchIndex } from './nav/threadSearchIndex';
 import { readPluginInventory } from './plugins/pluginInventory';
+import { createSlashCommandService } from './commands/slashCommands';
 import { createGhPrSource } from './prs/prService';
 import { createScheduler } from './schedule/scheduler';
 
@@ -536,6 +537,14 @@ async function startServices(): Promise<Services> {
     appVersion: app.getVersion(),
     isTrustedSender: (url) => isAppUrl(url, urlConfig),
     themeOverlay,
+    // Composer `/` picker: read-only scan of the shared config (~/.claude, or the fixture folder in test runs);
+    // user skills may be links into ~/.agents/skills (skills.sh installs), nothing else outside is read.
+    slashCommands: createSlashCommandService({
+      userDir: sharedSourceDir,
+      extraRoots: [join(dirname(sharedSourceDir), '.agents', 'skills')],
+      live: (threadId) => session.supportedCommands(threadId),
+      log: (message, err) => console.error(message, err ?? ''),
+    }),
     syncTranscript,
     gitService,
     editorLauncher,

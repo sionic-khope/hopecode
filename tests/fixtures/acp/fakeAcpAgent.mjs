@@ -2,7 +2,8 @@
 // Scripted fake ACP agent over stdio (plan 4). Test/e2e only: never packaged, no network access.
 // Profile: FAKE_ACP_PROFILE=codex|hermes|noload. Session state (load replay): FAKE_ACP_STATE_DIR/<sessionId>.json.
 // Other env: FAKE_ACP_NO_MODELS=1 (hermes omits `models`), FAKE_ACP_AUTH_REQUIRED=1 (session/new -> -32000),
-// FAKE_ACP_INIT_DELAY_MS=<ms> (initialize answers late), FAKE_ACP_SET_MODE_FAIL=1 (session/set_mode errors).
+// FAKE_ACP_INIT_DELAY_MS=<ms> (initialize answers late), FAKE_ACP_SET_MODE_FAIL=1 (session/set_mode errors),
+// FAKE_ACP_COMMANDS=1 (an `available_commands_update` right after session/new and session/load).
 // Codex (codex-acp 2.x style, env only): CODEX_CONFIG (JSON: model, model_reasoning_effort), INITIAL_AGENT_MODE
 // (read-only | workspace-write | agent | agent-full-access; default agent), CODEX_PATH (reported, never run).
 // `/mode [modeId]` switches to the next mode (or the given one) from the agent side.
@@ -21,6 +22,24 @@ const AUTH_REQUIRED = process.env.FAKE_ACP_AUTH_REQUIRED === '1';
 const INIT_DELAY_MS = Number(process.env.FAKE_ACP_INIT_DELAY_MS || 0);
 const SET_MODE_FAILS = process.env.FAKE_ACP_SET_MODE_FAIL === '1';
 const IS_HERMES = PROFILE === 'hermes';
+const SEND_COMMANDS = process.env.FAKE_ACP_COMMANDS === '1';
+/** Slash commands the agent advertises (codex-acp style: `input.hint` when the command takes text). */
+const FIXTURE_COMMANDS = [
+  { name: 'review', description: 'Review my current changes and find issues', input: { hint: 'optional custom review instructions' } },
+  { name: 'init', description: 'Create an AGENTS.md file with instructions for Codex' },
+  { name: 'compact', description: 'Summarize the conversation to free up context' },
+];
+
+/** Advertises FIXTURE_COMMANDS just after the response that opened the session (as the real agents do). */
+function advertiseCommands(client, sessionId) {
+  if (!SEND_COMMANDS) return;
+  setTimeout(() => {
+    void client.notify(acp.methods.client.session.update, {
+      sessionId,
+      update: { sessionUpdate: 'available_commands_update', availableCommands: FIXTURE_COMMANDS },
+    });
+  }, 20);
+}
 
 // ---- env: codex-acp 2.x configuration (no argv) ---------------------------------------------------------------
 function parseConfig(raw) {
@@ -442,11 +461,12 @@ app.onRequest('initialize', async () => {
 
 app.onRequest('authenticate', () => ({}));
 
-app.onRequest('session/new', ({ params }) => {
+app.onRequest('session/new', ({ params, client }) => {
   if (AUTH_REQUIRED) throw new acp.RequestError(-32000, 'Authentication required');
   const s = newState(`fake-${randomUUID()}`, params.cwd);
   sessions.set(s.sessionId, s);
   save(s);
+  advertiseCommands(client, s.sessionId);
   return { sessionId: s.sessionId, ...sessionFields(s) };
 });
 
@@ -459,6 +479,7 @@ if (PROFILE !== 'noload') {
       throw new acp.RequestError(-32002, `Session ${params.sessionId} not found`);
     }
     s.cwd = params.cwd;
+    advertiseCommands(client, s.sessionId);
     for (const h of s.history) {
       await client.notify(acp.methods.client.session.update, {
         sessionId: s.sessionId,

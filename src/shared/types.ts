@@ -136,6 +136,16 @@ export interface AcpControls {
   configOptions: AcpConfigOptionLite[];
   /** Hermes' non-standard `models.currentModelId` (read-only label, 120 chars max); null when not reported. */
   reportedModel: string | null;
+  /** Slash commands from the latest `available_commands_update` (absent until the agent sent one). */
+  commands?: AcpCommandLite[];
+}
+
+/** ACP `AvailableCommand` reduced to what the composer's slash picker renders. */
+export interface AcpCommandLite {
+  name: string;
+  description: string;
+  /** `input.hint` of an unstructured input; null = the command takes no input. */
+  hint: string | null;
 }
 
 /** ACP session state of a Codex / Hermes thread (absent on Claude threads). */
@@ -705,3 +715,36 @@ export interface ThreadStartRequest {
 export type ThreadStartResult =
   | { ok: true; thread: Thread; send: ChatSendResult }
   | { ok: false; reason: NonNullable<ChatSendResult['reason']> };
+
+// ---------------------------------------------------------------------------
+// Slash commands (composer `/` picker)
+// ---------------------------------------------------------------------------
+
+/**
+ * Where a slash command comes from: `user` (~/.claude), `project` (<project>/.claude, trusted folders only),
+ * `plugin` (an installed plugin), `builtin` (the agent's own command), `session` (reported by the live session
+ * only, e.g. an MCP prompt or a claude.ai-synced skill).
+ */
+export type SlashCommandSource = 'user' | 'project' | 'plugin' | 'builtin' | 'session';
+
+export interface SlashCommandInfo {
+  /** Typed after the slash (`demo`, `plugin:skill`, `frontend:review`). */
+  name: string;
+  description: string;
+  /** Frontmatter `argument-hint` / SDK `argumentHint`; null = the command takes no arguments. */
+  argumentHint: string | null;
+  source: SlashCommandSource;
+  /** Plugin name for `plugin` commands. */
+  plugin?: string;
+  kind: 'skill' | 'command' | 'builtin';
+  /** Absolute path of the SKILL.md / command file (preview only; never sent back to main). */
+  path?: string;
+  /** First lines of the body after the frontmatter (plain markdown text, capped). */
+  preview?: string;
+}
+
+export interface SlashCommandList {
+  commands: SlashCommandInfo[];
+  /** `session`: merged with the live Query's supportedCommands(); `scan`: files only (draft / no session). */
+  origin: 'session' | 'scan';
+}

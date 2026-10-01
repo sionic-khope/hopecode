@@ -6,6 +6,7 @@ import { useAppStore, type DraftState } from '../../store';
 import { BrandMark } from '../common';
 import { GlyphBranch, GlyphChanges, GlyphCode, GlyphTerminal } from '../common/glyphs';
 import { Composer, type ComposerHandle } from './Composer';
+import type { SlashSource } from './SlashMenu';
 import { AcpModelChip, AgentChip, FolderChip, ModelPicker, PermissionChip, SystemModelTag } from './ComposerControls';
 import { codexEffortChoices, codexModelChoices, effortValueLabel, hermesModelChip } from './acpChips';
 import { BoltIcon } from './icons';
@@ -74,6 +75,14 @@ export function DraftView({
   const localAuth = useAppStore((s) => s.localAuth);
   const threads = useAppStore((s) => s.threads);
   const features = AGENTS[draft.agent].features;
+  // No session yet: Claude lists the scanned skills / commands, ACP agents report theirs once a session opens.
+  const slash = useMemo<SlashSource>(
+    () =>
+      draft.agent === 'claude-code'
+        ? { kind: 'claude', projectId: draft.projectId }
+        : { kind: 'acp', agentName: AGENTS[draft.agent].name, commands: undefined },
+    [draft.agent, draft.projectId],
+  );
   const codexEfforts = useMemo(() => (draft.agent === 'codex' ? codexEffortChoices(threads) : []), [draft.agent, threads]);
   const codexModels = useMemo(
     () => (draft.agent === 'codex' ? codexModelChoices(threads, draft.model) : []),
@@ -187,6 +196,8 @@ export function DraftView({
         onChangeFolder={() => setFolderOpen(true)}
         prefill={prefill}
         onPrefillApplied={clearPrefill}
+        slash={slash}
+        homeDir={homeDir}
         leading={
           <>
             <AgentChip value={draft.agent} onChange={setAgent} localAuth={localAuth} onRecheck={recheckAgents} />

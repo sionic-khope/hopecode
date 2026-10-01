@@ -1,6 +1,6 @@
 // Main-process service interfaces (plan 4.2). Wave 1/2 lanes implement these; index.ts wires them (Wave 3).
 // Every service receives dependencies through its constructor/factory; no service imports another lane's module.
-import type { ModelInfo, query } from '@anthropic-ai/claude-agent-sdk';
+import type { ModelInfo, SlashCommand, query } from '@anthropic-ai/claude-agent-sdk';
 import type { EventChannel, EventPayload } from '../shared/ipc';
 import type {
   Account,
@@ -206,6 +206,9 @@ export interface AccountPool {
 /** Claude model catalog row (SDK `ModelInfo`; mapped with models/modelCatalog.toModelOption). */
 export type ModelInfoLite = ModelInfo;
 
+/** Slash command row of a live Query (SDK `SlashCommand`: name, description, argumentHint, builtin). */
+export type SlashCommandLite = SlashCommand;
+
 /**
  * The runner SessionManager keeps per thread (plan 2.1). ThreadRunner (Claude, SDK Query + account rotation) and
  * AcpRunner (Codex / Hermes over ACP) implement it.
@@ -230,6 +233,8 @@ export interface AgentRunner {
   releaseAccount(accountId: string): Promise<void>;
   /** Claude model catalog of the live Query; null when this runner has none (ACP, or no Query open). */
   supportedModels(): Promise<ModelInfoLite[]> | null;
+  /** Claude: the live Query's supportedCommands(); absent / null when there is none (ACP, or no Query open). */
+  supportedCommands?(): Promise<SlashCommandLite[]> | null;
   /** Kill now (quit timeout). */
   abort(): void;
   /**
@@ -300,6 +305,8 @@ export interface SessionManager {
   setAgentConfig(threadId: string, configId: string, value: string | boolean): Promise<void>;
   respondPermission(requestId: string, decision: PermissionDecision, message?: string): void;
   listModels(): Promise<ModelOption[]>;
+  /** Slash commands of the thread's live Claude Query; null when it has none open (never starts one). */
+  supportedCommands(threadId: string): Promise<SlashCommandLite[]> | null;
   /** Close Query and drop runner (thread deleted). */
   closeThread(threadId: string): Promise<void>;
   /**

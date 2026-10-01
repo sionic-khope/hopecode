@@ -33,6 +33,7 @@ import type {
   Broadcaster,
   ClaudeBinary,
   ModelInfoLite,
+  SlashCommandLite,
   QueryFn,
   ShellEnv,
   Store,
@@ -342,6 +343,11 @@ export class ThreadRunner implements AgentRunner {
   /** Model catalog of the live Query; null while none is open. */
   supportedModels(): Promise<ModelInfoLite[]> | null {
     return this.active?.q.supportedModels() ?? null;
+  }
+
+  /** Slash commands of the live Query; null while none is open. */
+  supportedCommands(): Promise<SlashCommandLite[]> | null {
+    return this.active?.q.supportedCommands() ?? null;
   }
 
   /** ACP session modes do not exist for Claude threads. */

@@ -17,6 +17,7 @@ import type {
   LocalAuthInfo,
   SettingsPatch,
   SharedConfigStatus,
+  SlashCommandList,
   ChatEvent,
   ChatImage,
   ChatItem,
@@ -106,6 +107,11 @@ export interface InvokeMap {
     res: void;
   };
   'models:list': { req: void; res: ModelOption[] };
+  /**
+   * Claude Code slash commands for the composer's `/` picker: the thread's live session list (supportedCommands)
+   * merged with a read-only scan of ~/.claude and, for a trusted project, <folder>/.claude. Draft: `projectId`.
+   */
+  'commands:list': { req: { threadId?: string; projectId?: string }; res: SlashCommandList };
   /**
    * Native file picker for "파일 첨부". Returns `@`-mention paths: relative to the thread cwd (or the project
    * folder for a draft) when inside it, absolute otherwise. `[]` when cancelled.
@@ -276,6 +282,7 @@ export const INVOKE_CHANNELS = [
   'chat:interrupt',
   'permission:respond',
   'models:list',
+  'commands:list',
   'dialog:pickFiles',
   'account:loginStart',
   'account:loginInput',

@@ -1,4 +1,4 @@
-import { memo, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type Ref } from 'react';
+import { memo, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type Ref } from 'react';
 import { Menu, type MenuSection } from '../common';
 import { COMPOSER_MENU_WIDTH } from './ComposerControls';
 import { FolderOpenIcon, PaperclipIcon, PlusIcon, SpinnerIcon, StopIcon } from './icons';
@@ -6,6 +6,8 @@ import { isSubmitKey } from './composerKeys';
 import { playSfx } from '../../sound/engine';
 import type { ChatImage } from '../../../shared/types';
 import { ComposerImageTray, useComposerImages } from '../Images/ComposerImages';
+import { SlashMenu, slashOptionId, useSlashItems, type SlashSource } from './SlashMenu';
+import { applySlashChoice, filterSlashCommands, sendsOnEnter, slashTokenAt } from './slashCommands';
 import './Chat.css';
 
 export const COMPOSER_PLACEHOLDER = '무엇이든 요청하세요';
@@ -52,7 +54,14 @@ export interface ComposerProps {
    */
   prefill?: { text: string; nonce: number; mode?: 'replace' | 'prepend' } | null;
   onPrefillApplied?: () => void;
+  /** `/` at the start of the input (or of a line) opens the command / skill picker with these rows. */
+  slash?: SlashSource;
+  /** Shortens file paths in the picker preview (`~/…`). */
+  homeDir?: string | null;
 }
+
+/** Widest the `/` picker gets (it otherwise matches the composer card). */
+const SLASH_MENU_MAX_W = 760;
 
 const MAX_HEIGHT_PX = 240;
 
@@ -78,8 +87,11 @@ export const Composer = memo(function Composer({
   prefill = null,
   onPrefillApplied,
   acceptImages = false,
+  slash,
+  homeDir = null,
 }: ComposerProps) {
   const [text, setText] = useState('');
+  const [caret, setCaret] = useState(0);
   const [plusOpen, setPlusOpen] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const plusRef = useRef<HTMLButtonElement>(null);
@@ -105,6 +117,7 @@ export const Composer = memo(function Composer({
     pendingCaret.current = null;
     el.focus();
     el.setSelectionRange(caret, caret);
+    setCaret(caret);
   }, [text]);
 
   useImperativeHandle(handleRef, () => ({ focus: () => taRef.current?.focus(), setText: replaceText }), []);
@@ -134,8 +147,44 @@ export const Composer = memo(function Composer({
 
   const attachments = useComposerImages(acceptImages);
 
-  const submit = () => {
-    const trimmed = text.trim();
+  // `/` picker: open while the caret sits in a `/query` token; Escape / an outside click hide it until the next edit.
+  const cardRef = useRef<HTMLDivElement>(null);
+  const slashListId = useId();
+  const token = slash && !disabled ? slashTokenAt(text, caret) : null;
+  const [dismissedAt, setDismissedAt] = useState<number | null>(null);
+  const slashActive = token !== null && dismissedAt !== token.start;
+  const { items: slashItems, emptyHint: slashHint } = useSlashItems(slash, slashActive);
+  const matches = slashActive ? filterSlashCommands(slashItems, token.query) : [];
+  const [activeIndex, setActiveIndex] = useState(0);
+  const slashOpen = slashActive && (matches.length > 0 || (slashItems.length === 0 && !!slashHint));
+  const active = Math.min(activeIndex, Math.max(0, matches.length - 1));
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [token?.query, token?.start]);
+
+  const closeSlash = () => {
+    if (!token) return;
+    playSfx('back');
+    setDismissedAt(token.start);
+  };
+
+  /** Completes the token to `/name ` (Tab, or Enter on a command that takes arguments) or sends `/name`. */
+  const chooseSlash = (index: number, viaEnter: boolean) => {
+    const item = matches[index];
+    if (!item || !token) return;
+    playSfx('select');
+    if (viaEnter && sendsOnEnter(item, text, token)) {
+      submit(`/${item.name}`);
+      return;
+    }
+    const next = applySlashChoice(text, token, item.name);
+    pendingCaret.current = next.caret;
+    setText(next.text);
+  };
+
+  const submit = (override?: string) => {
+    const trimmed = (override ?? text).trim();
     if (!trimmed || disabled || busy) return;
     playSfx('send');
     const images = attachments.images;
@@ -147,6 +196,26 @@ export const Composer = memo(function Composer({
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (slashOpen && matches.length > 0) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const step = e.key === 'ArrowDown' ? 1 : -1;
+        const next = (active + step + matches.length) % matches.length;
+        if (next !== active) playSfx('move');
+        setActiveIndex(next);
+        return;
+      }
+      if (e.key === 'Tab' && !e.shiftKey) {
+        e.preventDefault();
+        chooseSlash(active, false);
+        return;
+      }
+      if (isSubmitKey({ key: e.key, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode })) {
+        e.preventDefault();
+        chooseSlash(active, true);
+        return;
+      }
+    }
     if (!isSubmitKey({ key: e.key, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode })) return;
     e.preventDefault();
     submit();
@@ -206,10 +275,24 @@ export const Composer = memo(function Composer({
   return (
     <div className={`hc-composer hc-composer--${size}`}>
       <div
+        ref={cardRef}
         className={`hc-composer__card${disabled ? ' hc-composer__card--disabled' : ''}${attachments.dragging ? ' hc-composer__card--dragging' : ''}`}
         {...attachments.dropProps}
       >
         <ComposerImageTray images={attachments.images} error={attachments.error} onRemove={attachments.remove} />
+        <SlashMenu
+          open={slashOpen}
+          onClose={closeSlash}
+          anchorRef={cardRef}
+          listId={slashListId}
+          items={matches}
+          activeIndex={active}
+          onActiveChange={setActiveIndex}
+          onChoose={(i) => chooseSlash(i, false)}
+          emptyHint={slashHint}
+          width={Math.min(cardRef.current?.offsetWidth ?? SLASH_MENU_MAX_W, SLASH_MENU_MAX_W)}
+          homeDir={homeDir}
+        />
         <textarea
           ref={taRef}
           className="hc-composer__textarea"
@@ -218,7 +301,14 @@ export const Composer = memo(function Composer({
           placeholder={placeholder}
           aria-label="메시지"
           disabled={disabled}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            setCaret(e.target.selectionStart ?? e.target.value.length);
+            setDismissedAt(null);
+          }}
+          onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
+          aria-controls={slashOpen && matches.length > 0 ? slashListId : undefined}
+          aria-activedescendant={slashOpen && matches.length > 0 ? slashOptionId(slashListId, active) : undefined}
           onKeyDown={onKeyDown}
           onPaste={attachments.onPaste}
         />
@@ -258,7 +348,7 @@ export const Composer = memo(function Composer({
               aria-label="보내기"
               title="보내기 (⏎)"
               disabled={!canSend}
-              onClick={submit}
+              onClick={() => submit()}
             >
               {busy ? <SpinnerIcon width={14} height={14} /> : <span className="hc-send__heart" aria-hidden />}
             </button>

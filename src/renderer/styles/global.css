@@ -94,7 +94,8 @@ img[data-agent-logo='hermes'] {
 .hc-nav::before,
 .hc-thread::before,
 .hc-mnu__item::before,
-.hc-palette__item::before {
+.hc-palette__item::before,
+.hc-slash__item::before {
   content: '';
   position: absolute;
   left: 8px;

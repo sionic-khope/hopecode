@@ -116,6 +116,14 @@ export interface FakeQueryController {
   setContextPercentage(value: number): void;
 }
 
+/** Built-ins a live CLI session reports through supportedCommands() (plus one terminal-only command). */
+export const FIXTURE_SLASH_COMMANDS = [
+  { name: 'compact', description: 'Clear conversation history but keep a summary in context', argumentHint: '<optional custom summarization instructions>', builtin: true },
+  { name: 'clear', description: 'Clear conversation history and free up context', argumentHint: '', builtin: true },
+  { name: 'context', description: 'Visualize current context usage', argumentHint: '', builtin: true },
+  { name: 'exit', description: 'Exit the REPL', argumentHint: '', builtin: true },
+];
+
 /** Mirrors the CLI's supportedModels() rows (Fable 5.1 era): `default` resolves to Fable 5.1. */
 export const FAKE_MODELS: ModelInfo[] = [
   {
@@ -548,6 +556,9 @@ export function createFakeQuery(opts: FakeQueryOptions = {}): FakeQueryControlle
       async supportedModels() {
         return models;
       },
+      async supportedCommands() {
+        return FIXTURE_SLASH_COMMANDS;
+      },
       async initializationResult() {
         call.initialized = true;
         return {
@@ -778,6 +789,10 @@ export function createFixtureScenario(): FakeScenario {
     }
     if (prompt.includes('[image]')) {
       return imageSteps(options.cwd ?? '', `toolu_fixture_img_${++fixtureIds}`);
+    }
+    // A slash command reaches the CLI as the prompt text itself; the fixture echoes what it received.
+    if (prompt.startsWith('/')) {
+      return [{ type: 'text', text: `Slash command received: ${prompt}`, chunks: 2 }];
     }
     if (prompt.includes('[text]')) {
       return [{ type: 'text', text: 'Streaming reply from the fixture session.', chunks: 4 }];

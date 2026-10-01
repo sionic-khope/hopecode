@@ -213,6 +213,10 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManagerIm
 
     listModels,
 
+    supportedCommands(threadId) {
+      return runners.get(threadId)?.supportedCommands?.() ?? null;
+    },
+
     async closeAccount(accountId) {
       await Promise.all([...runners.values()].map((r) => r.releaseAccount(accountId)));
     },
