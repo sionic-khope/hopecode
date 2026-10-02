@@ -125,6 +125,12 @@ select,
 a {
   -webkit-app-region: no-drag;
 }
+/* Controls inside a drag bar must stay clickable in the real window. Component styles often start with `all: unset`,
+   which resets the element rule above and lets the bar's inherited `drag` win -- the control then drags the window
+   instead of receiving the click (synthetic test clicks never notice). This selector outranks any single class. */
+.drag-region :is(button, a, input, textarea, select, summary, label, [role='button'], [role='tab'], [role='menuitem'], [tabindex]):not(.drag-region) {
+  -webkit-app-region: no-drag !important;
+}
 
 .tnum {
   font-feature-settings: 'tnum';
