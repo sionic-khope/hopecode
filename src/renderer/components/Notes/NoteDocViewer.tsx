@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { AssistantText } from '../Chat/AssistantText';
-import { MarkdownCopyChip } from '../Chat/MarkdownCopyChip';
+import { CopyButton } from '../Chat/CopyButton';
 import { GlyphClose } from '../common/glyphs';
 import { useLanguage } from '../../i18n';
 import { t } from '../../../shared/i18n';
@@ -14,7 +14,7 @@ export interface NoteDocViewerProps {
 
 /**
  * A document from the conversation, opened like a markdown file: rendered on a page over the conversation pane, with
- * its title, "MD" copy and close (Esc). The text selects and copies like any other.
+ * its title, a copy button and close (Esc). The text selects and copies like any other.
  */
 export function NoteDocViewer({ doc, onClose }: NoteDocViewerProps) {
   useLanguage();
@@ -49,7 +49,7 @@ export function NoteDocViewer({ doc, onClose }: NoteDocViewerProps) {
         </span>
         <span className="hc-notedoc__meta">{t('code.lines', { count: lines })}</span>
         <span className="hc-notedoc__spacer" />
-        <MarkdownCopyChip getText={() => doc.body} label={t('noteDoc.copy')} className="hc-notedoc__copy" />
+        <CopyButton text={doc.body} label={t('common.copy')} className="hc-msg-action hc-notedoc__copy" />
         <button type="button" className="hc-notedoc__close" onClick={onClose} aria-label={t('common.close')} title={`${t('common.close')} (Esc)`} data-testid="note-doc-close">
           <GlyphClose width={14} height={14} />
         </button>

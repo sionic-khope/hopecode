@@ -498,7 +498,6 @@ export const zhHans: Messages = {
   'localAuth.source': '来源',
   // -- renderer: code blocks
   'code.copy': '复制代码',
-  'code.copyTable': '将表格复制为 Markdown',
   // -- renderer: note drawer
   'noteDrawer.vault': '笔记文件夹',
   'noteDrawer.addVault': '添加其他文件夹…',
@@ -657,7 +656,6 @@ export const zhHans: Messages = {
   // -- renderer: message list
   'images.agent': '代理图片',
   'messages.empty': '还没有消息',
-  'reply.copy': '将回复复制为 Markdown',
   'message.editResend': '编辑后重新发送',
   // -- renderer: composer attachments
   'attach.moreProblems': '（另有 {count} 项）',
@@ -680,7 +678,6 @@ export const zhHans: Messages = {
   'noteCard.openDoc': '在文档查看器中打开：{title}',
   'noteCard.aria': '笔记写入：{title}',
   'noteDoc.aria': '文档查看器：{title}',
-  'noteDoc.copy': '复制 Markdown',
   'notes.err.reveal': '写入的范围之后已变化，无法找到。',
   'notes.err.revert': '写入后正文已变化，无法自动还原。请在编辑器中用 ⌘Z 撤销。',
   'noteChat.hint': '提问、解释和计划会在聊天中回答。说“写成笔记”“修改第 2 节”时会直接写入编辑器，按一次 ⌘Z 即可撤销。在编辑器中拖选文字，可以只修改那一部分。',

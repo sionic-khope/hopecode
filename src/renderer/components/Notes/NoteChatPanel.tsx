@@ -9,7 +9,7 @@ import { AssistantText } from '../Chat/AssistantText';
 import { Composer, type ComposerHandle } from '../Chat/Composer';
 import { AcpModelChip, AgentChip, ModelPicker } from '../Chat/ComposerControls';
 import { codexEffortChoices, codexModelChoices, effortValueLabel } from '../Chat/acpChips';
-import { MarkdownCopyChip } from '../Chat/MarkdownCopyChip';
+import { CopyButton } from '../Chat/CopyButton';
 import { NoteDocViewer } from './NoteDocViewer';
 import { NoteResult, type NoteDoc } from './NoteResult';
 import { useLanguage } from '../../i18n';
@@ -202,8 +202,10 @@ export const NoteChatPanel = memo(function NoteChatPanel({
         {items.map((item) =>
           item.role === 'user' ? (
             <li key={item.id} className="hc-notechat__msg hc-notechat__msg--user" data-testid="note-chat-user">
-              <MarkdownCopyChip getText={() => item.text} label={t('message.copy')} className="hc-notechat__copy" />
               <div className="hc-notechat__bubble">{item.text}</div>
+              <div className="hc-msg-foot hc-notechat__foot hc-notechat__foot--user">
+                <CopyButton text={item.text} label={t('common.copy')} className="hc-msg-action" />
+              </div>
             </li>
           ) : (
             <li
@@ -226,6 +228,11 @@ export const NoteChatPanel = memo(function NoteChatPanel({
                 />
               )}
               {item.status === 'stopped' ? <span className="hc-notechat__tag">{t('noteChat.stopped')}</span> : null}
+              {item.status === 'error' || item.text.trim() === '' ? null : (
+                <div className="hc-msg-foot hc-notechat__foot">
+                  <CopyButton text={item.text.trim()} label={t('common.copy')} className="hc-msg-action" />
+                </div>
+              )}
             </li>
           ),
         )}

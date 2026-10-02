@@ -1,20 +1,7 @@
-import {
-  createContext,
-  isValidElement,
-  memo,
-  useContext,
-  useMemo,
-  useState,
-  type AnchorHTMLAttributes,
-  type HTMLAttributes,
-  type ReactNode,
-} from 'react';
-import type { Element } from 'hast';
+import { isValidElement, memo, useMemo, useState, type AnchorHTMLAttributes, type HTMLAttributes, type ReactNode } from 'react';
 import Markdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { CopyButton } from './CopyButton';
-import { MarkdownCopyChip } from './MarkdownCopyChip';
-import { tableSource } from './markdownSource';
 import { MoreButton } from './MoreButton';
 import { useHighlightedCode } from './codeHighlight';
 import { useLanguage } from '../../i18n';
@@ -104,22 +91,8 @@ function CodeBlock({ node: _node, children, className: _className, ...props }: H
   );
 }
 
-/** The markdown text being rendered, for blocks that copy their own source. */
-const MarkdownSource = createContext('');
-
-/** Table with an "MD" chip in its top-right corner that copies the table's GFM source. */
-function TableBlock({ node, ...props }: HTMLAttributes<HTMLTableElement> & { node?: Element }) {
-  const source = useContext(MarkdownSource);
-  return (
-    <div className="hc-mdblock">
-      <table {...props} />
-      <MarkdownCopyChip getText={() => tableSource(source, node)} label={t('code.copyTable')} className="hc-mdblock__copy" />
-    </div>
-  );
-}
-
 // Module-level constants so memoized renders pass react-markdown stable props.
-const MARKDOWN_COMPONENTS: Components = { a: ExternalLink, pre: CodeBlock, table: TableBlock };
+const MARKDOWN_COMPONENTS: Components = { a: ExternalLink, pre: CodeBlock };
 const REMARK_PLUGINS = [remarkGfm];
 
 /** Assistant turn body: GFM markdown, no background. Memoized so only the streaming item re-parses while
@@ -129,11 +102,9 @@ export const AssistantText = memo(function AssistantText({ text, streaming = fal
   return (
     <div className={`hc-msg-assistant${streaming ? ' hc-msg-assistant--streaming' : ''}`}>
       <div className="hc-md">
-        <MarkdownSource.Provider value={text}>
-          <Markdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>
-            {text}
-          </Markdown>
-        </MarkdownSource.Provider>
+        <Markdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>
+          {text}
+        </Markdown>
       </div>
       {streaming ? <span className="hc-cursor" aria-hidden /> : null}
     </div>

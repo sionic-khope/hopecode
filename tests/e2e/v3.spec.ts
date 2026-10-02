@@ -344,27 +344,37 @@ test('code block: language label and copy (clipboard stubbed, the real one is un
   expect(copied).toEqual(['export function greet(name: string): string {\n  return `Hello ${name}`;\n}']);
 });
 
-test('MD chips: a table and the whole answer copy their markdown source (clipboard stubbed)', async () => {
+test('copy bar: no chip over a table; the icon under the answer copies its markdown, the user line copies on hover', async () => {
   const { page } = run;
   await sendMessage(page, '[table] 비교표');
   const turn = page.getByTestId('agent-turn').last();
-  const table = turn.locator('.hc-mdblock');
-  await expect(table.locator('table')).toBeVisible();
-  await expect(turn.getByRole('button', { name: '응답을 마크다운으로 복사' })).toBeVisible();
+  await expect(turn.locator('table')).toBeVisible();
+  // Nothing sits over the table or the dialogue box any more.
+  await expect(page.locator('.hc-mdchip, .hc-md-copy, .hc-mdblock, .hc-turn__copy')).toHaveCount(0);
+  const copy = turn.locator('.hc-turn__foot').getByRole('button', { name: '복사', exact: true });
+  await expect(copy).toBeVisible();
+  await expect(copy).toHaveText('');
   await page.evaluate(() => {
-    const w = window as unknown as { __copied: string[] };
+    const w = window as unknown as { __copied: string[]; __hcSoundLog?: unknown[] };
     w.__copied = [];
+    w.__hcSoundLog = [];
     Clipboard.prototype.writeText = async (text: string) => {
       w.__copied.push(text);
     };
   });
-  await table.getByRole('button', { name: '표를 마크다운으로 복사' }).click();
-  await expect(table.getByRole('button', { name: '복사됨' })).toContainText('복사됨');
-  await turn.getByRole('button', { name: '응답을 마크다운으로 복사' }).click();
-  await expect(turn.locator('.hc-turn__copy')).toContainText('복사됨');
+  await copy.click();
+  await expect(turn.locator('.hc-turn__foot').getByRole('button', { name: '복사됨', exact: true })).toBeVisible();
+  const log = await page.evaluate(() => (window as unknown as { __hcSoundLog?: { kind: string }[] }).__hcSoundLog ?? []);
+  expect(log.filter((e) => e.kind === 'select').length).toBeGreaterThan(0);
+
+  const user = page.locator('.hc-messages .hc-msg-user').filter({ hasText: '[table] 비교표' });
+  await user.hover();
+  const userCopy = user.getByRole('button', { name: '복사', exact: true });
+  await expect(userCopy).toBeVisible();
+  await screenshot(page, 'v24-copy-bar', SHOTS);
+  await userCopy.click();
   const copied = await page.evaluate(() => (window as unknown as { __copied: string[] }).__copied);
-  expect(copied).toEqual([FIXTURE_TABLE_ANSWER.split('\n').slice(5, 9).join('\n'), FIXTURE_TABLE_ANSWER]);
-  expect(copied[0]).toBe('| 방식 | 장점 | 단점 |\n| :--- | :---: | ---: |\n| `a\\|b` | **빠릅니다** | 복잡합니다 |\n| lock | 단순합니다 | 느립니다 |');
+  expect(copied).toEqual([FIXTURE_TABLE_ANSWER, '[table] 비교표']);
 });
 
 test('user message: 편집해서 다시 보내기 puts the text back in the composer; thread title renames in place', async () => {

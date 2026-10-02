@@ -329,7 +329,7 @@ test('"노트로 작성해 줘" streams straight into the editor; the result lin
   expect(note('Back-End/redis-lock.md')).toBe(text);
 });
 
-test('a document chip opens the viewer: rendered markdown, MD copy, selectable text, Esc closes it (the page stays)', async () => {
+test('a document chip opens the viewer: rendered markdown, icon copy, selectable text, Esc closes it (the page stays)', async () => {
   const { app, page } = run;
   const chat = page.getByTestId('note-chat');
   const chip = chat.getByTestId('note-chat-assistant').last().getByTestId('note-doc-chip');
@@ -344,7 +344,9 @@ test('a document chip opens the viewer: rendered markdown, MD copy, selectable t
   await screenshot(page, 'v23-notes-viewer', DIR);
 
   await app.evaluate(({ clipboard }) => clipboard.writeText(''));
-  await viewer.getByRole('button', { name: '마크다운 복사' }).click();
+  await expect(viewer.locator('.hc-mdchip')).toHaveCount(0);
+  await viewer.getByRole('button', { name: '복사', exact: true }).click();
+  await expect(viewer.getByRole('button', { name: '복사됨', exact: true })).toBeVisible();
   await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toContain('# Redis 분산 락 노트로 작성해 줘\n');
   expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toContain('```java\nint answer = 42;\n```');
 
@@ -418,7 +420,7 @@ test('"2번 섹션 늘려 줘" replaces only that section; a section the note la
   await expect(chat.getByRole('button', { name: '본문에 넣기' })).toHaveCount(0);
 });
 
-test('note chat text selects by dragging (user line and answer), with no click sound; the user line has an MD copy chip', async () => {
+test('note chat text selects by dragging (user line and answer), with no click sound; the user line and the answer have a copy icon', async () => {
   const { app, page } = run;
   const chat = page.getByTestId('note-chat');
   await page.evaluate(() => {
@@ -434,13 +436,21 @@ test('note chat text selects by dragging (user line and answer), with no click s
   const log = await page.evaluate(() => (window as unknown as { __hcSoundLog?: { kind: string }[] }).__hcSoundLog ?? []);
   expect(log.filter((e) => e.kind === 'select')).toEqual([]);
 
+  await expect(chat.locator('.hc-mdchip')).toHaveCount(0);
   await user.hover();
-  const copy = user.getByRole('button', { name: '메시지 복사' });
+  const copy = user.getByRole('button', { name: '복사', exact: true });
   await expect(copy).toBeVisible();
-  await expect(copy).toHaveText('MD');
+  await expect(copy).toHaveText('');
   await app.evaluate(({ clipboard }) => clipboard.writeText(''));
   await copy.click();
   await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toBe('RL 커리큘럼 짜 줘');
+
+  const answerCopy = answer.locator('.hc-notechat__foot').getByRole('button', { name: '복사', exact: true });
+  await expect(answerCopy).toBeVisible();
+  await app.evaluate(({ clipboard }) => clipboard.writeText(''));
+  await answerCopy.click();
+  await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toContain('FIXTURE-CHAT: RL 커리큘럼 짜 줘');
+  await expect(answer.getByRole('button', { name: '복사됨', exact: true })).toBeVisible();
 });
 
 test('dragging over text opens the inline prompt; only the selection is replaced and ⌘Z restores it', async () => {

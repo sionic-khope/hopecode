@@ -6,7 +6,6 @@ import { AgentIcon } from '../Agent/AgentIcon';
 import { GlyphEditResend } from '../common/glyphs';
 import { AssistantText } from './AssistantText';
 import { CopyButton } from './CopyButton';
-import { MarkdownCopyChip } from './MarkdownCopyChip';
 import { ToolCard, ToolGroup, ToolRow } from './ToolCard';
 import { PermissionCard } from './PermissionCard';
 import { SystemNotice } from './SystemNotice';
@@ -349,9 +348,6 @@ function AgentTurn({
         {/* Dialogue box: white pixel frame, the speaker's name tag on its first line. */}
         <div className="hc-say hc-say--lead hc-turn__box">
           <AgentNameTag agent={agent} />
-          {streaming || copyText === '' ? null : (
-            <MarkdownCopyChip getText={() => copyText} label={t('reply.copy')} className="hc-turn__copy" />
-          )}
           {segments.map((seg) => {
             switch (seg.kind) {
               case 'text':
@@ -393,6 +389,12 @@ function AgentTurn({
             }
           })}
           {activity ? <TurnActivity agent={agent} phase={activity.phase} startedAt={activity.startedAt} inline /> : null}
+          {/* Action line under the finished answer: copies the whole answer's markdown. */}
+          {streaming || activity || copyText === '' ? null : (
+            <div className="hc-msg-foot hc-turn__foot">
+              <CopyButton text={copyText} label={t('common.copy')} className="hc-msg-action" />
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -415,24 +417,27 @@ const MessageItem = memo(function MessageItem({
     case 'user':
       return (
         <div className="hc-msg-user hc-msg-enter" data-turn-id={item.id}>
-          <div className="hc-msg-actions hc-msg-actions--user">
-            {onEditResend ? (
-              <button
-                type="button"
-                className="hc-msg-action"
-                aria-label={t('message.editResend')}
-                title={t('message.editResend')}
-                onClick={() => onEditResend(item.text)}
-              >
-                <GlyphEditResend width={14} height={14} />
-              </button>
-            ) : null}
-            <CopyButton text={item.text} label={t('message.copy')} className="hc-msg-action" />
-          </div>
-          <div className="hc-msg-user__bubble">
-            {item.images && item.images.length > 0 ? <UserImages images={item.images} /> : null}
-            {item.files && item.files.length > 0 ? <UserFiles files={item.files} /> : null}
-            {item.text}
+          <div className="hc-msg-user__col">
+            <div className="hc-msg-user__bubble">
+              {item.images && item.images.length > 0 ? <UserImages images={item.images} /> : null}
+              {item.files && item.files.length > 0 ? <UserFiles files={item.files} /> : null}
+              {item.text}
+            </div>
+            {/* Action line under the bubble (hover / focus): edit and resend, copy. */}
+            <div className="hc-msg-foot hc-msg-actions hc-msg-actions--user">
+              {onEditResend ? (
+                <button
+                  type="button"
+                  className="hc-msg-action"
+                  aria-label={t('message.editResend')}
+                  title={t('message.editResend')}
+                  onClick={() => onEditResend(item.text)}
+                >
+                  <GlyphEditResend width={14} height={14} />
+                </button>
+              ) : null}
+              {item.text !== '' ? <CopyButton text={item.text} label={t('common.copy')} className="hc-msg-action" /> : null}
+            </div>
           </div>
         </div>
       );

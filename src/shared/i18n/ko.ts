@@ -500,7 +500,6 @@ export const ko = {
   'localAuth.source': '출처',
   // -- renderer: code blocks
   'code.copy': '코드 복사',
-  'code.copyTable': '표를 마크다운으로 복사',
   // -- renderer: note drawer
   'noteDrawer.vault': '노트 폴더',
   'noteDrawer.addVault': '다른 폴더 추가…',
@@ -654,7 +653,6 @@ export const ko = {
   // -- renderer: message list
   'images.agent': '에이전트 이미지',
   'messages.empty': '아직 메시지가 없습니다',
-  'reply.copy': '응답을 마크다운으로 복사',
   'message.editResend': '편집해서 다시 보내기',
   // -- renderer: composer attachments
   'attach.moreProblems': '(외 {count}건)',
@@ -677,7 +675,6 @@ export const ko = {
   'noteCard.openDoc': '문서 뷰어로 열기: {title}',
   'noteCard.aria': '노트 반영: {title}',
   'noteDoc.aria': '문서 뷰어: {title}',
-  'noteDoc.copy': '마크다운 복사',
   'notes.err.reveal': '반영한 범위가 그 뒤에 바뀌어 찾을 수 없습니다.',
   'notes.err.revert': '반영한 뒤 본문이 바뀌어 자동으로 되돌릴 수 없습니다. 에디터에서 ⌘Z로 되돌리세요.',
   'noteChat.hint': '질문, 설명, 계획은 채팅으로 답합니다. "노트로 작성해 줘", "2번 섹션 고쳐 줘"처럼 요청하면 에디터에 바로 쓰고, ⌘Z 한 번으로 되돌릴 수 있습니다. 에디터에서 글을 드래그하면 그 부분만 고칠 수 있습니다.',

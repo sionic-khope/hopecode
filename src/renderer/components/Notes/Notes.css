@@ -1166,7 +1166,7 @@ body.hc-notes-resizing .hc-notes__split::before {
   -webkit-user-select: text;
   user-select: text;
 }
-.hc-notechat__list :is(button, [role='button'], .hc-mdchip, .hc-notechat__thinking) {
+.hc-notechat__list :is(button, [role='button'], .hc-msg-foot, .hc-notechat__thinking) {
   -webkit-user-select: none;
   user-select: none;
 }
@@ -1177,8 +1177,9 @@ body.hc-notes-resizing .hc-notes__split::before {
 .hc-notechat__msg--user {
   align-self: flex-end;
   display: flex;
+  flex-direction: column;
   align-items: flex-end;
-  gap: var(--space-2);
+  gap: 4px;
   max-width: 88%;
 }
 .hc-notechat__bubble {
@@ -1192,12 +1193,17 @@ body.hc-notes-resizing .hc-notes__split::before {
   white-space: pre-wrap;
   word-break: break-word;
 }
-/* "MD" copy beside the user's line, shown while the row is hovered (or the chip has focus). */
-.hc-notechat__copy {
-  flex: none;
-  margin-bottom: 4px;
+/* Copy under each message: the user's line shows it on hover / focus, a finished answer keeps it faint. */
+.hc-notechat__foot {
+  margin: -6px 0 0 -6px;
+  opacity: 0.5;
 }
-.hc-notechat__msg--user:hover .hc-notechat__copy {
+.hc-notechat__foot--user {
+  margin: 0 -6px 0 0;
+  opacity: 0;
+}
+.hc-notechat__msg:hover .hc-notechat__foot,
+.hc-notechat__foot:focus-within {
   opacity: 1;
 }
 .hc-notechat__msg--assistant {
@@ -1464,9 +1470,17 @@ body.hc-notes-resizing .hc-notes__split::before {
   flex: 1;
 }
 .hc-notedoc .hc-notedoc__copy {
-  opacity: 1;
-  height: 22px;
-  padding: 0 7px;
+  flex: none;
+  border-radius: 0;
+  color: var(--notes-ink-dim);
+  cursor: pointer;
+}
+.hc-notedoc .hc-notedoc__copy:hover,
+.hc-notedoc .hc-notedoc__copy:focus-visible,
+.hc-notedoc .hc-notedoc__copy.hc-copy--done {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px currentColor;
+  color: var(--accent-text);
 }
 .hc-notedoc__close {
   all: unset;

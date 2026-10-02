@@ -1,6 +1,6 @@
 // v23: the main conversation reads like a document. The user's line, the agent's answer and tool output drag-select
 // (window.getSelection() holds the text) and ⌘C copies it; a drag that ends in a click plays no select sound; the
-// user's line keeps its hover copy button. Fixture mode only (fakeQuery `[bigdiff]` turn), window hidden.
+// user's line and the answer have a copy icon underneath. Fixture mode only (fakeQuery `[bigdiff]` turn), window hidden.
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { createSandbox, launch, startThread, type Launched, type Sandbox } from './helpers';
 
@@ -78,13 +78,29 @@ test('user line, answer text and tool output drag-select and copy with ⌘C; no 
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--selection-text').trim())).toBe('rgba(255, 225, 77, 0.3)');
 });
 
-test('the user line has a hover copy button that copies its text', async () => {
+test('the user line has a hover copy icon under it that copies its text; the answer has one too', async () => {
   const { app, page } = run;
   const row = page.locator('.hc-messages .hc-msg-user').last();
+  await page.mouse.move(1, 1);
+  const copy = row.getByRole('button', { name: '복사', exact: true });
+  await expect.poll(() => copy.evaluate((el) => getComputedStyle(el.parentElement!).opacity)).toBe('0');
   await row.hover();
-  const copy = row.getByRole('button', { name: '메시지 복사' });
   await expect(copy).toBeVisible();
+  await expect.poll(() => copy.evaluate((el) => getComputedStyle(el.parentElement!).opacity)).toBe('1');
+  // Under the bubble, right-aligned with it.
+  const bubbleBox = (await row.locator('.hc-msg-user__bubble').boundingBox())!;
+  const copyBox = (await copy.boundingBox())!;
+  expect(copyBox.y).toBeGreaterThanOrEqual(bubbleBox.y + bubbleBox.height - 1);
+  expect(Math.abs(copyBox.x + copyBox.width - (bubbleBox.x + bubbleBox.width))).toBeLessThanOrEqual(8);
   await app.evaluate(({ clipboard }) => clipboard.writeText(''));
   await copy.click();
   await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toBe(ASK);
+  await expect(row.getByRole('button', { name: '복사됨', exact: true })).toBeVisible();
+
+  const turn = page.getByTestId('agent-turn').last();
+  const answerCopy = turn.locator('.hc-turn__foot').getByRole('button', { name: '복사', exact: true });
+  await expect(answerCopy).toBeVisible();
+  await app.evaluate(({ clipboard }) => clipboard.writeText(''));
+  await answerCopy.click();
+  await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toContain('로더와 샘플을 바꿨습니다.');
 });

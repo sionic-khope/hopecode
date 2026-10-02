@@ -504,7 +504,6 @@ export const ja: Messages = {
   'localAuth.source': '出典',
   // -- renderer: code blocks
   'code.copy': 'コードをコピー',
-  'code.copyTable': '表を Markdown でコピー',
   // -- renderer: note drawer
   'noteDrawer.vault': 'ノートフォルダ',
   'noteDrawer.addVault': 'ほかのフォルダを追加…',
@@ -663,7 +662,6 @@ export const ja: Messages = {
   // -- renderer: message list
   'images.agent': 'エージェントの画像',
   'messages.empty': 'まだメッセージがありません',
-  'reply.copy': '応答を Markdown でコピー',
   'message.editResend': '編集して再送信',
   // -- renderer: composer attachments
   'attach.moreProblems': '（ほか {count} 件）',
@@ -686,7 +684,6 @@ export const ja: Messages = {
   'noteCard.openDoc': 'ドキュメントビューアで開く: {title}',
   'noteCard.aria': 'ノートへの反映: {title}',
   'noteDoc.aria': 'ドキュメントビューア: {title}',
-  'noteDoc.copy': 'Markdown をコピー',
   'notes.err.reveal': '反映した範囲がその後変わったため見つかりません。',
   'notes.err.revert': 'テキストを反映したあとに本文が変わったため、自動では元に戻せません。エディタで ⌘Z を使って戻してください。',
   'noteChat.hint': '質問・説明・計画にはチャットで答えます。「ノートに書いて」「2番のセクションを直して」のように頼むとエディタに直接書き込み、⌘Z 一回で元に戻せます。エディタで文をドラッグすると、その部分だけを直せます。',

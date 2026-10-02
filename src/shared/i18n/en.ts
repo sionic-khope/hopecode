@@ -504,7 +504,6 @@ export const en: Messages = {
   'localAuth.source': 'Source',
   // -- renderer: code blocks
   'code.copy': 'Copy code',
-  'code.copyTable': 'Copy table as Markdown',
   // -- renderer: note drawer
   'noteDrawer.vault': 'Notes folder',
   'noteDrawer.addVault': 'Add another folder…',
@@ -663,7 +662,6 @@ export const en: Messages = {
   // -- renderer: message list
   'images.agent': 'Agent images',
   'messages.empty': 'No messages yet',
-  'reply.copy': 'Copy reply as Markdown',
   'message.editResend': 'Edit and resend',
   // -- renderer: composer attachments
   'attach.moreProblems': '(+{count} more)',
@@ -686,7 +684,6 @@ export const en: Messages = {
   'noteCard.openDoc': 'Open in the document viewer: {title}',
   'noteCard.aria': 'Note change: {title}',
   'noteDoc.aria': 'Document viewer: {title}',
-  'noteDoc.copy': 'Copy markdown',
   'notes.err.reveal': 'The written range changed since, so it cannot be found.',
   'notes.err.revert': 'The note changed after the text went in, so it cannot be reverted automatically. Undo with ⌘Z in the editor.',
   'noteChat.hint': 'Questions, explanations and plans are answered in the chat. Ask "write this as a note" or "fix section 2" and it goes straight into the editor; one ⌘Z undoes it. Drag over text in the editor to edit just that part.',

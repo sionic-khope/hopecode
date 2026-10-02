@@ -34,7 +34,7 @@
   -webkit-user-select: text;
   user-select: text;
 }
-.hc-messages__inner :is(button, [role='button'], [role='img'], .hc-mdchip, .hc-msg-actions) {
+.hc-messages__inner :is(button, [role='button'], [role='img'], .hc-msg-actions, .hc-msg-foot) {
   -webkit-user-select: none;
   user-select: none;
 }
@@ -176,16 +176,47 @@
   color: var(--ok-text);
 }
 
+/* Action line under a message (copy, edit and resend): small icon buttons with a square yellow frame on hover. */
+.hc-msg-foot {
+  display: flex;
+  gap: 2px;
+  transition: opacity var(--motion-1) var(--ease-soft);
+}
+.hc-msg-foot .hc-msg-action {
+  width: 26px;
+  height: 26px;
+  border-radius: 0;
+  cursor: pointer;
+}
+.hc-msg-foot .hc-msg-action:hover,
+.hc-msg-foot .hc-msg-action:focus-visible {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px currentColor;
+  color: var(--accent-text);
+}
+.hc-msg-foot .hc-copy--done,
+.hc-msg-foot .hc-copy--done:hover {
+  box-shadow: none;
+  color: var(--accent-text);
+}
+
 /* ---------- User bubble ---------- */
 .hc-msg-user {
   display: flex;
   justify-content: flex-end;
+}
+/* Bubble with its action line underneath, right-aligned. */
+.hc-msg-user__col {
+  display: flex;
+  flex-direction: column;
   align-items: flex-end;
-  gap: var(--space-1);
+  gap: 4px;
+  min-width: 0;
+  max-width: min(78%, var(--read-max-w));
 }
 /* The user's line: a yellow-framed box on the right. */
 .hc-msg-user__bubble {
-  max-width: min(78%, var(--read-max-w));
+  max-width: 100%;
   padding: 12px 16px;
   border-radius: var(--radius-card);
   background: var(--bubble);
@@ -431,67 +462,6 @@
   font-family: var(--font-ui);
   font-weight: var(--weight-bold);
 }
-/* Table + its "MD" copy chip (top-right corner, over the header row). */
-.hc-mdblock {
-  position: relative;
-  width: fit-content;
-  max-width: 100%;
-  margin: 0 0 var(--space-3);
-}
-.hc-mdblock > table {
-  margin: 0;
-}
-.hc-md > .hc-mdblock:last-child {
-  margin-bottom: 0;
-}
-/* "MD" chip: a small square-cornered tag, faint white until the block is hovered or the chip focused, then yellow. */
-.hc-mdchip {
-  all: unset;
-  box-sizing: border-box;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 0;
-  background: var(--bg-card);
-  box-shadow: inset 0 0 0 1px currentColor;
-  color: var(--label);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  line-height: 1;
-  letter-spacing: 0.04em;
-  opacity: 0.4;
-  cursor: pointer;
-  transition:
-    opacity var(--motion-1) var(--ease-soft),
-    color var(--motion-1) var(--ease-soft);
-}
-.hc-mdblock:hover > .hc-mdchip,
-.hc-turn__box:hover > .hc-mdchip,
-.hc-mdchip:hover,
-.hc-mdchip:focus-visible,
-.hc-mdchip--done {
-  opacity: 1;
-}
-.hc-mdchip:hover,
-.hc-mdchip:focus-visible,
-.hc-mdchip--done {
-  color: var(--accent-text);
-}
-.hc-mdchip:focus-visible {
-  box-shadow:
-    inset 0 0 0 1px currentColor,
-    var(--focus-ring);
-}
-.hc-mdchip:active {
-  transform: translate(1px, 1px);
-}
-.hc-mdblock__copy {
-  position: absolute;
-  top: 5px;
-  right: 5px;
-}
 .hc-md hr {
   border: none;
   border-top: 2px solid var(--separator);
@@ -715,11 +685,14 @@
 .hc-turn__box > .hc-agent-name {
   margin-bottom: -4px;
 }
-/* Whole-answer "MD" chip on the name tag's line, top-right of the dialogue box. */
-.hc-turn__copy {
-  position: absolute;
-  top: 12px;
-  right: 14px;
+/* Action line closing a finished answer: faint until the turn is hovered. */
+.hc-turn__foot {
+  margin: -6px 0 -8px -6px;
+  opacity: 0.5;
+}
+.hc-turn:hover .hc-turn__foot,
+.hc-turn__foot:focus-within {
+  opacity: 1;
 }
 .hc-turn__card {
   display: flex;
