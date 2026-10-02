@@ -6,6 +6,7 @@ import { AgentIcon } from '../Agent/AgentIcon';
 import { GlyphEditResend } from '../common/glyphs';
 import { AssistantText } from './AssistantText';
 import { CopyButton } from './CopyButton';
+import { MarkdownCopyChip } from './MarkdownCopyChip';
 import { ToolCard, ToolGroup, ToolRow } from './ToolCard';
 import { PermissionCard } from './PermissionCard';
 import { SystemNotice } from './SystemNotice';
@@ -311,6 +312,9 @@ function AgentTurn({
         {/* Dialogue box: white pixel frame, the speaker's name tag on its first line. */}
         <div className="hc-say hc-say--lead hc-turn__box">
           <AgentNameTag agent={agent} />
+          {streaming || copyText === '' ? null : (
+            <MarkdownCopyChip getText={() => copyText} label="응답을 마크다운으로 복사" className="hc-turn__copy" />
+          )}
           {segments.map((seg) => {
             switch (seg.kind) {
               case 'text':
@@ -353,11 +357,6 @@ function AgentTurn({
           })}
           {activity ? <TurnActivity agent={agent} phase={activity.phase} startedAt={activity.startedAt} inline /> : null}
         </div>
-        {streaming || copyText === '' ? null : (
-          <div className="hc-msg-actions hc-msg-actions--agent">
-            <CopyButton text={copyText} label="답변 복사" className="hc-msg-action" />
-          </div>
-        )}
       </div>
     </div>
   );

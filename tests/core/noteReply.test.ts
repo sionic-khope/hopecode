@@ -18,18 +18,18 @@ const apply = (doc: string, c: TextChange) => doc.slice(0, c.from) + c.insert + 
 describe('parseNoteReply', () => {
   it('splits prose and the three card kinds, in order', () => {
     const text = [
-      '초안을 만들었다.',
+      '초안을 만들었습니다.',
       '',
       '```note-insert',
       '# 분산 락',
       '',
-      '본문이다.',
+      '본문입니다.',
       '```',
       '',
-      '그리고 섹션 하나를 고쳤다.',
+      '그리고 섹션 하나를 고쳤습니다.',
       '```note-replace section="2. 구조"',
       '### 2. 구조',
-      '고친 구조다.',
+      '고친 구조입니다.',
       '```',
       '```note-replace-all',
       '# 새 문서',
@@ -40,17 +40,17 @@ describe('parseNoteReply', () => {
     expect(segs.map((s) => s.type)).toEqual(['text', 'card', 'text', 'card', 'card', 'text']);
     const cards = noteCards(text);
     expect(cards.map((c) => c.kind)).toEqual(['insert', 'replace', 'replace-all']);
-    expect(cards[0]).toEqual({ kind: 'insert', section: null, body: '# 분산 락\n\n본문이다.', complete: true });
+    expect(cards[0]).toEqual({ kind: 'insert', section: null, body: '# 분산 락\n\n본문입니다.', complete: true });
     expect(cards[1].section).toBe('2. 구조');
-    expect(cards[1].body).toBe('### 2. 구조\n고친 구조다.');
-    expect(segs[0]).toEqual({ type: 'text', text: '초안을 만들었다.' });
+    expect(cards[1].body).toBe('### 2. 구조\n고친 구조입니다.');
+    expect(segs[0]).toEqual({ type: 'text', text: '초안을 만들었습니다.' });
     expect(segs.filter((s) => s.type === 'card').map((s) => (s.type === 'card' ? s.index : -1))).toEqual([0, 1, 2]);
   });
 
   it('keeps nested code blocks (with a language) inside a card', () => {
-    const text = '```note-insert\n### 예시\n\n```java\nint a = 1;\n```\n\n뒤 문단이다.\n```\n';
+    const text = '```note-insert\n### 예시\n\n```java\nint a = 1;\n```\n\n뒤 문단입니다.\n```\n';
     const [card] = noteCards(text);
-    expect(card.body).toBe('### 예시\n\n```java\nint a = 1;\n```\n\n뒤 문단이다.');
+    expect(card.body).toBe('### 예시\n\n```java\nint a = 1;\n```\n\n뒤 문단입니다.');
     expect(card.complete).toBe(true);
     // A longer outer fence closes only on a fence at least as long.
     const four = '````note-insert\nA\n```\nB\n````';
@@ -58,13 +58,13 @@ describe('parseNoteReply', () => {
   });
 
   it('streaming: an open card is incomplete and fills in; a half-typed fence line is held back', () => {
-    const full = '설명이다.\n\n```note-insert\n# T\n\n본문 첫 줄\n본문 둘째 줄\n```\n';
+    const full = '설명입니다.\n\n```note-insert\n# T\n\n본문 첫 줄\n본문 둘째 줄\n```\n';
     const partial = full.slice(0, full.indexOf('본문 둘째'));
     const segs = parseNoteReply(partial, true);
-    expect(segs[0]).toEqual({ type: 'text', text: '설명이다.' });
+    expect(segs[0]).toEqual({ type: 'text', text: '설명입니다.' });
     expect(segs[1]).toMatchObject({ type: 'card', card: { kind: 'insert', complete: false, body: '# T\n\n본문 첫 줄' } });
     // `\`\`\`note-repl` mid-line: not shown as prose or a code block yet.
-    expect(parseNoteReply('고쳤다.\n```note-repl', true)).toEqual([{ type: 'text', text: '고쳤다.' }]);
+    expect(parseNoteReply('고쳤습니다.\n```note-repl', true)).toEqual([{ type: 'text', text: '고쳤습니다.' }]);
     // The closing fence half-arrived.
     expect(noteCards('```note-insert\nA\n``', true)[0]).toMatchObject({ body: 'A', complete: false });
     // The same answer once finished.
@@ -166,7 +166,7 @@ describe('planCard / revertCard', () => {
   });
 
   it('an inline answer keeps the selection’s own surrounding whitespace', () => {
-    expect(fitSelection('  새 문장이다.\n\n', ' 옛 문장이다.\n')).toBe(' 새 문장이다.\n');
+    expect(fitSelection('  새 문장입니다.\n\n', ' 옛 문장입니다.\n')).toBe(' 새 문장입니다.\n');
     expect(fitSelection('구절', '구절이')).toBe('구절');
     expect(fitSelection('   ', 'x')).toBe('');
   });
@@ -212,14 +212,14 @@ describe('note prompts', () => {
   it('the system prompt keeps the note rules and forbids tools', () => {
     const sys = buildNoteSystemPrompt();
     expect(sys).toContain('도구를 쓰지 않는다');
-    expect(sys).toContain('"~다"');
-    expect(sys).toContain('대화 문장도 평서체');
+    expect(sys).toContain('"~합니다"');
+    expect(sys).toContain('대화 문장도 존댓말');
   });
 
   it('fixture answers: inline edit, insert / replace / replace-all cards and a plain answer', () => {
     const inline = buildNoteInlinePrompt({ request: '짧게', notePath: 'a.md', document: 'abc', selection: { from: 0, to: 3 }, styleRefs: [] });
     expect(parseNotePrompt(inline).kind).toBe('inline-edit');
-    expect(noteFixtureAnswer(inline)).toBe('FIXTURE-INLINE: 짧게 요청대로 고친 문장이다.');
+    expect(noteFixtureAnswer(inline)).toBe('FIXTURE-INLINE: 짧게 요청대로 고친 문장입니다.');
     const chat = (request: string) => noteFixtureAnswer(buildNoteChatPrompt({ request, notePath: 'a.md', document: NOTE, history: [], styleRefs: [] }));
     expect(noteCards(chat('Redis 분산 락'))[0]).toMatchObject({ kind: 'insert', complete: true });
     expect(noteCards(chat('2번 섹션 예시 더'))[0]).toMatchObject({ kind: 'replace', section: '2. 구조' });

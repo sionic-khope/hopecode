@@ -226,18 +226,18 @@ function noteAnswer(prompt) {
   const request = ((kind === 'chat' ? /## 요청\n([\s\S]*)$/.exec(prompt)?.[1] : /## 요청\n([^\n]*)/.exec(prompt)?.[1]) ?? '').trim();
   const list = /## 섹션 목록\n([\s\S]*?)\n\n/.exec(prompt)?.[1] ?? '';
   const headings = [...list.matchAll(/^\s*- #{1,6} (.*)$/gm)].map((m) => m[1].trim());
-  if (kind === 'inline-edit') return `${tag}-INLINE: ${request} 요청대로 고친 문장이다.`;
-  if (kind === 'inline-write') return `${tag}-WRITE: ${request} 내용을 커서 위치에 썼다.`;
-  if (request.includes('[chat]')) return `${tag}-CHAT: ${request.replace('[chat]', '').trim()}에 대한 답이다. 노트는 바꾸지 않았다.`;
+  if (kind === 'inline-edit') return `${tag}-INLINE: ${request} 요청대로 고친 문장입니다.`;
+  if (kind === 'inline-write') return `${tag}-WRITE: ${request} 내용을 커서 위치에 썼습니다.`;
+  if (request.includes('[chat]')) return `${tag}-CHAT: ${request.replace('[chat]', '').trim()}에 대한 답입니다. 노트는 바꾸지 않았습니다.`;
   if (/섹션/.test(request)) {
     const n = /(\d+)번 섹션/.exec(request)?.[1];
     const title = (n ? (headings.find((h) => h.startsWith(`${n}.`)) ?? `${n}. (없음)`) : /'([^']+)'\s*섹션/.exec(request)?.[1]) ?? '없음';
-    return `'${title}' 섹션을 요청대로 고쳤다.\n\n\`\`\`note-replace section="${title}"\n### ${title}\n\n${tag}-SECTION: ${request} 요청대로 다시 쓴 섹션이다.\n\n\`\`\`java\nint example = 1;\n\`\`\`\n\`\`\`\n`;
+    return `'${title}' 섹션을 요청대로 고쳤습니다.\n\n\`\`\`note-replace section="${title}"\n### ${title}\n\n${tag}-SECTION: ${request} 요청대로 다시 쓴 섹션입니다.\n\n\`\`\`java\nint example = 1;\n\`\`\`\n\`\`\`\n`;
   }
   if (/전체/.test(request)) {
-    return `문서 전체를 다시 썼다.\n\n\`\`\`note-replace-all\n# 전체 수정본\n\n${tag}-REWRITE: ${request} 요청대로 문서 전체를 다시 썼다.\n\`\`\`\n`;
+    return `문서 전체를 다시 썼습니다.\n\n\`\`\`note-replace-all\n# 전체 수정본\n\n${tag}-REWRITE: ${request} 요청대로 문서 전체를 다시 썼습니다.\n\`\`\`\n`;
   }
-  return `${request} 노트 초안을 만들었다.\n\n\`\`\`note-insert\n# ${request}\n\n${tag}-WRITE: ${request}를 공부하기 위한 노트다.\n\n### 1. 핵심 개념\n\n- fixture 정의다.\n\`\`\`\n`;
+  return `${request} 노트 초안을 만들었습니다.\n\n\`\`\`note-insert\n# ${request}\n\n${tag}-WRITE: ${request}를 공부하기 위한 노트입니다.\n\n### 1. 핵심 개념\n\n- fixture 정의입니다.\n\`\`\`\n`;
 }
 
 function textOf(blocks) {

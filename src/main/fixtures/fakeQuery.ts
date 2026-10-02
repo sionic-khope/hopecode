@@ -634,6 +634,7 @@ export const FIXTURE_EDIT_PATCH: StructuredPatchHunk[] = [
  * - `[text]`: streaming text only.
  * - `[blocks]`: replies with the content block kinds of the prompt (`Blocks received: image:image/png, ...`).
  * - `[code]`: text with a fenced TypeScript block (code block label / copy).
+ * - `[table]`: text with guidelines and an aligned GFM table (FIXTURE_TABLE_ANSWER; the "MD" copy chips).
  * - `[exhaust]`: the first two attempts are rejected (five_hour, resets in 10s, no output) so a pool with one
  *   exhausted account ends up waiting; the attempt after the reset succeeds.
  * - `[sources]`: a Task (subagent) call and a Read of README.md (absolute path), then text (환경 팝오버 e2e).
@@ -647,6 +648,21 @@ export const FIXTURE_EDIT_PATCH: StructuredPatchHunk[] = [
  *   effort=<level|default>` (e2e assertions).
  * - otherwise: streaming text, an Edit tool_use that asks for permission (structuredPatch), closing text.
  */
+/** `[table]` answer: a guideline list and a GFM table with alignment and an escaped pipe (e2e copies them back). */
+export const FIXTURE_TABLE_ANSWER = [
+  '작성 지침입니다.',
+  '',
+  '- 존댓말로 씁니다.',
+  '- 기술 용어는 영어 원어로 씁니다.',
+  '',
+  '| 방식 | 장점 | 단점 |',
+  '| :--- | :---: | ---: |',
+  '| `a\\|b` | **빠릅니다** | 복잡합니다 |',
+  '| lock | 단순합니다 | 느립니다 |',
+  '',
+  '표로 비교했습니다.',
+].join('\n');
+
 export const FIXTURE_PNG_PATH = 'hopecode-preview.png';
 /** 48x32 PNG (sky, sun, hill). */
 export const FIXTURE_PNG_BASE64 =
@@ -890,6 +906,9 @@ export function createFixtureScenario(): FakeScenario {
           chunks: 3,
         },
       ];
+    }
+    if (prompt.includes('[table]')) {
+      return [{ type: 'text', text: FIXTURE_TABLE_ANSWER, chunks: 3 }];
     }
     if (prompt.includes('[sources]')) {
       return [

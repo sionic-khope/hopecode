@@ -41,19 +41,19 @@ export function fixtureSection(request: string, headings: readonly string[]): st
 /** Answer of the fixture engine; `tag` tells the engines apart in e2e (FIXTURE / CODEX). */
 export function noteFixtureAnswer(prompt: string, tag = 'FIXTURE'): string {
   const { kind, request, headings } = parseNotePrompt(prompt);
-  if (kind === 'inline-edit') return `${tag}-INLINE: ${request} 요청대로 고친 문장이다.`;
-  if (kind === 'inline-write') return `${tag}-WRITE: ${request} 내용을 커서 위치에 썼다.`;
-  if (request.includes('[chat]')) return `${tag}-CHAT: ${request.replace('[chat]', '').trim()}에 대한 답이다. 노트는 바꾸지 않았다.`;
+  if (kind === 'inline-edit') return `${tag}-INLINE: ${request} 요청대로 고친 문장입니다.`;
+  if (kind === 'inline-write') return `${tag}-WRITE: ${request} 내용을 커서 위치에 썼습니다.`;
+  if (request.includes('[chat]')) return `${tag}-CHAT: ${request.replace('[chat]', '').trim()}에 대한 답입니다. 노트는 바꾸지 않았습니다.`;
   if (/섹션/.test(request)) {
     const section = fixtureSection(request, headings);
     const title = section ?? '없음';
     return [
-      `'${title}' 섹션을 요청대로 고쳤다.`,
+      `'${title}' 섹션을 요청대로 고쳤습니다.`,
       '',
       `\`\`\`note-replace section="${title}"`,
       `### ${title}`,
       '',
-      `${tag}-SECTION: ${request} 요청대로 다시 쓴 섹션이다.`,
+      `${tag}-SECTION: ${request} 요청대로 다시 쓴 섹션입니다.`,
       '',
       '```java',
       'int example = 1;',
@@ -64,32 +64,32 @@ export function noteFixtureAnswer(prompt: string, tag = 'FIXTURE'): string {
   }
   if (/전체/.test(request)) {
     return [
-      '문서 전체를 다시 썼다.',
+      '문서 전체를 다시 썼습니다.',
       '',
       '```note-replace-all',
       '# 전체 수정본',
       '',
-      `${tag}-REWRITE: ${request} 요청대로 문서 전체를 다시 썼다.`,
+      `${tag}-REWRITE: ${request} 요청대로 문서 전체를 다시 썼습니다.`,
       '',
       '### 1. 정리',
       '',
-      '- 다시 쓴 문서다.',
+      '- 다시 쓴 문서입니다.',
       '```',
       '',
     ].join('\n');
   }
   return [
-    `${request} 노트 초안을 만들었다.`,
+    `${request} 노트 초안을 만들었습니다.`,
     '',
     '```note-insert',
     `# ${request}`,
     '',
-    `${request}를 공부하기 위한 노트다. ${tag}가 스트리밍으로 쓴 본문이다.`,
+    `${request}를 공부하기 위한 노트입니다. ${tag}가 스트리밍으로 쓴 본문입니다.`,
     '',
     '### 1. 핵심 개념',
     '',
-    '- **정의**: fixture 정의다.',
-    '- 동작: `fixture()` 호출로 동작한다.',
+    '- **정의**: fixture 정의입니다.',
+    '- 동작: `fixture()` 호출로 동작합니다.',
     '',
     '```java',
     'int answer = 42;',
@@ -97,7 +97,7 @@ export function noteFixtureAnswer(prompt: string, tag = 'FIXTURE'): string {
     '',
     '### 2. 정리',
     '',
-    '- fixture 정리다.',
+    '- fixture 정리입니다.',
     '```',
     '',
   ].join('\n');

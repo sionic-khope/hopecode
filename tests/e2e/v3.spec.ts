@@ -1,11 +1,12 @@
 // v3: profile row + menu, shortcuts / about modals, settings (persisted and applied by main), agent picker,
 // suggested prompts, reduced motion, changes panel after a fixture Edit, commit / merge / Push + PR (fixture
-// publisher: nothing leaves the machine), bottom terminal, command palette, code block copy, Fable 5.1 model menu.
+// publisher: nothing leaves the machine), bottom terminal, command palette, code block copy, table / answer MD copy chips, Fable 5.1 model menu.
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
+import { FIXTURE_TABLE_ANSWER } from '../../src/main/fixtures/fakeQuery';
 import {
   bottomTerminal,
   bootstrapState,
@@ -348,6 +349,29 @@ test('code block: language label and copy (clipboard stubbed, the real one is un
   await expect(block.getByRole('button', { name: '복사됨' })).toBeVisible();
   const copied = await page.evaluate(() => (window as unknown as { __copied: string[] }).__copied);
   expect(copied).toEqual(['export function greet(name: string): string {\n  return `Hello ${name}`;\n}']);
+});
+
+test('MD chips: a table and the whole answer copy their markdown source (clipboard stubbed)', async () => {
+  const { page } = run;
+  await sendMessage(page, '[table] 비교표');
+  const turn = page.getByTestId('agent-turn').last();
+  const table = turn.locator('.hc-mdblock');
+  await expect(table.locator('table')).toBeVisible();
+  await expect(turn.getByRole('button', { name: '응답을 마크다운으로 복사' })).toBeVisible();
+  await page.evaluate(() => {
+    const w = window as unknown as { __copied: string[] };
+    w.__copied = [];
+    Clipboard.prototype.writeText = async (text: string) => {
+      w.__copied.push(text);
+    };
+  });
+  await table.getByRole('button', { name: '표를 마크다운으로 복사' }).click();
+  await expect(table.getByRole('button', { name: '복사됨' })).toContainText('복사됨');
+  await turn.getByRole('button', { name: '응답을 마크다운으로 복사' }).click();
+  await expect(turn.locator('.hc-turn__copy')).toContainText('복사됨');
+  const copied = await page.evaluate(() => (window as unknown as { __copied: string[] }).__copied);
+  expect(copied).toEqual([FIXTURE_TABLE_ANSWER.split('\n').slice(5, 9).join('\n'), FIXTURE_TABLE_ANSWER]);
+  expect(copied[0]).toBe('| 방식 | 장점 | 단점 |\n| :--- | :---: | ---: |\n| `a\\|b` | **빠릅니다** | 복잡합니다 |\n| lock | 단순합니다 | 느립니다 |');
 });
 
 test('user message: 편집해서 다시 보내기 puts the text back in the composer; thread title renames in place', async () => {

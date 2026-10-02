@@ -197,7 +197,7 @@ test('a conversation turn comes back as a card; 본문에 넣기 puts it at the 
   await page.keyboard.press('Meta+ArrowDown');
   const answer = await ask(page, 'Redis 분산 락');
   // The real answer is shown (its prose and the card), not a one-line summary.
-  await expect(answer).toContainText('Redis 분산 락 노트 초안을 만들었다.');
+  await expect(answer).toContainText('Redis 분산 락 노트 초안을 만들었습니다.');
   const card = answer.getByTestId('note-card');
   await expect(card).toHaveCount(1);
   await expect(card).toContainText('Redis 분산 락');
@@ -208,7 +208,7 @@ test('a conversation turn comes back as a card; 본문에 넣기 puts it at the 
 
   await card.getByTestId('note-card-apply').click();
   await expect(card.getByTestId('note-card-state')).toHaveText('적용됨');
-  await expect(page.locator('.cm-content')).toContainText('FIXTURE가 스트리밍으로 쓴 본문이다.');
+  await expect(page.locator('.cm-content')).toContainText('FIXTURE가 스트리밍으로 쓴 본문입니다.');
   await waitSaved(page);
   let text = note('Back-End/redis-lock.md');
   expect(text.startsWith('# 분산 락\n\n첫 본문이다.\n\n## 둘째\n\n둘째 본문.\n\n# Redis 분산 락\n')).toBe(true);
@@ -225,7 +225,7 @@ test('a conversation turn comes back as a card; 본문에 넣기 puts it at the 
   await expect(card.getByTestId('note-card-state')).toHaveText('적용됨');
   await waitSaved(page);
   text = note('Back-End/redis-lock.md');
-  expect(text).toContain('### 2. 정리\n\n- fixture 정리다.\n');
+  expect(text).toContain('### 2. 정리\n\n- fixture 정리입니다.\n');
 });
 
 test('asking from the conversation to change a section gives a replace card that swaps only that section', async () => {
@@ -237,8 +237,8 @@ test('asking from the conversation to change a section gives a replace card that
   await expect(card.getByTestId('note-card-state')).toHaveText('적용됨');
   await waitSaved(page);
   const text = note('Back-End/redis-lock.md');
-  expect(text).toContain('### 2. 정리\n\nFIXTURE-SECTION: 2번 섹션 예시 더 넣어 줘 요청대로 다시 쓴 섹션이다.\n\n```java\nint example = 1;\n```\n');
-  expect(text).not.toContain('- fixture 정리다.');
+  expect(text).toContain('### 2. 정리\n\nFIXTURE-SECTION: 2번 섹션 예시 더 넣어 줘 요청대로 다시 쓴 섹션입니다.\n\n```java\nint example = 1;\n```\n');
+  expect(text).not.toContain('- fixture 정리입니다.');
   expect(text).toContain('### 1. 핵심 개념');
   expect(text.startsWith('# 분산 락\n\n첫 본문이다.')).toBe(true);
 
@@ -274,9 +274,9 @@ test('dragging over text opens the inline prompt; only the selection is replaced
   await page.getByTestId('note-inline-input').press('Enter');
   await expect(prompt).toHaveCount(0);
   const editor = page.locator('.cm-content');
-  await expect(editor).toContainText('FIXTURE-INLINE: 더 자세히 요청대로 고친 문장이다.');
+  await expect(editor).toContainText('FIXTURE-INLINE: 더 자세히 요청대로 고친 문장입니다.');
   await waitSaved(page);
-  expect(note('Back-End/redis-lock.md')).toBe(before.replace('첫 본문이다.', 'FIXTURE-INLINE: 더 자세히 요청대로 고친 문장이다.'));
+  expect(note('Back-End/redis-lock.md')).toBe(before.replace('첫 본문이다.', 'FIXTURE-INLINE: 더 자세히 요청대로 고친 문장입니다.'));
 
   await page.keyboard.press('Meta+z');
   await expect(editor).toContainText('첫 본문이다.');

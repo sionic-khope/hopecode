@@ -1,5 +1,5 @@
 // 노트 모드 AI requests: the writing rules (system prompt) and the per-request prompts of the conversation pane and
-// the inline prompt. Pure. The rules describe a study-note format and a plain Korean register; no sample text from the
+// the inline prompt. Pure. The rules describe a study-note format and a polite Korean register (~합니다/~입니다); no sample text from the
 // user's notes is embedded here (style references are read from the vault per request and capped).
 import { headingLines } from './noteEdit';
 
@@ -57,15 +57,16 @@ export function buildNoteSystemPrompt(): string {
     '- 제목 바로 아래에 개요를 둔다: 무엇을 배우는지, 왜 필요한지, 어떤 상황에서 문제가 되는지 2~4문장으로 쓴다.',
     '- 본문은 `### 1. 소제목`처럼 번호를 붙인 섹션으로 나눈다. 섹션마다 한 가지 개념만 다룬다.',
     '- 핵심 개념은 정의 → 동작 방식 → 예시 순서로 설명한다.',
-    '- 코드 예시는 언어를 명시한 코드 블록(```java, ```kotlin, ```sql 등)으로 쓰고, 꼭 필요한 줄만 넣는다. 코드 안 주석도 한국어 평서체로 쓴다.',
+    '- 코드 예시는 언어를 명시한 코드 블록(```java, ```kotlin, ```sql 등)으로 쓰고, 꼭 필요한 줄만 넣는다. 코드 안 주석은 한국어로 짧게 쓴다.',
     '- 선택지가 있는 주제는 장단점과 트레이드오프를 리스트나 표로 비교한다.',
     '- 마지막 섹션은 `### 정리`로, 기억할 내용을 짧은 리스트로 묶는다.',
     '- 리스트, 표, 인용, 코드 블록 같은 마크다운 문법만 쓴다. HTML 태그는 쓰지 않는다.',
     '',
     '## 문체',
-    '- 한국어 평서체 "~다", "~이다"로 쓴다. 존댓말("~합니다", "~해요")은 쓰지 않는다.',
+    '- 한국어 존댓말 "~합니다", "~입니다"로 쓴다. 평서체("~다", "~이다")와 해요체("~해요")는 쓰지 않는다.',
+    '- 리스트 항목이나 표 셀처럼 짧은 구절은 명사형으로 끝내도 된다. 문장으로 끝낼 때는 "~합니다", "~입니다"로 끝낸다.',
     '- 기술 용어는 영어 원어를 그대로 쓴다(예: lock, replication, failover, transaction). 처음 나올 때만 필요하면 괄호로 한국어를 덧붙인다.',
-    '- 담백하게 설명한다. 독자에게 말을 걸지 않고, 감탄하거나 과장하지 않는다.',
+    '- 담백한 실무 문어체로 설명한다. 독자에게 말을 걸지 않고, 감탄하거나 과장하지 않는다.',
     '- 서론("이번 글에서는", "~에 대해 알아보자")과 맺음말("도움이 되었길")을 쓰지 않는다. 첫 문장부터 내용이다.',
     '- 이모지, 느낌표, 굵은 글씨 남발을 쓰지 않는다. 굵은 글씨는 핵심 용어 정의에만 쓴다.',
     `- 다음 표현은 쓰지 않는다: ${BANNED_PHRASES.map((p) => `"${p}"`).join(', ')}.`,
@@ -73,7 +74,7 @@ export function buildNoteSystemPrompt(): string {
     '## 공통',
     '- 도구를 쓰지 않는다. 파일을 읽거나 쓰지 않는다. 텍스트만 답한다.',
     '- 위 포맷과 문체 규칙은 노트에 들어갈 본문에 적용한다. 본문 전체를 마크다운 코드펜스로 감싸지 않는다.',
-    '- 대화 문장도 평서체로 짧게 쓰고, 위에서 금지한 표현을 쓰지 않는다.',
+    '- 대화 문장도 존댓말("~합니다", "~입니다")로 짧게 쓰고, 위에서 금지한 표현을 쓰지 않는다.',
   ].join('\n');
 }
 
@@ -142,7 +143,7 @@ function outline(doc: string): string {
 
 /** The reply format of a conversation turn (parsed by core/notes/noteReply.ts). */
 export const NOTE_REPLY_RULES: readonly string[] = [
-  '대화 문장은 자유롭게 쓰되 짧고 담백하게 쓴다. 노트에 들어갈 본문은 대화 문장에 섞지 않고 아래 블록 안에만 쓴다.',
+  '대화 문장은 자유롭게 쓰되 존댓말("~합니다", "~입니다")로 짧고 담백하게 쓴다. 노트에 들어갈 본문은 대화 문장에 섞지 않고 아래 블록 안에만 쓴다.',
   '- 커서 위치에 넣을 본문: 첫 줄 ```note-insert, 마지막 줄 ```',
   '- 섹션 하나를 바꿀 본문: 첫 줄 ```note-replace section="<heading 텍스트>", 마지막 줄 ```. heading 텍스트는 아래 "섹션 목록"에 적힌 그대로 쓴다(# 표시는 빼고). 블록 안은 그 heading 줄부터 섹션 끝까지 전체를 쓴다.',
   '- 문서 전체를 바꿀 본문: 첫 줄 ```note-replace-all, 마지막 줄 ```. 블록 안은 문서 전체다.',

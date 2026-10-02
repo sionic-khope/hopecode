@@ -97,17 +97,28 @@ describe('stream edits', () => {
 });
 
 describe('notePrompt', () => {
-  it('system prompt carries the study-note format, the plain register and every banned phrase', () => {
+  it('system prompt carries the study-note format, the polite register and every banned phrase', () => {
     const sys = buildNoteSystemPrompt();
     expect(sys.startsWith(NOTE_PROMPT_HEAD)).toBe(true);
     for (const phrase of BANNED_PHRASES) expect(sys).toContain(phrase);
     expect(sys).toContain('### 1. 소제목');
     expect(sys).toContain('개요');
     expect(sys).toContain('트레이드오프');
-    expect(sys).toContain('"~다"');
+    expect(sys).toContain('"~합니다"');
     expect(sys).toContain('이모지');
     expect(sys).toContain('코드펜스');
     expect(sys).toContain('영어 원어');
+  });
+
+  it('notes and conversation replies are written in 존댓말 (~합니다/~입니다), not the plain ~다 register', () => {
+    const sys = buildNoteSystemPrompt();
+    expect(sys).toContain('한국어 존댓말 "~합니다", "~입니다"로 쓴다');
+    expect(sys).toContain('평서체("~다", "~이다")와 해요체("~해요")는 쓰지 않는다');
+    expect(sys).toContain('대화 문장도 존댓말("~합니다", "~입니다")로');
+    expect(sys).not.toContain('한국어 평서체 "~다"');
+    expect(sys).toContain('담백한 실무 문어체');
+    const chat = buildNoteChatPrompt({ request: 'r', notePath: 'a.md', document: '', history: [], styleRefs: [] });
+    expect(chat).toContain('존댓말("~합니다", "~입니다")로 짧고 담백하게');
   });
 
   it('style refs keep the first lines; long documents keep both ends', () => {
