@@ -25,6 +25,18 @@ export function hopecodeHome(): string {
   return root ? join(root, 'home') : join(homedir(), '.hopecode');
 }
 
+/**
+ * Folder name of Electron userData under appData. The app was renamed Hopecode -> deltax; Electron would derive
+ * `deltax` from productName, so the old name is kept: settings, threads, Local Storage and the single-instance lock
+ * stay where they are, nothing is moved, and the old and new app can never run on the same data at once.
+ */
+export const USER_DATA_DIR_NAME = 'Hopecode';
+
+/** userData path for an appData dir (`~/Library/Application Support`). Pure: never touches the disk. */
+export function userDataDirIn(appDataDir: string): string {
+  return join(appDataDir, USER_DATA_DIR_NAME);
+}
+
 /** Electron userData (`~/Library/Application Support/Hopecode` or `$HOPECODE_HOME/userData`). */
 export function userDataDir(): string {
   const root = overrideRoot();
@@ -57,5 +69,5 @@ export function localClaudeDir(): string {
 /** Must run before `app.ready`. */
 export function initPaths(): void {
   const root = overrideRoot();
-  if (root) app.setPath('userData', join(root, 'userData'));
+  app.setPath('userData', root ? join(root, 'userData') : userDataDirIn(app.getPath('appData')));
 }

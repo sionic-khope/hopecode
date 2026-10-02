@@ -15,7 +15,7 @@ export const SHORTCUTS: readonly { group: string; items: readonly { keys: string
       { keys: ['⌘', 'K'], label: '명령 팔레트' },
       { keys: ['⌘', ','], label: '설정' },
       { keys: ['⌘', 'B'], label: '사이드바 보기/숨기기' },
-      { keys: ['⌘', 'Q'], label: 'Hopecode 종료' },
+      { keys: ['⌘', 'Q'], label: 'deltax 종료' },
     ],
   },
   {
@@ -100,7 +100,7 @@ export function AboutModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Hopecode"
+      title="deltax"
       subtitle="여러 Claude 계정으로 이어서 일하는 Claude Code 데스크탑"
       icon={<BrandMark size={32} />}
       className="hc-about"

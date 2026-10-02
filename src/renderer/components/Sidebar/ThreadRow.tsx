@@ -84,7 +84,7 @@ export const ThreadRow = memo(function ThreadRow({
     setRenaming(false);
     const title = draft.trim();
     if (title && title !== thread.title) {
-      void onRename(thread.id, title).catch((err: unknown) => console.error('[hopecode] rename failed', err));
+      void onRename(thread.id, title).catch((err: unknown) => console.error('[deltax] rename failed', err));
     }
   };
 

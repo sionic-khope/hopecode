@@ -41,7 +41,7 @@ const messages = (page: Page) => page.locator('.hc-messages');
 const style = (page: Page, selector: string, prop: string, pseudo?: string) =>
   page.locator(selector).first().evaluate((el, [p, ps]) => getComputedStyle(el, ps ?? null).getPropertyValue(p!), [prop, pseudo] as const);
 
-test('draft: black world, pixel faces, HOPECODE lockup and the pixel mark', async () => {
+test('draft: black world, pixel faces, DELTAX lockup and the pixel mark', async () => {
   const { page } = run;
   await openDraft(page);
   const draft = page.getByTestId('draft');
@@ -71,9 +71,9 @@ test('conversation: dialogue box with the * CLAUDE tag, yellow user box, framed 
   const permission = page.locator('.hc-permission');
   await expect(permission).toBeVisible();
   await permission.getByRole('button', { name: '허용', exact: true }).click();
-  await expect(messages(page)).toContainText('Done. The greeting now says "Hello Hopecode".');
+  await expect(messages(page)).toContainText('Done. The greeting now says "Hello deltax".');
   await page.locator('.hc-tool').filter({ hasText: 'Edit' }).locator('.hc-tool__header').click();
-  await expect(page.locator('.hc-tool .hc-diff__row--add')).toContainText('Hello Hopecode');
+  await expect(page.locator('.hc-tool .hc-diff__row--add')).toContainText('Hello deltax');
 
   const say = messages(page).locator('.hc-say--lead').first();
   await expect(say.locator('.hc-agent-name')).toHaveText('Claude');

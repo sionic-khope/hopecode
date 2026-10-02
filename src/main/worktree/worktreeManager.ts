@@ -115,7 +115,7 @@ export function createWorktreeManager(deps: WorktreeManagerDeps = {}): WorktreeM
     isDirty,
 
     async remove(projectPath, worktree: WorktreeInfo, opts) {
-      // Only ever touch worktrees Hopecode created (L5).
+      // Only ever touch worktrees deltax created (L5).
       assertInside(worktreesDir(), worktree.path, 'worktree');
       if (!opts.force && (await isDirty(worktree.path))) throw new WorktreeDirtyError(worktree.path);
       const args = ['worktree', 'remove', worktree.path];
@@ -127,7 +127,7 @@ export function createWorktreeManager(deps: WorktreeManagerDeps = {}): WorktreeM
         await rm(worktree.path, { recursive: true, force: true });
         await runGit(['worktree', 'prune'], projectPath);
       }
-      // The per-thread branch is Hopecode's too (L10); never delete anything else.
+      // The per-thread branch is deltax's too (L10); never delete anything else.
       if (worktree.branch.startsWith('hopecode/')) await runGit(['branch', '-D', worktree.branch], projectPath);
     },
   };

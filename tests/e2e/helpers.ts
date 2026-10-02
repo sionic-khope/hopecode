@@ -25,9 +25,9 @@ export interface Sandbox {
 export function createSandbox(): Sandbox {
   const home = mkdtempSync(join(tmpdir(), 'hopecode-e2e-home-'));
   const project = mkdtempSync(join(tmpdir(), 'hopecode-e2e-repo-'));
-  writeFileSync(join(project, 'README.md'), '# Hopecode fixture\nHello world\n');
+  writeFileSync(join(project, 'README.md'), '# deltax fixture\nHello world\n');
   const git = (...args: string[]) =>
-    execFileSync('git', ['-c', 'user.name=Hopecode E2E', '-c', 'user.email=e2e@example.com', ...args], {
+    execFileSync('git', ['-c', 'user.name=deltax E2E', '-c', 'user.email=e2e@example.com', ...args], {
       cwd: project,
       stdio: 'ignore',
     });

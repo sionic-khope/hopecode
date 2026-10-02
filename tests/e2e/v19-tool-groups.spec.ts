@@ -29,7 +29,7 @@ const lastTurn = (page: Page) => messages(page).getByTestId('agent-turn').last()
 test('consecutive calls fold into one collapsed summary line; the diff card stays out', async () => {
   const { page } = run;
   await startThread(page, sandbox, '저장소를 확인하고 인사말을 바꿔 주세요 [toolrun]');
-  await expect(messages(page)).toContainText('인사말을 "Hello Hopecode"로 바꿨습니다.');
+  await expect(messages(page)).toContainText('인사말을 "Hello deltax"로 바꿨습니다.');
 
   const turn = lastTurn(page);
   // One dialogue box for the whole turn: one portrait, one name tag, every paragraph inside it.

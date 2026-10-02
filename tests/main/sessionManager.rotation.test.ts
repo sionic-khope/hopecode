@@ -399,7 +399,7 @@ describe('SessionManager rotation (plan 7.2)', () => {
       PATH: '/usr/bin:/bin',
       HOME: '/home/fixture',
       CLAUDE_CONFIG_DIR: h.accounts[0]!.configDir,
-      CLAUDE_AGENT_SDK_CLIENT_APP: 'hopecode/0.1.0',
+      CLAUDE_AGENT_SDK_CLIENT_APP: 'deltax/0.1.0',
     });
   });
 

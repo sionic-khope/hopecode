@@ -45,9 +45,9 @@ test('conversation: permission card, then the Edit diff', async () => {
   await page.mouse.move(5, 700);
   await screenshot(page, 'v5-conversation-permission', SHOTS);
   await permission.getByRole('button', { name: '허용', exact: true }).click();
-  await expect(page.locator('.hc-messages')).toContainText('Done. The greeting now says "Hello Hopecode".');
+  await expect(page.locator('.hc-messages')).toContainText('Done. The greeting now says "Hello deltax".');
   await page.locator('.hc-tool').filter({ hasText: 'Edit' }).locator('.hc-tool__header').click();
-  await expect(page.locator('.hc-tool .hc-diff__row--add')).toContainText('Hello Hopecode');
+  await expect(page.locator('.hc-tool .hc-diff__row--add')).toContainText('Hello deltax');
   expect(await page.locator('.app__thread-name').evaluate((el) => getComputedStyle(el).fontFamily)).toMatch(/^"?Galmuri11"?,/);
   await page.mouse.move(5, 700);
   await screenshot(page, 'v5-conversation-diff', SHOTS);
@@ -61,7 +61,7 @@ test('right panel: changes with a diff, then the bottom terminal beside it', asy
   const file = panel.locator('.hc-changes__file[data-path="README.md"]');
   await expect(file).toBeVisible();
   await file.click();
-  await expect(panel.locator('.hc-diff__row--add')).toContainText('Hello Hopecode');
+  await expect(panel.locator('.hc-diff__row--add')).toContainText('Hello deltax');
   await page.mouse.move(5, 700);
   await screenshot(page, 'v5-panel-changes', SHOTS);
 

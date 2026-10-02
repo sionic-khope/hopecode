@@ -1,4 +1,4 @@
-// The codex-acp compile must never autoload `.env` / `bunfig.toml` from its cwd (a repository opened in Hopecode).
+// The codex-acp compile must never autoload `.env` / `bunfig.toml` from its cwd (a repository opened in deltax).
 // Canaries are compiled with the pinned bun on every run; the real build/bin/codex-acp is made by `pretest`.
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';

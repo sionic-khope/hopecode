@@ -1,6 +1,6 @@
-# Hopecode design notes (v12, "Dark World")
+# deltax design notes (v12, "Dark World")
 
-v12 restyles Hopecode as a dark pixel RPG dialogue screen. The values live in `src/renderer/styles/tokens.css`. The
+v12 restyles deltax as a dark pixel RPG dialogue screen. The values live in `src/renderer/styles/tokens.css`. The
 bundled art (the mark, the heart, the subagent characters) is original. Users can swap in their own fonts, sprites and
 colors through the local theme folder (see README, "Theme").
 
@@ -67,5 +67,5 @@ Monospace text turns smoothing back on.
 
 The mark is a 16x16 drawing of a white dialogue frame with notched corners, a red pixel heart and a yellow block
 cursor. `BrandMark.tsx` draws it in the app, sized in multiples of 16. `build/icon.svg` draws it on the macOS squircle
-(`build/icon.png`, `build/icon.icns`, `docs/logo.png`). The lockup is the mark plus HOPECODE in Silkscreen, with
-"CODE" in yellow.
+(`build/icon.png`, `build/icon.icns`, `docs/logo.png`). The lockup is the mark plus DELTAX in Silkscreen, with
+"X" in yellow.

@@ -32,7 +32,7 @@ test.beforeAll(async () => {
   writeFileSync(join(vault, 'node_modules', 'pkg', 'README.md'), '# hidden\n');
   writeFileSync(join(vault, 'public', 'index.md'), '# hidden\n');
   git('init', '-q', '-b', 'main');
-  git('config', 'user.name', 'Hopecode E2E');
+  git('config', 'user.name', 'deltax E2E');
   git('config', 'user.email', 'e2e@example.com');
   git('config', 'commit.gpgsign', 'false');
   git('add', 'Back-End');

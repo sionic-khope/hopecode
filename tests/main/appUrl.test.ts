@@ -4,7 +4,7 @@ import { isAppUrl } from '../../src/main/appUrl';
 import { isSafeExternalUrl } from '../../src/main/externalUrl';
 import { LOGIN_URL_HOSTS } from '../../src/shared/constants';
 
-const index = '/Applications/Hopecode.app/Contents/Resources/app.asar/out/renderer/index.html';
+const index = '/Applications/deltax.app/Contents/Resources/app.asar/out/renderer/index.html';
 
 describe('isAppUrl (H1 / M1)', () => {
   it('accepts only the built renderer index.html when there is no dev URL', () => {
@@ -12,7 +12,7 @@ describe('isAppUrl (H1 / M1)', () => {
     expect(isAppUrl(pathToFileURL(index).href, cfg)).toBe(true);
     expect(isAppUrl(`${pathToFileURL(index).href}#/thread/1`, cfg)).toBe(true);
     expect(isAppUrl(pathToFileURL('/etc/passwd').href, cfg)).toBe(false);
-    expect(isAppUrl('file://evil-host/Applications/Hopecode.app/Contents/Resources/app.asar/out/renderer/index.html', cfg)).toBe(false);
+    expect(isAppUrl('file://evil-host/Applications/deltax.app/Contents/Resources/app.asar/out/renderer/index.html', cfg)).toBe(false);
     expect(isAppUrl('https://example.com/', cfg)).toBe(false);
     expect(isAppUrl('http://localhost:5173/', cfg)).toBe(false);
     expect(isAppUrl(undefined, cfg)).toBe(false);

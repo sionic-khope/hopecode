@@ -58,12 +58,12 @@ test('first turn: streaming text, Edit tool card, permission 허용, diff lines,
   await permission.getByRole('button', { name: '허용', exact: true }).click();
   await expect(permission).toHaveCount(0);
 
-  await expect(messages).toContainText('Done. The greeting now says "Hello Hopecode".');
+  await expect(messages).toContainText('Done. The greeting now says "Hello deltax".');
   const tool = messages.locator('.hc-tool').filter({ hasText: 'Edit' });
   await expect(tool.locator('.hc-tool__status--ok')).toBeVisible();
   await tool.locator('.hc-tool__header').click();
   await expect(tool.locator('.hc-diff__row--del')).toContainText('Hello world');
-  await expect(tool.locator('.hc-diff__row--add')).toContainText('Hello Hopecode');
+  await expect(tool.locator('.hc-diff__row--add')).toContainText('Hello deltax');
 
   const ctx = page.getByTestId('statusline').locator('.hc-meter').filter({ hasText: 'ctx' });
   await expect(ctx.locator('.hc-meter__percent')).toHaveText('31%');

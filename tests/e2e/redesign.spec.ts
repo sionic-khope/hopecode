@@ -137,7 +137,7 @@ test('⌘N opens a draft at once in the last used folder; nothing is created unt
   const send = page.locator('.hc-send');
   await expect(send).toBeDisabled();
   await screenshot(page, 'v2-draft-empty', SHOTS);
-  await page.locator('.hc-composer__textarea').fill('README의 인사말을 Hopecode로 바꾸고 테스트를 추가해 주세요');
+  await page.locator('.hc-composer__textarea').fill('README의 인사말을 deltax로 바꾸고 테스트를 추가해 주세요');
   await expect(send).toBeEnabled();
   await expect.poll(() => send.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(255, 225, 77)');
   await screenshot(page, 'v2-draft-typed', SHOTS);

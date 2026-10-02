@@ -16,8 +16,8 @@ import { invoke } from '../api';
 
 import { typoMetricOverrides } from './fontMetrics';
 
-const UI_FAMILY = 'Hopecode Overlay UI';
-const MONO_FAMILY = 'Hopecode Overlay Mono';
+const UI_FAMILY = 'deltax Overlay UI';
+const MONO_FAMILY = 'deltax Overlay Mono';
 
 let current: ThemeOverlay = EMPTY_THEME_OVERLAY;
 const listeners = new Set<() => void>();
@@ -107,7 +107,7 @@ export async function applyThemeOverlay(): Promise<ThemeOverlay> {
     overlay.fonts.mono ? addFont(MONO_FAMILY, overlay.fonts.mono) : Promise.resolve(false),
   ]);
   if (ui) {
-    // Every text face but the HOPECODE wordmark: UI, conversation, titles.
+    // Every text face but the DELTAX wordmark: UI, conversation, titles.
     for (const token of ['--font-ui', '--font-chat', '--font-display']) prependFamily(root, token, UI_FAMILY);
     applied.push('ui');
   }

@@ -193,7 +193,7 @@ function useSessionTerminal(sessionId: string, draftProjectId: string | null): S
       .getState()
       .restartTerminal(sessionId, size.cols, size.rows, draftProjectIdForOpen)
       .then(() => entry.terminal.focus())
-      .catch((err: unknown) => console.error('[hopecode] terminal restart failed', err));
+      .catch((err: unknown) => console.error('[deltax] terminal restart failed', err));
   }, [sessionId, exited, draftProjectIdForOpen]);
 
   return { generation, exited, lastExitCode: pty?.lastExitCode ?? null, draftProjectIdForOpen, restart };

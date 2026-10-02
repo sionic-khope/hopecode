@@ -31,7 +31,7 @@ export const ChatHeader = memo(function ChatHeader({ thread, onRename, ...toolba
     committing.current = false;
     setEditing(false);
     const title = draft.trim();
-    if (title && title !== thread.title) void onRename(title).catch((err: unknown) => console.error('[hopecode] rename failed', err));
+    if (title && title !== thread.title) void onRename(title).catch((err: unknown) => console.error('[deltax] rename failed', err));
   };
 
   const state =

@@ -115,7 +115,7 @@ function useNow(intervalMs: number): number {
   return now;
 }
 
-const reportError = (label: string) => (err: unknown) => console.error(`[hopecode] ${label}`, err);
+const reportError = (label: string) => (err: unknown) => console.error(`[deltax] ${label}`, err);
 
 const loadAppInfo = () => invoke('app:info');
 const loadDataDir = () => invoke('app:info').then((i) => i.dataDir);
@@ -839,7 +839,7 @@ function AccountsRoute({ addRequest }: { addRequest: number }) {
         })
         .catch((err: unknown) => {
           usageHistoryCache.set(id, { at: 0, samples: cached?.samples ?? [] });
-          console.error('[hopecode] usage history failed', err);
+          console.error('[deltax] usage history failed', err);
         });
     }
   }, [accountIds, poolAt]);

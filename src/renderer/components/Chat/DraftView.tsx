@@ -95,7 +95,7 @@ export function DraftView({
         if (p) onDraftChange({ projectId: p.id });
         composerRef.current?.focus();
       })
-      .catch((err: unknown) => console.error('[hopecode] folder pick failed', err));
+      .catch((err: unknown) => console.error('[deltax] folder pick failed', err));
   }, [onPickFolder, onDraftChange]);
 
   // No folder is not an error: the thread starts as a chat without a project (scratch folder, plan 2.12).
@@ -133,7 +133,7 @@ export function DraftView({
     void useAppStore
       .getState()
       .recheckAgents()
-      .catch((err: unknown) => console.error('[hopecode] agent recheck failed', err));
+      .catch((err: unknown) => console.error('[deltax] agent recheck failed', err));
   }, []);
   const setCodexEffort = useCallback((value: string) => onDraftChange({ effort: value as CodexEffortLevel }), [onDraftChange]);
 

@@ -46,7 +46,7 @@ export function createFixturePrSource(listThreads: () => readonly Thread[]): PrS
           if (linked?.worktree) {
             prs.unshift({
               number: 43,
-              title: `${linked.title} (Hopecode)`,
+              title: `${linked.title} (deltax)`,
               url: 'https://github.com/example/hopecode-fixture/pull/43',
               branch: linked.worktree.branch,
               baseBranch: 'main',

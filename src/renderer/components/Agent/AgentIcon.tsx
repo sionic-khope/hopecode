@@ -3,7 +3,7 @@ import type { AgentKind } from '../../../shared/types';
 import { GlyphAgent } from '../common/glyphs';
 
 // Agent logos bundled from src/renderer/assets/agents/ (claude-code.svg is the official Claude mark); when one is
-// missing, the neutral Hopecode glyph is shown instead.
+// missing, the neutral deltax glyph is shown instead.
 const bundled = import.meta.glob<string>('../../assets/agents/*.{svg,png}', { eager: true, query: '?url', import: 'default' });
 
 /** Bundled logo URL for an agent (its `iconAsset`, e.g. `agents/claude-code.svg`), or null. */

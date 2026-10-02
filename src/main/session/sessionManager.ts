@@ -35,7 +35,7 @@ export interface SessionManagerDeps {
   shellEnv: Pick<ShellEnv, 'childEnv'>;
   claudeBinary: Pick<ClaudeBinary, 'resolvePath'>;
   broadcaster: Broadcaster;
-  /** App version for CLAUDE_AGENT_SDK_CLIENT_APP (`hopecode/<version>`). */
+  /** App version for CLAUDE_AGENT_SDK_CLIENT_APP (`deltax/<version>`). */
   appVersion: string;
   syncTranscript?: SyncTranscriptFn;
   /** SDK init `claude_code_version` (usage User-Agent). */

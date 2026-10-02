@@ -67,7 +67,7 @@ test('Galmuri11 UI font (statusline included), Galmuri14 chat, Silkscreen wordma
       }),
     )
     .toBe(true);
-  await expect(page.getByTestId('brand')).toContainText('Hopecode');
+  await expect(page.getByTestId('brand')).toContainText('deltax');
 });
 
 test('statusline pool summary: 5h 47%, 2/3 avail, level colors', async () => {

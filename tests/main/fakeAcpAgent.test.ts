@@ -99,7 +99,7 @@ describe('fakeAcpAgent', () => {
       expect(init.agentCapabilities.promptCapabilities.image).toBe(true);
       expect(init.agentCapabilities.sessionCapabilities.close).toBeDefined();
       expect(init.agentInfo.name).toBe('@agentclientprotocol/codex-acp');
-      // No INITIAL_AGENT_MODE: the adapter's own default (Auto review), which Hopecode never relies on.
+      // No INITIAL_AGENT_MODE: the adapter's own default (Auto review), which deltax never relies on.
       expect(created.modes.currentModeId).toBe('agent');
       expect(created.modes.availableModes.map((m: any) => m.id)).toEqual(['read-only', 'workspace-write', 'agent', 'agent-full-access']);
       expect(created.configOptions.map((o: any) => [o.id, o.category])).toEqual([

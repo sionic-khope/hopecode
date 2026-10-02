@@ -39,7 +39,7 @@ export async function linkSharedConfig(
       if (existing.isSymbolicLink() && (await readlink(target)) === source) {
         linked.push(name); // already linked (idempotent)
       } else {
-        warn(`[hopecode] ${target} already exists; not replacing with link to ${source}`);
+        warn(`[deltax] ${target} already exists; not replacing with link to ${source}`);
         skipped.push(name);
       }
       continue;

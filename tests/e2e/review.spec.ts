@@ -104,7 +104,7 @@ test('a pending permission card survives a renderer reload', async () => {
   await expect(permission).toBeVisible();
   await permission.getByRole('button', { name: '허용', exact: true }).click();
   await expect(permission).toHaveCount(0);
-  await expect(page.locator('.hc-messages')).toContainText('Done. The greeting now says "Hello Hopecode".');
+  await expect(page.locator('.hc-messages')).toContainText('Done. The greeting now says "Hello deltax".');
 });
 
 test('thread rename (context menu) and delete; a dirty worktree asks before a forced delete', async () => {

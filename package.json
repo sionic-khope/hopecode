@@ -1,12 +1,12 @@
 {
-  "name": "hopecode",
-  "productName": "Hopecode",
+  "name": "deltax",
+  "productName": "deltax",
   "version": "0.1.0",
   "description": "Native macOS chat UI for Claude Code sessions with multi-account rotation",
   "private": true,
   "type": "module",
   "main": "./out/main/index.js",
-  "author": "Hopecode",
+  "author": "deltax",
   "license": "UNLICENSED",
   "scripts": {
     "predev": "node scripts/build-codex-acp.mjs",

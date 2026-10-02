@@ -126,7 +126,7 @@ export const ProjectGroup = memo(function ProjectGroup({
         onClose={() => setConfirmOpen(false)}
         anchorRef={headerRef}
         label="프로젝트 제거"
-        message={`“${project.name}”을(를) Hopecode에서 제거할까요? 스레드와 worktree는 삭제되고 폴더 자체는 남습니다.`}
+        message={`“${project.name}”을(를) deltax에서 제거할까요? 스레드와 worktree는 삭제되고 폴더 자체는 남습니다.`}
         confirmLabel="제거"
         onConfirm={() => onRemoveProject(project.id)}
       />

@@ -25,9 +25,9 @@ export function isSafeExternalUrl(url: string, allowHosts?: readonly string[]): 
 /** Opens `url` externally when it passes isSafeExternalUrl; returns whether it was opened. */
 export function openExternalSafe(url: string, opts: { allowHosts?: readonly string[] } = {}): boolean {
   if (!isSafeExternalUrl(url, opts.allowHosts)) {
-    console.warn(`[hopecode] refused to open external URL: ${url}`);
+    console.warn(`[deltax] refused to open external URL: ${url}`);
     return false;
   }
-  shell.openExternal(url).catch((err: unknown) => console.error('[hopecode] openExternal failed', err));
+  shell.openExternal(url).catch((err: unknown) => console.error('[deltax] openExternal failed', err));
   return true;
 }

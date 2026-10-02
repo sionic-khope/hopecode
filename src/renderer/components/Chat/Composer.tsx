@@ -269,7 +269,7 @@ export const Composer = memo(function Composer({
           onSelect: () => {
             void onAttachFiles?.()
               .then(insertMentions)
-              .catch((err: unknown) => console.error('[hopecode] attach failed', err));
+              .catch((err: unknown) => console.error('[deltax] attach failed', err));
           },
         },
         {

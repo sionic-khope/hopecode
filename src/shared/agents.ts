@@ -28,7 +28,7 @@ export interface AgentDescriptor {
   description: string;
   /**
    * Optional logo under src/renderer/assets/ (e.g. `agents/claude-code.svg`). Loaded only if the file exists;
-   * otherwise the renderer shows a neutral Hopecode glyph next to the name.
+   * otherwise the renderer shows a neutral deltax glyph next to the name.
    */
   iconAsset: string;
   features: AgentFeatures;

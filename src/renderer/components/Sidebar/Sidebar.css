@@ -27,7 +27,7 @@
   flex: none;
   filter: none;
 }
-/* HOPECODE in Silkscreen caps: HOPE in white, CODE in the selection yellow. The text stays "Hopecode". */
+/* DELTAX in Silkscreen caps: DELTA in white, X in the selection yellow. The text stays "deltax". */
 .hc-sidebar__wordmark {
   font-family: var(--font-pixel);
   font-size: 16px;

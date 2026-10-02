@@ -3,7 +3,7 @@ import { useThemeOverlay } from '../../theme/themeOverlay';
 
 type BrandMarkProps = Omit<SVGProps<SVGSVGElement>, 'viewBox'> & { size?: number };
 
-// The Hopecode mark (build/icon.svg uses the same grid): a red pixel heart and a yellow block cursor inside a white
+// The deltax mark (build/icon.svg uses the same grid): a red pixel heart and a yellow block cursor inside a white
 // pixel dialogue frame with notched corners. 16x16 cells, so it is pixel-exact at 16 / 32 / 48 px.
 // F frame, R heart, r heart shade, H heart highlight, Y cursor; '.' is the black box (or nothing outside it).
 const MARK: readonly string[] = [
@@ -55,7 +55,7 @@ const RUNS: readonly Run[] = MARK.flatMap((row, y) => {
 });
 
 /**
- * The Hopecode mark. Decorative by default; pass aria-label to expose it. A local overlay sprite
+ * The deltax mark. Decorative by default; pass aria-label to expose it. A local overlay sprite
  * (~/.hopecode/theme/sprites/logo.png) takes its place when present. Sizes snap to multiples of 16 so the pixels stay
  * square (a 20 asks for 16, a 52 for 48).
  */

@@ -99,7 +99,7 @@ describe('image:read / image:copy / image:save with a media ref', () => {
     await h['image:copy']({ threadId: 't1', ref });
     expect(copied[0]!.toString('base64')).toBe(PNG);
     await expect(h['image:save']({ threadId: 't1', ref })).resolves.toEqual({ saved: true });
-    expect(saved[0]![1]).toMatch(/^hopecode-[0-9a-f]{12}\.png$/);
+    expect(saved[0]![1]).toMatch(/^deltax-[0-9a-f]{12}\.png$/);
   });
 });
 

@@ -13,7 +13,7 @@ const items: ChatItem[] = [
     createdAt: at,
     toolUseId: 'toolu_1',
     name: 'Edit',
-    input: { file_path: 'README.md', old_string: 'Hello world', new_string: 'Hello Hopecode' },
+    input: { file_path: 'README.md', old_string: 'Hello world', new_string: 'Hello deltax' },
     result: 'The file README.md has been updated.',
   },
   { id: 't2', type: 'tool', createdAt: at, toolUseId: 'toolu_2', name: 'Bash', input: { command: 'echo `date`' }, result: 'x', isError: true },
@@ -44,7 +44,7 @@ describe('threadToMarkdown', () => {
       '- 도구 **Edit** `README.md` (완료)\n- 도구 **Bash** `` echo `date` `` (실패)\n- 도구 **Task** `general-purpose · 조사` (실행 중)',
     );
     expect(md).not.toContain('has been updated');
-    expect(md).not.toContain('Hello Hopecode');
+    expect(md).not.toContain('Hello deltax');
   });
 
   it('quotes notices', () => {

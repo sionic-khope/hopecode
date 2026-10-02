@@ -64,19 +64,19 @@ describe('buildChildEnv', () => {
   });
 
   it('injects CLAUDE_AGENT_SDK_CLIENT_APP when provided', () => {
-    const result = buildChildEnv(DIRTY_BASE, { clientApp: 'hopecode/0.1.0' });
-    expect(result.CLAUDE_AGENT_SDK_CLIENT_APP).toBe('hopecode/0.1.0');
+    const result = buildChildEnv(DIRTY_BASE, { clientApp: 'deltax/0.1.0' });
+    expect(result.CLAUDE_AGENT_SDK_CLIENT_APP).toBe('deltax/0.1.0');
   });
 
   it('injects all three together', () => {
     const result = buildChildEnv(DIRTY_BASE, {
       configDir: '/dir',
       term: 'xterm-256color',
-      clientApp: 'hopecode/0.1.0',
+      clientApp: 'deltax/0.1.0',
     });
     expect(result.CLAUDE_CONFIG_DIR).toBe('/dir');
     expect(result.TERM).toBe('xterm-256color');
-    expect(result.CLAUDE_AGENT_SDK_CLIENT_APP).toBe('hopecode/0.1.0');
+    expect(result.CLAUDE_AGENT_SDK_CLIENT_APP).toBe('deltax/0.1.0');
   });
 
   it('injects GIT_CEILING_DIRECTORIES only when gitCeiling is provided', () => {

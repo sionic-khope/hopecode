@@ -101,7 +101,7 @@ test('thread: toolbar order, terminal and changes toggles', async () => {
   const { page } = run;
   await startThread(page, sandbox, TITLE);
   await page.locator('.hc-permission').getByRole('button', { name: '허용', exact: true }).click();
-  await expect(page.locator('.hc-messages')).toContainText('Done. The greeting now says "Hello Hopecode".');
+  await expect(page.locator('.hc-messages')).toContainText('Done. The greeting now says "Hello deltax".');
   await expectComposerWithoutWindowControls(page);
 
   const bar = toolbar(page);
@@ -141,7 +141,7 @@ test('env popover: change counts from git:changes, click opens the changes tab',
   const { page } = run;
   const env = await openEnv(page);
   const changes = env.getByRole('button', { name: /^변경 사항/ });
-  // The fixture Edit: README.md "Hello world" -> "Hello Hopecode".
+  // The fixture Edit: README.md "Hello world" -> "Hello deltax".
   await expect(changes).toHaveAccessibleName('변경 사항 +1 -1');
   await expect(env.getByTestId('env-changes-stat')).toHaveText('+1−1');
   await changes.click();
@@ -189,7 +189,7 @@ test('env popover: subagents and sources from a [sources] turn; both jump to the
   await env2.locator('.hc-env__row[data-path="README.md"]').click();
   const file = page.getByTestId('changes-panel').locator('.hc-changes__file[data-path="README.md"]');
   await expect(file).toHaveAttribute('aria-expanded', 'true');
-  await expect(page.getByTestId('changes-panel').locator('.hc-diff__row--add')).toContainText('Hello Hopecode');
+  await expect(page.getByTestId('changes-panel').locator('.hc-diff__row--add')).toContainText('Hello deltax');
   await toolbar(page).getByRole('button', { name: '변경사항 패널' }).click();
 
   // The editor shortcut beside a changed source opens it (fixture launcher records, nothing launches).

@@ -3,7 +3,7 @@
 // so it ships this binary via electron-builder extraResources; dev and tests resolve the same path.
 //
 // A bun standalone executable autoloads `.env` and `bunfig.toml` from its working directory by default, which would let
-// a repository opened in Hopecode inject code (bunfig `preload`) or env (`CODEX_PATH`) into the adapter. The compile
+// a repository opened in deltax inject code (bunfig `preload`) or env (`CODEX_PATH`) into the adapter. The compile
 // turns every runtime autoload off (COMPILE_FLAGS) and every run re-checks it against a hostile directory.
 //
 // Reuse: the binary is kept when build/bin/codex-acp.stamp matches the codex-acp / bun versions and compile flags AND

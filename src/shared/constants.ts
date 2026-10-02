@@ -1,8 +1,8 @@
 import type { AppSettings, CodexEffortLevel, EffortLevel, ModelOption, UiPermissionMode } from './types';
 
-export const APP_NAME = 'Hopecode';
-/** Value prefix for CLAUDE_AGENT_SDK_CLIENT_APP (`hopecode/<version>`). */
-export const CLIENT_APP_NAME = 'hopecode';
+export const APP_NAME = 'deltax';
+/** Value prefix for CLAUDE_AGENT_SDK_CLIENT_APP (`deltax/<version>`). */
+export const CLIENT_APP_NAME = 'deltax';
 
 /** Retry prompt after a rate-limited turn that already produced output (plan 7.2 M5). */
 export const CONTINUE_PROMPT = 'Continue the previous task from where it stopped.';

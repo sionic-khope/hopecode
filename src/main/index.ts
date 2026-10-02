@@ -3,9 +3,9 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { chmodSync, mkdirSync, readFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { app, BrowserWindow, dialog, ipcMain, Menu, powerMonitor, shell, clipboard, ClipboardItem, nativeImage } from 'electron';
 import {
@@ -96,6 +96,8 @@ initPaths();
 // Dev/test switches are ignored in a packaged app (L2); HOPECODE_SMOKE stays available for the packaged smoke check.
 const fixtures = devEnv(ENV_FIXTURES) === '1';
 const smoke = process.env[ENV_SMOKE] === '1';
+// The smoke check never writes into the user's data: Chromium gets a throwaway userData (appData ignores $HOME).
+if (smoke) app.setPath('userData', mkdtempSync(join(tmpdir(), 'deltax-smoke-')));
 const headless = isHeadlessE2E();
 
 /** Smoke / e2e runs never put an icon in the Dock or take focus from the user's apps. */
@@ -187,7 +189,7 @@ interface Services {
   forceStop(): Promise<void>;
 }
 
-const INTERRUPTED_NOTICE = '중단됨: 이 턴이 실행 중일 때 Hopecode가 종료되었습니다.';
+const INTERRUPTED_NOTICE = '중단됨: 이 턴이 실행 중일 때 deltax가 종료되었습니다.';
 
 function focusedWindow(): BrowserWindow | undefined {
   return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
@@ -302,13 +304,13 @@ async function startServices(): Promise<Services> {
       for (const threadId of threadIds) {
         void threadLog
           .append(threadId, { type: 'notice', id: `notice-${randomUUID()}`, level: 'warn', text: INTERRUPTED_NOTICE, createdAt: Date.now() })
-          .catch((err: unknown) => console.error('[hopecode] interrupted notice failed', err));
+          .catch((err: unknown) => console.error('[deltax] interrupted notice failed', err));
       }
     },
   });
   await store.load();
   const usageHistory = createUsageHistory(join(dataDir, 'usage'));
-  void usageHistory.compact().catch((err: unknown) => console.error('[hopecode] usage history compaction failed', err));
+  void usageHistory.compact().catch((err: unknown) => console.error('[deltax] usage history compaction failed', err));
 
   const claudeBinary = createClaudeBinary();
   let cliVersion = claudeBinary.getCliVersion();
@@ -395,7 +397,7 @@ async function startServices(): Promise<Services> {
               {
                 ...defaultDetectorDeps(),
                 hermesPath: () => agentBinaries.resolveHermes(),
-                // Same scrubbed env as the Hermes ACP process (no Claude / Hopecode variables).
+                // Same scrubbed env as the Hermes ACP process (no Claude / deltax variables).
                 env: () => buildAcpEnv(shellEnv.baseEnv(), { agent: 'hermes' }),
               },
               opts,
@@ -514,7 +516,7 @@ async function startServices(): Promise<Services> {
         });
         await modelCatalog.update(models);
       } catch (err) {
-        console.error('[hopecode] model probe failed; keeping the cached model list', err);
+        console.error('[deltax] model probe failed; keeping the cached model list', err);
       } finally {
         probing = false;
       }
@@ -731,11 +733,11 @@ async function startServices(): Promise<Services> {
   });
 
   poller.start();
-  await scheduler.load().catch((err: unknown) => console.error('[hopecode] schedules could not be loaded', err));
+  await scheduler.load().catch((err: unknown) => console.error('[deltax] schedules could not be loaded', err));
   scheduler.start();
   powerMonitor.on('resume', () => void scheduler.tick());
   // One detection at startup, in the background (the window does not wait); includes the Hermes initialize probe.
-  void localAuth.recheck(undefined, { force: true }).catch((err: unknown) => console.error('[hopecode] agent detection failed', err));
+  void localAuth.recheck(undefined, { force: true }).catch((err: unknown) => console.error('[deltax] agent detection failed', err));
 
   return {
     broadcaster,
@@ -745,19 +747,19 @@ async function startServices(): Promise<Services> {
       notesWatcher.dispose();
       agentUsage.dispose();
       scheduler.stop();
-      await scheduler.flush().catch((err: unknown) => console.error('[hopecode] schedule flush failed', err));
-      await accountPool.cancelAllLogins().catch((err: unknown) => console.error('[hopecode] login cancel failed', err));
-      await session.dispose().catch((err: unknown) => console.error('[hopecode] session dispose failed', err));
+      await scheduler.flush().catch((err: unknown) => console.error('[deltax] schedule flush failed', err));
+      await accountPool.cancelAllLogins().catch((err: unknown) => console.error('[deltax] login cancel failed', err));
+      await session.dispose().catch((err: unknown) => console.error('[deltax] session dispose failed', err));
       ptyManager.killAll();
       unregisterIpc();
-      await store.flush().catch((err: unknown) => console.error('[hopecode] store flush failed', err));
+      await store.flush().catch((err: unknown) => console.error('[deltax] store flush failed', err));
     },
     async forceStop() {
       notesAbort.abort();
       session.abortAll();
       ptyManager.killAll();
       await Promise.race([
-        store.flush().catch((err: unknown) => console.error('[hopecode] store flush failed', err)),
+        store.flush().catch((err: unknown) => console.error('[deltax] store flush failed', err)),
         new Promise((resolve) => setTimeout(resolve, 1_000)),
       ]);
     },
@@ -879,8 +881,8 @@ if (smoke) {
     try {
       services = await startServices();
     } catch (err) {
-      console.error('[hopecode] failed to start services', err);
-      if (!headless) dialog.showErrorBox('Hopecode를 시작하지 못했습니다', String(err));
+      console.error('[deltax] failed to start services', err);
+      if (!headless) dialog.showErrorBox('deltax를 시작하지 못했습니다', String(err));
       app.exit(1);
       return;
     }
@@ -905,7 +907,7 @@ if (smoke) {
     });
     const disposed = svc
       .dispose()
-      .catch((err: unknown) => console.error('[hopecode] dispose failed', err))
+      .catch((err: unknown) => console.error('[deltax] dispose failed', err))
       .then(() => 'done' as const);
     void Promise.race([disposed, timedOut]).then(async (result) => {
       clearTimeout(timer);
@@ -913,8 +915,8 @@ if (smoke) {
         app.quit();
         return;
       }
-      console.error(`[hopecode] dispose exceeded ${QUIT_DISPOSE_TIMEOUT_MS}ms; forcing exit`);
-      await svc.forceStop().catch((err: unknown) => console.error('[hopecode] force stop failed', err));
+      console.error(`[deltax] dispose exceeded ${QUIT_DISPOSE_TIMEOUT_MS}ms; forcing exit`);
+      await svc.forceStop().catch((err: unknown) => console.error('[deltax] force stop failed', err));
       app.exit(0);
     });
   });

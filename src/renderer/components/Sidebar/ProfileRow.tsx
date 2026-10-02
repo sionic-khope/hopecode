@@ -120,7 +120,7 @@ export const ProfileRow = memo(function ProfileRow({
     {
       key: 'quit',
       kind: 'action',
-      items: [{ key: 'quit', label: 'Hopecode 종료', icon: <GlyphPower />, meta: '⌘Q', onSelect: onQuit }],
+      items: [{ key: 'quit', label: 'deltax 종료', icon: <GlyphPower />, meta: '⌘Q', onSelect: onQuit }],
     },
   ];
 

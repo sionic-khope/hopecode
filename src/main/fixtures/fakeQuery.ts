@@ -623,7 +623,7 @@ export const FIXTURE_EDIT_PATCH: StructuredPatchHunk[] = [
     oldLines: 3,
     newStart: 1,
     newLines: 3,
-    lines: [' # Hopecode fixture', '-Hello world', '+Hello Hopecode', ' '],
+    lines: [' # deltax fixture', '-Hello world', '+Hello deltax', ' '],
   },
 ];
 
@@ -715,7 +715,7 @@ function subagentSteps(cwd: string, prefix: string): FakeStep[] {
     }),
     assistant(a, { type: 'tool_use', id: `${a}_read`, name: 'Read', input: { file_path: readme } }, 250),
     assistant(b, { type: 'tool_use', id: `${b}_grep`, name: 'Grep', input: { pattern: 'Hello', path: cwd } }, 150),
-    toolResult(a, `${a}_read`, '# Hopecode fixture\nHello world\n', undefined, 250),
+    toolResult(a, `${a}_read`, '# deltax fixture\nHello world\n', undefined, 250),
     toolResult(b, `${b}_grep`, 'README.md:2:Hello world', undefined, 150),
     assistant(a, { type: 'text', text: 'README는 제목과 인사말 한 줄로 되어 있습니다.' }, 200),
     assistant(a, { type: 'tool_use', id: `${a}_glob`, name: 'Glob', input: { pattern: '**/*.md', path: cwd } }, 150),
@@ -784,7 +784,7 @@ function screenshotSteps(prefix: string): FakeStep[] {
   return [
     { type: 'text', text: '페이지를 열어 화면을 캡처합니다.', chunks: 2 },
     ...call(`${prefix}_pw`, 'mcp__playwright__browser_take_screenshot', { type: 'png', filename: 'page.png' }, [
-      { type: 'text', text: `Took the viewport screenshot.\n\n### Page\n- Page URL: ${FIXTURE_SCREENSHOT_URL}\n- Page Title: Hopecode preview` },
+      { type: 'text', text: `Took the viewport screenshot.\n\n### Page\n- Page URL: ${FIXTURE_SCREENSHOT_URL}\n- Page Title: deltax preview` },
       image,
     ]),
     ...call(`${prefix}_chrome`, 'mcp__claude-in-chrome__computer', { action: 'screenshot', tabId: 1 }, [image]),
@@ -827,18 +827,18 @@ function toolRunSteps(prefix: string, cwd: string, fail: boolean): FakeStep[] {
       : call('Bash', { command: 'node --version' }, 'v22.11.0\n')),
     ...call('Bash', { command: 'cat package.json 2>/dev/null || echo "no package.json"' }, 'no package.json\n'),
     ...call('Bash', { command: 'wc -l README.md' }, '       2 README.md\n'),
-    ...call('Read', { file_path: readme }, '# Hopecode fixture\nHello world\n'),
+    ...call('Read', { file_path: readme }, '# deltax fixture\nHello world\n'),
     ...call('Read', { file_path: join(cwd, '.gitignore') }, 'node_modules\n'),
     ...call('Grep', { pattern: 'Hello', path: cwd }, 'README.md:2:Hello world\n'),
     { type: 'text', text: 'README에 인사말 한 줄만 있습니다. 인사말을 바꾸겠습니다.', chunks: 2 },
     {
       type: 'tool',
       name: 'Edit',
-      input: { file_path: 'README.md', old_string: 'Hello world', new_string: 'Hello Hopecode' },
+      input: { file_path: 'README.md', old_string: 'Hello world', new_string: 'Hello deltax' },
       result: 'The file README.md has been updated.',
       structuredPatch: FIXTURE_EDIT_PATCH,
     },
-    { type: 'text', text: fail ? '테스트 스크립트는 없지만 인사말은 바꿨습니다.' : '인사말을 "Hello Hopecode"로 바꿨습니다.', chunks: 2 },
+    { type: 'text', text: fail ? '테스트 스크립트는 없지만 인사말은 바꿨습니다.' : '인사말을 "Hello deltax"로 바꿨습니다.', chunks: 2 },
   ];
 }
 
@@ -922,7 +922,7 @@ function bigDiffSteps(): FakeStep[] {
     '✖ 37 problems (0 errors, 37 warnings)',
   ].join('\n');
   const readme = [
-    '# Hopecode fixture',
+    '# deltax fixture',
     `Hello world, ${'this README line is deliberately long so the changes panel has to scroll sideways to show it all, '.repeat(2).trim()} END_OF_LONG_LINE`,
     '',
     'A second paragraph.',
@@ -1028,7 +1028,7 @@ export function createFixtureScenario(): FakeScenario {
           result: 'README.md is the only file.',
         },
         // Absolute, as the real CLI reports it.
-        { type: 'tool', name: 'Read', input: { file_path: join(options.cwd ?? '', 'README.md') }, result: '# Hopecode fixture\nHello world\n' },
+        { type: 'tool', name: 'Read', input: { file_path: join(options.cwd ?? '', 'README.md') }, result: '# deltax fixture\nHello world\n' },
         { type: 'text', text: 'The repository has one README.', chunks: 2 },
       ];
     }
@@ -1063,7 +1063,7 @@ export function createFixtureScenario(): FakeScenario {
       {
         type: 'tool',
         name: 'Edit',
-        input: { file_path: 'README.md', old_string: 'Hello world', new_string: 'Hello Hopecode' },
+        input: { file_path: 'README.md', old_string: 'Hello world', new_string: 'Hello deltax' },
         result: 'The file README.md has been updated.',
         structuredPatch: FIXTURE_EDIT_PATCH,
         permission: true,
@@ -1072,7 +1072,7 @@ export function createFixtureScenario(): FakeScenario {
           { type: 'addRules', rules: [{ toolName: 'Edit' }], behavior: 'allow', destination: 'localSettings' },
         ],
       },
-      { type: 'text', text: 'Done. The greeting now says "Hello Hopecode".', chunks: 3 },
+      { type: 'text', text: 'Done. The greeting now says "Hello deltax".', chunks: 3 },
     ];
   };
 }

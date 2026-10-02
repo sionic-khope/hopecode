@@ -210,7 +210,7 @@ export class AcpConnection {
       Readable.toWeb(child.stdout) as unknown as ReadableStream<Uint8Array>,
     );
     this.conn = acp
-      .client({ name: 'hopecode' })
+      .client({ name: 'deltax' })
       .onNotification(acp.methods.client.session.update, (ctx) => {
         opts.handlers.onUpdate(ctx.params);
       })
@@ -248,7 +248,7 @@ export class AcpConnection {
       {
         protocolVersion: acp.PROTOCOL_VERSION,
         clientCapabilities: {},
-        clientInfo: { name: 'hopecode', version: this.opts.appVersion },
+        clientInfo: { name: 'deltax', version: this.opts.appVersion },
       },
       timeoutMs,
       signal,

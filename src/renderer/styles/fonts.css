@@ -2,7 +2,7 @@
    Loaded from the app package, so the CSP's font-src 'self' covers them -- no CDN.
    - Galmuri11 / Galmuri11 Bold / Galmuri14 (quiple/galmuri): Korean pixel faces, unmodified woff2. Galmuri11 is
      drawn for 12px (UI), Galmuri14 for 15px (conversation body); other sizes blur the pixel grid.
-   - Silkscreen (googlefonts/silkscreen): Latin pixel caps for the HOPECODE wordmark, unmodified ttf.
+   - Silkscreen (googlefonts/silkscreen): Latin pixel caps for the DELTAX wordmark, unmodified ttf.
    - JetBrains Mono: variable wght, woff2 converted from google/fonts (full glyph set). Code, diffs, terminal.
    A local overlay (~/.hopecode/theme/fonts/ui.*, mono.*) is registered at runtime by theme/themeOverlay.ts. */
 @font-face {

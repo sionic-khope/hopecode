@@ -88,14 +88,14 @@ export function imageHandlers(
     const thread = threadOf(channel, req);
     if (refOf(req) !== undefined) {
       const { buffer } = await readRef(channel, thread, refOf(req));
-      return { buffer, name: `hopecode-${String(refOf(req)).slice(0, 12)}${extname(String(refOf(req)))}` };
+      return { buffer, name: `deltax-${String(refOf(req)).slice(0, 12)}${extname(String(refOf(req)))}` };
     }
     const image = (req as { image?: unknown }).image;
     if (image !== undefined) {
       // Inline tool images may be as large as any image file main reads (10 MB).
       assertReq(channel, isChatImage(image, Math.ceil((MAX_IMAGE_BYTES * 4) / 3)), 'invalid image');
       const { mediaType, data } = image as ChatImage;
-      return { buffer: Buffer.from(data, 'base64'), name: `hopecode-image.${EXT_BY_TYPE[mediaType]}` };
+      return { buffer: Buffer.from(data, 'base64'), name: `deltax-image.${EXT_BY_TYPE[mediaType]}` };
     }
     const { abs, buffer } = await readThreadImage(thread.cwd, pathOf(channel, req));
     assertReq(channel, extname(abs).toLowerCase() !== '.svg', 'SVG images cannot be copied as bitmaps');

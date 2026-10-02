@@ -135,7 +135,7 @@ export const NoteChatPanel = memo(function NoteChatPanel({
     void useAppStore
       .getState()
       .recheckAgents()
-      .catch((err: unknown) => console.error('[hopecode] agent recheck failed', err));
+      .catch((err: unknown) => console.error('[deltax] agent recheck failed', err));
   }, []);
 
   const trailing =

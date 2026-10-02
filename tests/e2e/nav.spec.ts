@@ -52,7 +52,7 @@ test.beforeAll(async () => {
   sandbox = createSandbox();
   // The branch of fixture PR #42, one commit ahead of main.
   const git = (...args: string[]) =>
-    execFileSync('git', ['-c', 'user.name=Hopecode E2E', '-c', 'user.email=e2e@example.com', ...args], { cwd: sandbox.project }).toString().trim();
+    execFileSync('git', ['-c', 'user.name=deltax E2E', '-c', 'user.email=e2e@example.com', ...args], { cwd: sandbox.project }).toString().trim();
   git('checkout', '-q', '-b', PR_BRANCH);
   writeFileSync(join(sandbox.project, 'LOGIN.md'), '로그인 화면\n');
   git('add', '.');

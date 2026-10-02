@@ -23,7 +23,7 @@ export function createSharedConfig(deps: SharedConfigDeps): { status(): Promise<
     status: () => status(managed(), deps.sourceDir),
     async relink() {
       for (const account of managed()) {
-        await deps.links.linkSharedConfig(account.configDir).catch((err: unknown) => log(`[hopecode] relink failed for ${account.alias}`, err));
+        await deps.links.linkSharedConfig(account.configDir).catch((err: unknown) => log(`[deltax] relink failed for ${account.alias}`, err));
       }
       return status(managed(), deps.sourceDir);
     },

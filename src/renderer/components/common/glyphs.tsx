@@ -80,7 +80,7 @@ export function GlyphPeople(props: GlyphProps) {
   );
 }
 
-/** Neutral agent glyph (a prompt caret in a tile): Hopecode's own, used when no official agent logo is bundled. */
+/** Neutral agent glyph (a prompt caret in a tile): deltax's own, used when no official agent logo is bundled. */
 export function GlyphAgent(props: GlyphProps) {
   return (
     <svg {...base} {...props}>

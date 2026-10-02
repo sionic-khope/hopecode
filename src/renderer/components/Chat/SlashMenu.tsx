@@ -161,7 +161,7 @@ export function useSlashItems(source: SlashSource | undefined, active: boolean):
         if (!cancelled) setClaude({ key, items: fromClaude(list.commands) });
       })
       .catch((err: unknown) => {
-        console.error('[hopecode] commands:list failed', err);
+        console.error('[deltax] commands:list failed', err);
         if (!cancelled) setClaude({ key, items: [] });
       });
     return () => {

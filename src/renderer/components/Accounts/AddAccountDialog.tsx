@@ -137,7 +137,7 @@ export function AddAccountDialog({
         {inProgress ? (
           <div className="hc-dialog__body">
             <p className="hc-dialog__notice">
-              로그인용 브라우저 창이 열립니다. 로그인을 마친 뒤 Hopecode로 돌아오세요.
+              로그인용 브라우저 창이 열립니다. 로그인을 마친 뒤 deltax로 돌아오세요.
             </p>
             <pre ref={outputRef} className="hc-dialog__output" aria-label="로그인 출력">
               {output || '…'}

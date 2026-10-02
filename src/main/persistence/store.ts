@@ -164,7 +164,7 @@ export function createStore(filePath: string, opts: StoreOptions = {}): Store {
           await backupUnreadable();
           const code = (err as { code?: string }).code ?? 'unknown error';
           throw new Error(
-            `Could not read ${filePath} (${code}). Hopecode did not start so your saved data is not overwritten. Fix the file's permissions and restart.`,
+            `Could not read ${filePath} (${code}). deltax did not start so your saved data is not overwritten. Fix the file's permissions and restart.`,
             { cause: err },
           );
         }

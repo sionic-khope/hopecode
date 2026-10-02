@@ -47,22 +47,22 @@ test('overlay slots replace the bundled font, heart, logo and palette tokens', a
     };
   });
   expect(root.accent).toBe('#00ff88');
-  expect(root.fontUi).toMatch(/^'Hopecode Overlay UI', 'Galmuri11'/);
-  expect(root.fontChat).toMatch(/^'Hopecode Overlay UI', 'Galmuri14'/);
+  expect(root.fontUi).toMatch(/^'deltax Overlay UI', 'Galmuri11'/);
+  expect(root.fontChat).toMatch(/^'deltax Overlay UI', 'Galmuri14'/);
   // The palette may only set colors: its url() for the heart was dropped, the heart comes from the sprite slot.
   expect(root.heart).toMatch(/^url\("hopecode-theme:\/\/theme\/sprites\/heart\.png\?v=\d+"\)$/);
   // The overlay face really loaded over the protocol (CORS + CSP font-src).
   await expect
     .poll(() =>
-      page.evaluate(() => [...document.fonts].some((f) => f.family.replace(/["']/g, '') === 'Hopecode Overlay UI' && f.status === 'loaded')),
+      page.evaluate(() => [...document.fonts].some((f) => f.family.replace(/["']/g, '') === 'deltax Overlay UI' && f.status === 'loaded')),
     )
     .toBe(true);
-  expect(await page.evaluate(() => getComputedStyle(document.body).fontFamily)).toMatch(/^"?Hopecode Overlay UI"?,/);
+  expect(await page.evaluate(() => getComputedStyle(document.body).fontFamily)).toMatch(/^"?deltax Overlay UI"?,/);
   // Logo slot: an <img> over the protocol in place of the pixel mark, actually decoded.
   const logo = page.getByTestId('brand').locator('img[data-overlay="logo"]');
   await expect(logo).toHaveAttribute('src', /^hopecode-theme:\/\/theme\/sprites\/logo\.png\?v=\d+$/);
   await expect.poll(() => logo.evaluate((img) => (img as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
-  await expect(page.getByTestId('brand')).toContainText('Hopecode');
+  await expect(page.getByTestId('brand')).toContainText('deltax');
   await screenshot(page, 'v12-overlay', SHOTS);
 });
 

@@ -1,5 +1,6 @@
-appId: dev.hopecode.app
-productName: Hopecode
+appId: dev.deltax.app
+productName: deltax
+copyright: Copyright © 2026 deltax
 directories:
   output: dist
   buildResources: build
