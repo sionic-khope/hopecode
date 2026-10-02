@@ -58,6 +58,17 @@
 .app--sidebar-collapsed .app__sidebar-card {
   opacity: 0;
   transform: translateX(-12px);
+  /* The card keeps its min-width while hidden: hide it after the fade so it stops covering the page. */
+  visibility: hidden;
+  transition:
+    opacity var(--motion-2) var(--ease-soft),
+    transform var(--motion-3) var(--ease-soft),
+    visibility 0s linear var(--motion-3);
+}
+/* Native drag regions ignore opacity / inert: the hidden card's title bar would still drag the window and swallow
+   clicks on whatever sits under it (the notes back button). */
+.app--sidebar-collapsed .app__sidebar-card .drag-region {
+  -webkit-app-region: no-drag;
 }
 /* Short sidebar bar: the toggle sits right after the traffic lights (x 78), centred on them (y 25). */
 .app__titlebar--sidebar {

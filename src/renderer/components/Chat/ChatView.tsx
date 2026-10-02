@@ -5,7 +5,7 @@ import { MINUTE_MS } from '../../../shared/constants';
 import { AGENTS } from '../../../shared/agents';
 import { ipcErrorMessage } from '../../errors';
 import { selectChatItems, selectStreamingItemId, selectTurnPhase, useAppStore, usePendingPermissions, type TurnPhase } from '../../store';
-import { MessageList } from './MessageList';
+import { MessageList, type TurnScrubberOptions } from './MessageList';
 import { ToolPathContext, TurnLiveContext } from './ToolCard';
 import type { ErrorCardActions } from './ErrorCard';
 import { Composer } from './Composer';
@@ -121,6 +121,19 @@ export function ChatView({
       onRetryInNewSession: () => onRetryInNewSession?.(thread, lastUser.text),
     };
   }, [lastUser, running, onSend, threadId, onRetryInNewSession, thread]);
+  const handleToggleBookmark = useCallback(
+    (itemId: string, bookmarked: boolean) => {
+      void useAppStore
+        .getState()
+        .setTurnBookmark(threadId, itemId, bookmarked)
+        .catch((err: unknown) => setControlError(`북마크를 저장하지 못했습니다: ${ipcErrorMessage(err)}`));
+    },
+    [threadId],
+  );
+  const scrubber = useMemo<TurnScrubberOptions>(
+    () => ({ bookmarks: thread.turnBookmarks, running, onToggleBookmark: handleToggleBookmark }),
+    [thread.turnBookmarks, running, handleToggleBookmark],
+  );
   const features = AGENTS[thread.agent].features;
   const acpCommands = thread.acp?.controls?.commands;
   const slash = useMemo<SlashSource>(
@@ -178,6 +191,7 @@ export function ChatView({
         threadId={thread.id}
         activity={activity}
         errorActions={errorActions}
+        scrubber={scrubber}
       />
       </TurnLiveContext.Provider>
       </ToolPathContext.Provider>

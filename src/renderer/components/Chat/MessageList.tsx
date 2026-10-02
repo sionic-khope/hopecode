@@ -19,6 +19,9 @@ import { SubagentCard, SubagentNavContext, SubagentRouting } from '../Subagents/
 import { SubagentDetail } from '../Subagents/SubagentDetail';
 import { ImageGalleryCard, ThreadImageContext, ToolImages, UserImages } from '../Images/ChatImages';
 import { UserFiles } from '../Images/ComposerAttachments';
+import { collectTurns } from '../../../core/turnScrubber';
+import { TurnScrubber } from './TurnScrubber';
+import './TurnScrubber.css';
 import './Chat.css';
 
 export interface MessageListProps {
@@ -40,7 +43,21 @@ export interface MessageListProps {
   activity?: TurnPhase | null;
   /** Buttons of the error card that ended the latest turn (older error cards show none). */
   errorActions?: ErrorCardActions | null;
+  /** Turn scrubber on the left edge (main conversation only; hidden in a subagent view and under two turns). */
+  scrubber?: TurnScrubberOptions | null;
 }
+
+export interface TurnScrubberOptions {
+  /** Bookmarked user item ids of the thread. */
+  bookmarks: readonly string[] | undefined;
+  /** The thread's last turn is running. */
+  running: boolean;
+  onToggleBookmark: (itemId: string, bookmarked: boolean) => void;
+}
+
+/** Fewer turns than this: no scrubber. */
+const SCRUBBER_MIN_TURNS = 2;
+const NO_BOOKMARKS: ReadonlySet<string> = new Set();
 
 const NEAR_BOTTOM_PX = 96;
 
@@ -111,6 +128,7 @@ export function MessageList({
   threadId,
   activity = null,
   errorActions = null,
+  scrubber = null,
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
@@ -166,6 +184,10 @@ export function MessageList({
   const errorId = useMemo(() => (errorActions ? latestErrorId(items) : null), [errorActions, items]);
   const subNode = subView && subView.threadId === threadId ? findSubagentNode(nodes, subView.toolUseId) : null;
   const subKey = subNode?.item.toolUseId ?? null;
+  const turns = useMemo(() => (scrubber ? collectTurns(items) : []), [scrubber, items]);
+  const bookmarkList = scrubber?.bookmarks;
+  const bookmarks = useMemo(() => (bookmarkList && bookmarkList.length > 0 ? new Set(bookmarkList) : NO_BOOKMARKS), [bookmarkList]);
+  const showScrubber = scrubber !== null && !subNode && turns.length >= SCRUBBER_MIN_TURNS;
 
   // Entering a subagent view starts at its top; leaving it returns to where the main chat was.
   const prevSubKey = useRef<string | null>(null);
@@ -186,6 +208,7 @@ export function MessageList({
   return (
     <ThreadImageContext.Provider value={threadId ?? null}>
     <SubagentNavContext.Provider value={openSubagent}>
+    <div className="hc-messages-frame">
     <div className="hc-messages" ref={scrollRef} onScroll={onScroll}>
       {subNode ? (
         <div className="hc-messages__inner">
@@ -240,6 +263,16 @@ export function MessageList({
             ))}
         </div>
       )}
+    </div>
+    {showScrubber ? (
+      <TurnScrubber
+        turns={turns}
+        scrollRef={scrollRef}
+        bookmarks={bookmarks}
+        running={scrubber.running}
+        onToggleBookmark={scrubber.onToggleBookmark}
+      />
+    ) : null}
     </div>
     </SubagentNavContext.Provider>
     </ThreadImageContext.Provider>
@@ -376,7 +409,7 @@ const MessageItem = memo(function MessageItem({
   switch (item.type) {
     case 'user':
       return (
-        <div className="hc-msg-user hc-msg-enter">
+        <div className="hc-msg-user hc-msg-enter" data-turn-id={item.id}>
           <div className="hc-msg-actions hc-msg-actions--user">
             {onEditResend ? (
               <button

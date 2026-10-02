@@ -666,6 +666,16 @@ describe('draft / new chat', () => {
     expect(useAppStore.getState().threads[0]?.effort).toBe('max');
   });
 
+  it('setTurnBookmark invokes main and patches the thread bookmarks locally', async () => {
+    useAppStore.setState({ threads: [makeThread()] });
+    invoke.mockResolvedValue(undefined);
+    await useAppStore.getState().setTurnBookmark('t1', 'user-1', true);
+    expect(invoke).toHaveBeenCalledWith('thread:setTurnBookmark', { threadId: 't1', itemId: 'user-1', bookmarked: true });
+    expect(useAppStore.getState().threads[0]?.turnBookmarks).toEqual(['user-1']);
+    await useAppStore.getState().setTurnBookmark('t1', 'user-1', false);
+    expect(useAppStore.getState().threads[0]?.turnBookmarks).toEqual([]);
+  });
+
   it('toggleSidebar flips the collapsed state', () => {
     const before = useAppStore.getState().sidebarCollapsed;
     useAppStore.getState().toggleSidebar();

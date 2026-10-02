@@ -5,7 +5,7 @@ import { BrandMark, Button, Modal } from '../common';
 import { GlyphKeyboard } from '../common/glyphs';
 import './Shell.css';
 
-/** Shortcut table: every entry is wired (app menu accelerators or the composer's own keys). */
+/** Shortcut table: every entry is wired (app menu accelerators, the turn scrubber's or the composer's own keys). */
 export const SHORTCUTS: readonly { group: string; items: readonly { keys: string[]; label: string }[] }[] = [
   {
     group: '일반',
@@ -23,6 +23,14 @@ export const SHORTCUTS: readonly { group: string; items: readonly { keys: string
     items: [
       { keys: ['⌘', 'J'], label: '하단 터미널 열기/닫기' },
       { keys: ['⌘', '⇧', 'D'], label: '변경사항 패널 열기/닫기' },
+    ],
+  },
+  {
+    group: '대화',
+    items: [
+      { keys: ['⌥', '↑'], label: '이전 턴으로 이동' },
+      { keys: ['⌥', '↓'], label: '다음 턴으로 이동' },
+      { keys: ['B'], label: '턴 북마크 (턴 목록에서)' },
     ],
   },
   {

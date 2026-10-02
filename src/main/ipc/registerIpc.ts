@@ -54,6 +54,7 @@ import { AGENTS, DEFAULT_AGENT, isAgentKind } from '../../shared/agents';
 import { isStrictlyInside } from '../containment';
 import { markdownFileName, threadToMarkdown } from '../../core/threadMarkdown';
 import { deriveThreadTitle } from '../../core/threadTitle';
+import { isTurnItemId, toggleTurnBookmark } from '../../core/turnScrubber';
 import { isSafeBranchName } from '../../core/ghPrs';
 import { applySettingsPatch, isEditorId, validateSettingsPatch } from '../../core/settings';
 import type {
@@ -664,6 +665,23 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel | Note
       const { threadId, pinned } = req as { threadId: string; pinned: boolean };
       requireThread('thread:setPinned', threadId);
       broadcaster.emit('thread:updated', { ...store.patchThread(threadId, { pinned }) });
+    },
+
+    'thread:setTurnBookmark': async (req) => {
+      assertReq(
+        'thread:setTurnBookmark',
+        isPlainObject(req) && isNonEmptyString(req.threadId) && isTurnItemId(req.itemId) && isBoolean(req.bookmarked),
+        'threadId/itemId/bookmarked required',
+      );
+      const { threadId, itemId, bookmarked } = req as { threadId: string; itemId: string; bookmarked: boolean };
+      const thread = requireThread('thread:setTurnBookmark', threadId);
+      const turnBookmarks = toggleTurnBookmark(thread.turnBookmarks, itemId, bookmarked);
+      // A bookmark is reading state, not activity: keep updatedAt so the sidebar order does not move.
+      store.update((s) => {
+        const t = s.threads.find((x) => x.id === threadId);
+        if (t) t.turnBookmarks = turnBookmarks;
+      });
+      broadcaster.emit('thread:updated', { ...requireThread('thread:setTurnBookmark', threadId) });
     },
 
     'thread:setArchived': async (req) => {

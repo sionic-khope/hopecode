@@ -980,6 +980,36 @@ describe('thread pin / archive / effort', () => {
     );
   });
 
+  it('setTurnBookmark adds / removes one turn, persists and broadcasts; bad requests are refused', async () => {
+    const ipcMain = new FakeIpcMain();
+    const { services, emitted } = makeFakeServices();
+    registerIpc(ipcMain, services);
+    const updatedAt = services.store.getThread('t1')?.updatedAt;
+
+    await ipcMain.invoke('thread:setTurnBookmark', { threadId: 't1', itemId: 'user-1', bookmarked: true });
+    await ipcMain.invoke('thread:setTurnBookmark', { threadId: 't1', itemId: 'user-2', bookmarked: true });
+    // Reading state: the sidebar's recent order (updatedAt) does not move.
+    expect(services.store.getThread('t1')?.updatedAt).toBe(updatedAt);
+    await ipcMain.invoke('thread:setTurnBookmark', { threadId: 't1', itemId: 'user-1', bookmarked: true });
+    expect(services.store.getThread('t1')?.turnBookmarks).toEqual(['user-2', 'user-1']);
+    expect(emitted.at(-1)).toEqual(['thread:updated', expect.objectContaining({ id: 't1', turnBookmarks: ['user-2', 'user-1'] })]);
+    await ipcMain.invoke('thread:setTurnBookmark', { threadId: 't1', itemId: 'user-2', bookmarked: false });
+    expect(services.store.getThread('t1')?.turnBookmarks).toEqual(['user-1']);
+
+    for (const bad of [
+      { threadId: 't1', itemId: '', bookmarked: true },
+      { threadId: 't1', itemId: 'x'.repeat(129), bookmarked: true },
+      { threadId: 't1', itemId: 'a\nb', bookmarked: true },
+      { threadId: 't1', itemId: ['user-1'], bookmarked: true },
+      { threadId: 't1', itemId: 'user-1', bookmarked: 'yes' },
+      { threadId: 'ghost', itemId: 'user-1', bookmarked: true },
+      null,
+    ]) {
+      await expect(ipcMain.invoke('thread:setTurnBookmark', bad)).rejects.toBeInstanceOf(InvalidIpcRequestError);
+    }
+    expect(services.store.getThread('t1')?.turnBookmarks).toEqual(['user-1']);
+  });
+
   it('setEffort goes through the session manager and reports the applied value', async () => {
     const ipcMain = new FakeIpcMain();
     const { services, emitted } = makeFakeServices();

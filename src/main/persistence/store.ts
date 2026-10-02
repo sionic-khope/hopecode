@@ -8,6 +8,7 @@ import { dirname } from 'node:path';
 import { CODEX_EFFORT_LEVELS, DEFAULT_SETTINGS, EFFORT_LEVELS } from '../../shared/constants';
 import { isAgentKind } from '../../shared/agents';
 import { sanitizeSettings } from '../../core/settings';
+import { sanitizeTurnBookmarks } from '../../core/turnScrubber';
 import type { PersistedState, Thread } from '../../shared/types';
 import type { Store, Unsubscribe } from '../contracts';
 import { PRIVATE_FILE_MODE, mkdirPrivate } from './jsonl';
@@ -24,7 +25,7 @@ function defaultState(): PersistedState {
 }
 
 /**
- * Fields added after the first release (pinned / archived / effort / agent / acp) get their defaults. `projectId`
+ * Fields added after the first release (pinned / archived / effort / agent / acp / turnBookmarks) get their defaults. `projectId`
  * null is a chat without a project; `acp` (ACP session state, no secrets) passes through when it is an object.
  */
 function migrateThread(raw: Thread): Thread {
@@ -34,8 +35,9 @@ function migrateThread(raw: Thread): Thread {
   const levels: readonly unknown[] = agent === 'codex' ? CODEX_EFFORT_LEVELS : EFFORT_LEVELS;
   const effort = levels.includes(t.effort) ? (t.effort as Thread['effort']) : null;
   const projectId = typeof t.projectId === 'string' ? t.projectId : null;
-  const { acp, ...rest } = t;
+  const { acp, turnBookmarks: rawBookmarks, ...rest } = t;
   const keepAcp = typeof acp === 'object' && acp !== null && !Array.isArray(acp);
+  const turnBookmarks = sanitizeTurnBookmarks(rawBookmarks);
   return toPublicThread({
     ...rest,
     projectId,
@@ -44,6 +46,7 @@ function migrateThread(raw: Thread): Thread {
     archived: t.archived === true,
     effort,
     ...(keepAcp ? { acp } : {}),
+    ...(turnBookmarks.length > 0 ? { turnBookmarks } : {}),
   });
 }
 

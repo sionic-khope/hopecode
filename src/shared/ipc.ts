@@ -85,6 +85,8 @@ export interface InvokeMap {
   'thread:start': { req: ThreadStartRequest; res: ThreadStartResult };
   'thread:rename': { req: { threadId: string; title: string }; res: void };
   'thread:setPinned': { req: { threadId: string; pinned: boolean }; res: void };
+  /** Turn scrubber bookmark of one user item (`itemId`); the saved list comes back via `thread:updated`. */
+  'thread:setTurnBookmark': { req: { threadId: string; itemId: string; bookmarked: boolean }; res: void };
   /** Archived threads are hidden from the project lists; nothing is deleted. */
   'thread:setArchived': { req: { threadId: string; archived: boolean }; res: void };
   /** `null` = the model's default effort. Applied to the live Query (applyFlagSettings) and every later one. */
@@ -341,6 +343,7 @@ export const INVOKE_CHANNELS = [
   'thread:start',
   'thread:rename',
   'thread:setPinned',
+  'thread:setTurnBookmark',
   'thread:setArchived',
   'thread:setEffort',
   'thread:delete',

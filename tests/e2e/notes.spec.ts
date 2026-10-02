@@ -103,6 +103,24 @@ test('노트 nav folds the sidebar, the dialog seam registers the vault and the 
   await expect(page.getByTestId('notes-page')).toBeVisible();
   await expect(page.getByTestId('sidebar')).toHaveAttribute('aria-hidden', 'true');
   await expect(page.getByTestId('notes-back')).toBeVisible();
+  // The folded sidebar must not leave a (native, invisible) window-drag region over the back button: the real window
+  // routes clicks there to a title-bar drag, which synthetic test clicks never hit.
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const card = document.querySelector('.app__sidebar-card') as HTMLElement;
+        const bar = card.querySelector('.drag-region') as HTMLElement;
+        const back = document.querySelector('[data-testid="notes-back"]') as HTMLElement;
+        const style = getComputedStyle(bar) as CSSStyleDeclaration & { webkitAppRegion?: string };
+        const b = back.getBoundingClientRect();
+        return {
+          card: getComputedStyle(card).visibility,
+          region: style.webkitAppRegion ?? style.getPropertyValue('-webkit-app-region'),
+          hit: document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)?.closest('[data-testid="notes-back"]') !== null,
+        };
+      }),
+    )
+    .toEqual({ card: 'hidden', region: 'no-drag', hit: true });
   await page.getByTestId('notes-add-vault').click();
   // Nothing open yet: the drawer is where to start.
   const drawer = page.getByTestId('note-drawer');

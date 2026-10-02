@@ -222,4 +222,30 @@ describe('store', () => {
       ['b', false, true, null],
     ]);
   });
+
+  it('turn bookmarks survive a save and reload; a corrupt list is cleaned, an empty one dropped', async () => {
+    const store = createStore(filePath);
+    await store.load();
+    store.update((draft) => {
+      draft.threads.push(makeThread({ id: 'a' }), makeThread({ id: 'b' }));
+    });
+    store.patchThread('a', { turnBookmarks: ['user-1', 'user-7'] });
+    await store.flush();
+    const reloaded = await createStore(filePath).load();
+    expect(reloaded.threads.find((t) => t.id === 'a')?.turnBookmarks).toEqual(['user-1', 'user-7']);
+    expect('turnBookmarks' in reloaded.threads.find((t) => t.id === 'b')!).toBe(false);
+
+    const odd = { ...makeThread({ id: 'odd' }), turnBookmarks: ['u1', 'u1', 42, '', 'u2'] };
+    const notList = { ...makeThread({ id: 'nl' }), turnBookmarks: 'u1' };
+    await writeFile(
+      filePath,
+      JSON.stringify({ version: 1, projects: [], threads: [odd, notList], accounts: [], settings: DEFAULT_SETTINGS }),
+      'utf8',
+    );
+    const cleaned = await createStore(filePath).load();
+    expect(cleaned.threads.map((t) => [t.id, t.turnBookmarks])).toEqual([
+      ['odd', ['u1', 'u2']],
+      ['nl', undefined],
+    ]);
+  });
 });

@@ -200,6 +200,8 @@ export interface Thread {
   pinned: boolean;
   /** Hidden from the project thread lists (not deleted). */
   archived: boolean;
+  /** Bookmarked turns (turn scrubber): user item ids, oldest first. Absent = none. */
+  turnBookmarks?: string[];
   /** Account holding the freshest transcript copy (received >= 1 output). */
   lastAccountId: string | null;
   /** Account of the currently open / last used Query. */

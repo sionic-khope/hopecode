@@ -7,6 +7,7 @@ import type { InvokeResponse } from '../../shared/ipc';
 import { DEFAULT_SETTINGS } from '../../shared/constants';
 import { DEFAULT_AGENT } from '../../shared/agents';
 import { fillNewTaskTemplate } from '../../core/newTaskTemplate';
+import { toggleTurnBookmark } from '../../core/turnScrubber';
 import type {
   Account,
   AccountPatch,
@@ -427,6 +428,8 @@ export interface AppStoreState {
   /** Draft -> thread: `thread:start` with the draft settings; selects the thread when it was created. */
   startThread: (text: string, attachmentIds?: string[]) => Promise<ThreadStartResult>;
   setThreadPinned: (threadId: string, pinned: boolean) => Promise<void>;
+  /** Turn scrubber: bookmark / unbookmark the turn opened by user item `itemId` (persisted in the thread). */
+  setTurnBookmark: (threadId: string, itemId: string, bookmarked: boolean) => Promise<void>;
   setThreadArchived: (threadId: string, archived: boolean) => Promise<void>;
   setThreadEffort: (threadId: string, effort: EffortLevel | null) => Promise<void>;
   /** ACP threads: session mode (the applied controls arrive via `agent:controls`). */
@@ -679,6 +682,15 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
   setThreadPinned: async (threadId, pinned) => {
     await invoke('thread:setPinned', { threadId, pinned });
     set((s) => ({ threads: patchThreadLocal(s.threads, threadId, { pinned }) }));
+  },
+
+  setTurnBookmark: async (threadId, itemId, bookmarked) => {
+    await invoke('thread:setTurnBookmark', { threadId, itemId, bookmarked });
+    set((s) => {
+      const thread = s.threads.find((t) => t.id === threadId);
+      if (!thread) return {};
+      return { threads: patchThreadLocal(s.threads, threadId, { turnBookmarks: toggleTurnBookmark(thread.turnBookmarks, itemId, bookmarked) }) };
+    });
   },
 
   setThreadArchived: async (threadId, archived) => {
