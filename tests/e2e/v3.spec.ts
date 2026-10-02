@@ -1,5 +1,5 @@
 // v3: profile row + menu, shortcuts / about modals, settings (persisted and applied by main), agent picker,
-// suggested prompts, reduced motion, changes panel after a fixture Edit, commit / merge / Push + PR (fixture
+// reduced motion, changes panel after a fixture Edit, commit / merge / Push + PR (fixture
 // publisher: nothing leaves the machine), bottom terminal, command palette, code block copy, table / answer MD copy chips, Fable 5.1 model menu.
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -51,23 +51,16 @@ test.afterAll(async () => {
 
 const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 
-test('draft: agent chip, greeting, suggested prompts fill the composer', async () => {
+test('draft: agent chip and greeting, no starter prompt cards', async () => {
   const { page } = run;
   const draft = page.getByTestId('draft');
   await expect(draft).toBeVisible();
   const agent = draft.locator('.hc-chip--agent');
   await expect(agent).toHaveAttribute('aria-label', '에이전트: Claude Code');
-  const cards = draft.getByTestId('suggestion');
-  await expect(cards).toHaveCount(4);
+  await expect(draft.getByTestId('suggestion')).toHaveCount(0);
   await chooseFixtureFolder(page, sandbox);
   await page.mouse.move(10, 700);
   await screenshot(page, 'v3-draft', SHOTS);
-
-  await cards.nth(2).click();
-  const box = page.locator('.hc-composer__textarea');
-  await expect(box).toHaveValue('테스트가 부족한 핵심 로직을 찾아 단위 테스트를 추가해 주세요.');
-  await expect(box).toBeFocused();
-  await box.fill('');
 
   await agent.click();
   const menu = page.getByRole('menu', { name: '에이전트' });

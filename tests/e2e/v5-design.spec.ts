@@ -23,7 +23,7 @@ test.afterAll(async () => {
   sandbox?.cleanup();
 });
 
-test('draft: pixel display title, primary New Task Start, hairline suggestion cards', async () => {
+test('draft: pixel display title and primary New Task Start', async () => {
   const { page } = run;
   await openDraft(page);
   const draft = page.getByTestId('draft');

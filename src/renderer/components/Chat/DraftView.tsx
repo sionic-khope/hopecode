@@ -4,7 +4,6 @@ import { AGENTS } from '../../../shared/agents';
 import { draftAgentDefaults } from '../../../core/agentDefaults';
 import { useAppStore, type DraftState } from '../../store';
 import { BrandMark } from '../common';
-import { GlyphBranch, GlyphChanges, GlyphCode, GlyphTerminal } from '../common/glyphs';
 import { Composer, type ComposerHandle } from './Composer';
 import type { SlashSource } from './SlashMenu';
 import { AcpModelChip, AgentChip, FolderChip, ModelPicker, PermissionChip, SystemModelTag } from './ComposerControls';
@@ -28,23 +27,6 @@ export interface DraftViewProps {
   defaultModelLabel: string;
   homeDir: string | null;
 }
-
-/** Starter prompts on the empty screen; a click puts the text in the composer (nothing is sent). */
-export function suggestedPrompts(): { key: string; title: string; text: string; icon: 'tour' | 'bug' | 'test' | 'docs' }[] {
-  return [
-    { key: 'tour', title: t('draft.suggest.tour'), text: t('draft.suggest.tour.text'), icon: 'tour' },
-    { key: 'bug', title: t('draft.suggest.bug'), text: t('draft.suggest.bug.text'), icon: 'bug' },
-    { key: 'test', title: t('draft.suggest.test'), text: t('draft.suggest.test.text'), icon: 'test' },
-    { key: 'docs', title: t('draft.suggest.docs'), text: t('draft.suggest.docs.text'), icon: 'docs' },
-  ];
-}
-
-const SUGGESTION_ICON = {
-  tour: <GlyphCode width={16} height={16} />,
-  bug: <GlyphBranch width={16} height={16} />,
-  test: <GlyphTerminal width={16} height={16} />,
-  docs: <GlyphChanges width={16} height={16} />,
-} as const;
 
 /** Time-of-day greeting. */
 export function greeting(date: Date = new Date()): string {
@@ -242,24 +224,6 @@ export function DraftView({
           New Task Start
         </button>
       </div>
-      <ul className="hc-suggest" aria-label={t('draft.suggest.aria')}>
-        {suggestedPrompts().map((p, i) => (
-          <li key={p.key} style={{ ['--hc-i' as string]: i }}>
-            <button
-              type="button"
-              className="hc-suggest__card"
-              data-testid="suggestion"
-              onClick={() => composerRef.current?.setText(p.text)}
-            >
-              <span className="hc-suggest__icon" aria-hidden>
-                {SUGGESTION_ICON[p.icon]}
-              </span>
-              <span className="hc-suggest__title">{p.title}</span>
-              <span className="hc-suggest__text">{p.text}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }
