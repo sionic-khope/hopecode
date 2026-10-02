@@ -849,7 +849,8 @@ body.hc-notes-resizing .hc-notes__split::before {
   font-size: var(--mono-sm);
   line-height: var(--lh-mono-sm);
   background: var(--bg-code);
-  box-shadow: inset 2px 0 0 var(--line-strong);
+  color: var(--code-fg);
+  box-shadow: inset 1px 0 0 var(--line-strong);
 }
 .hc-note-editor .cm-md-codeblock-first {
   padding-top: 4px;

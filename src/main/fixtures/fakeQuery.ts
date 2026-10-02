@@ -644,6 +644,7 @@ export const FIXTURE_EDIT_PATCH: StructuredPatchHunk[] = [
  *   also makes the turn-end image gallery.
  * - `[screenshot]`: web captures as MCP tool results — Playwright `browser_take_screenshot` (text with the page URL +
  *   image block) and Claude in Chrome `computer` screenshot (image only) — then text.
+ * - `[bigdiff]`: long lines and large diffs (bigDiffSteps).
  * - `[whoami]`: replies `model=<model> resume=<sid|none> account=<config dir name> permissionMode=<mode>
  *   effort=<level|default>` (e2e assertions).
  * - otherwise: streaming text, an Edit tool_use that asks for permission (structuredPatch), closing text.
@@ -841,6 +842,113 @@ function toolRunSteps(prefix: string, cwd: string, fail: boolean): FakeStep[] {
   ];
 }
 
+/**
+ * `[bigdiff]` (code / diff visibility): a fenced block with a 200+ column line and 50 lines, an Edit whose patch has
+ * a long changed line, a 14-line unchanged run and two hunks, a quiet Bash call with 40 lines of output, a Write of a
+ * 72-line new file, and README.md rewritten with long lines (the changes panel diff).
+ */
+export const FIXTURE_LONG_LINE =
+  "  return options.normalize ? normalizeReport(parsed, { trimWhitespace: true, dropEmptySections: true, sortSectionsBy: 'title', locale: 'ko-KR', keepDrafts: false }) : parsed; // the tail of this line must stay reachable";
+
+function bigDiffSteps(): FakeStep[] {
+  const codeLines = [
+    "import { readFile } from 'node:fs/promises';",
+    '',
+    'export interface Report {',
+    '  title: string;',
+    '  sections: Section[];',
+    '}',
+    '',
+    FIXTURE_LONG_LINE.replace('  return ', 'export const normalized = (parsed: Report, options: LoadOptions) => '),
+    '',
+    ...Array.from({ length: 40 }, (_, i) => `export const step${String(i + 1).padStart(2, '0')} = ${i + 1} * 42; // line ${i + 10}`),
+    'export const LAST_LINE_MARKER = true;',
+  ];
+  const context = Array.from({ length: 14 }, (_, i) => `   const field${i + 1} = parsed.sections[${i}]?.title ?? '';`);
+  const patch: StructuredPatchHunk[] = [
+    {
+      oldStart: 1,
+      oldLines: 24,
+      newStart: 1,
+      newLines: 25,
+      lines: [
+        " import { readFile } from 'node:fs/promises';",
+        ' ',
+        '-export async function loadReport(path: string): Promise<Report> {',
+        '+export async function loadReport(path: string, options: LoadOptions = {}): Promise<Report> {',
+        "   const raw = await readFile(path, 'utf8');",
+        '-  return JSON.parse(raw) as Report;',
+        '+  const parsed = JSON.parse(raw) as Report;',
+        `+${FIXTURE_LONG_LINE}`,
+        ...context,
+        ' }',
+        ' ',
+        '-export const VERSION = 1;',
+        '+export const VERSION = 2;',
+      ],
+    },
+    {
+      oldStart: 80,
+      oldLines: 5,
+      newStart: 81,
+      newLines: 5,
+      lines: [
+        ' export function summarize(report: Report): string {',
+        '-  return report.sections.map((s) => s.title).join(", ");',
+        "+  return report.sections.map((s) => s.title.trim()).filter(Boolean).join(' · ');",
+        ' }',
+        ' ',
+      ],
+    },
+  ];
+  const writeLines = [
+    '// Sample report used by the loader tests.',
+    "import type { Report } from './report';",
+    '',
+    'export const SAMPLE: Report = {',
+    "  title: 'Quarterly',",
+    '  sections: [',
+    ...Array.from({ length: 64 }, (_, i) => `    { title: 'Section ${i + 1}', body: 'Body text for section ${i + 1}.' },`),
+    '  ],',
+    '};',
+  ];
+  const lintOutput = [
+    '> hopecode-fixture@1.0.0 lint',
+    '> eslint src --max-warnings 0',
+    '',
+    ...Array.from({ length: 36 }, (_, i) => `src/report.ts:${i + 3}:5  warning  Unexpected console statement  no-console`),
+    `src/report.ts:8:1  warning  ${'This line is long on purpose so the output wraps instead of being cut off at the edge. '.repeat(3).trim()}`,
+    '',
+    '✖ 37 problems (0 errors, 37 warnings)',
+  ].join('\n');
+  const readme = [
+    '# Hopecode fixture',
+    `Hello world, ${'this README line is deliberately long so the changes panel has to scroll sideways to show it all, '.repeat(2).trim()} END_OF_LONG_LINE`,
+    '',
+    'A second paragraph.',
+    '',
+  ].join('\n');
+  return [
+    { type: 'text', text: `리포트 로더를 정리하겠습니다.\n\n\`\`\`ts\n${codeLines.join('\n')}\n\`\`\`\n\n위 코드를 기준으로 고칩니다.`, chunks: 4 },
+    {
+      type: 'tool',
+      name: 'Edit',
+      input: { file_path: 'src/report.ts', old_string: 'export async function loadReport(path: string)', new_string: 'export async function loadReport(path: string, options: LoadOptions = {})' },
+      result: 'The file src/report.ts has been updated.',
+      structuredPatch: patch,
+    },
+    { type: 'tool', name: 'Bash', input: { command: 'npm run lint' }, result: lintOutput },
+    {
+      type: 'tool',
+      name: 'Write',
+      input: { file_path: 'src/report.sample.ts', content: writeLines.join('\n') },
+      result: 'File created successfully at: src/report.sample.ts',
+    },
+    { type: 'writeFile', path: 'README.md', data: Buffer.from(readme, 'utf8').toString('base64') },
+    { type: 'text', text: '로더와 샘플을 바꿨습니다.', chunks: 2 },
+  ];
+}
+
 export function createFixtureScenario(): FakeScenario {
   let fixtureIds = 0;
   const rejectedOnce = new Set<string>();
@@ -932,6 +1040,9 @@ export function createFixtureScenario(): FakeScenario {
     }
     if (prompt.includes('[screenshot]')) {
       return screenshotSteps(`toolu_fixture_shot_${++fixtureIds}`);
+    }
+    if (prompt.includes('[bigdiff]')) {
+      return bigDiffSteps();
     }
     if (prompt.includes('[toolrun]') || prompt.includes('[toolfail]')) {
       return toolRunSteps(`toolu_fixture_run_${++fixtureIds}`, options.cwd ?? '', prompt.includes('[toolfail]'));

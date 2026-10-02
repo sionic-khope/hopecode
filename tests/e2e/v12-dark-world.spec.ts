@@ -83,9 +83,9 @@ test('conversation: dialogue box with the * CLAUDE tag, yellow user box, framed 
   expect(await style(page, '.hc-msg-assistant', 'font-family')).toMatch(/^"?Galmuri14"?,/);
   expect(await style(page, '.hc-msg-assistant', 'font-size')).toBe('15px');
   expect(await style(page, '.hc-msg-user__bubble', 'box-shadow')).toContain('rgb(255, 225, 77)');
-  expect(await style(page, '.hc-agent-avatar', 'width')).toBe('52px');
-  expect(await style(page, '.hc-diff__row--add', 'background-color')).toBe('rgb(13, 42, 23)');
-  expect(await style(page, '.hc-diff__row--del', 'color')).toBe('rgb(255, 107, 121)');
+  expect(await style(page, '.hc-agent-avatar', 'width')).toBe('44px');
+  expect(await style(page, '.hc-diff__row--add', 'background-color')).toBe('rgb(10, 34, 20)');
+  expect(await style(page, '.hc-diff__row--del', 'color')).toBe('rgb(255, 196, 202)');
   expect(await style(page, '.app__thread-name', 'font-family')).toMatch(/^"?Galmuri11"?,/);
   // The selected thread: yellow frame, yellow text, heart cursor.
   const row = page.getByTestId('sidebar').locator('.hc-thread--selected');

@@ -25,7 +25,7 @@
   --text-xl: 18px;     --lh-xl: 24px;   /* display: thread title, sheet titles */
   --text-2xl: 24px;    --lh-2xl: 32px;  /* display: greeting / page titles */
   --text-status: 12px; --lh-status: 16px;
-  --mono-sm: 12.5px;   --lh-mono-sm: 20px; /* inline code, code blocks, diffs */
+  --mono-sm: 13px;     --lh-mono-sm: 20px; /* inline code, code blocks, diffs, tool output (13 / 1.54) */
   --mono-term: 13px;   --lh-mono-term: 19px; /* xterm (mirrored in terminalTheme.ts) */
   --tracking-ui: 0;
   --tracking-title: 0;
@@ -157,10 +157,28 @@
   --warn-border: rgba(255, 178, 61, 0.6);
   --crit-border: rgba(255, 59, 78, 0.7);
 
-  /* Diff */
-  --diff-add-bg: #0d2a17; --diff-add-fg: #5cf097; --diff-add-gutter: #123a20;
-  --diff-del-bg: #2e0c12; --diff-del-fg: #ff6b79; --diff-del-gutter: #3d1018;
+  /* Diff: quiet row washes, light tinted text (13:1), a vivid 2px bar + marker per changed line (so +/- reads without
+     colour too), a stronger wash on the changed words. Gutter cells are opaque: they stay pinned while code scrolls. */
+  --diff-add-bg: #0a2214; --diff-add-fg: #b4f5c8; --diff-add-gutter: #0f2e1b; --diff-add-mark: #3ce07a;
+  --diff-add-ln: #7fbf95; --diff-add-word: #1c5c35; --diff-add-word-fg: #e6fff0;
+  --diff-del-bg: #2b0a11; --diff-del-fg: #ffc4ca; --diff-del-gutter: #3a0f17; --diff-del-mark: #ff5c6c;
+  --diff-del-ln: #d4878f; --diff-del-word: #74202d; --diff-del-word-fg: #fff0f2;
+  --diff-ctx-fg: #c9c3d9; --diff-ln: #8a83a3; --diff-hunk-fg: #9a92b4;
+  --diff-gutter-bg: #000000;
   --diff-gutter-old: rgba(255, 255, 255, 0.02);
+
+  /* Code: syntax colours on --bg-code (all >= 6:1; comments stay readable, not dim). */
+  --code-fg: #e8e4f2;
+  --syn-keyword: #ff9ae3;
+  --syn-string: #7cf0a6;
+  --syn-number: #ffb86b;
+  --syn-comment: #958dae;
+  --syn-type: #ffe14d;
+  --syn-function: #8cc6ff;
+  --syn-property: #8ff0f7;
+  --syn-punct: #b8b0cc;
+  /* Hairlines inside code / diff / output blocks (outer frames keep 2-3px). */
+  --code-line: rgba(255, 255, 255, 0.14);
 
   /* Spacing (4pt) */
   --space-1: 4px;
@@ -254,6 +272,8 @@
   /* Composer */
   --bg-composer: #000000;
   --composer-max-w: 780px;
+  --transcript-max-w: 1160px; /* conversation column: code, diffs and tool output use the full width */
+  --read-max-w: 760px;        /* prose measure inside it (paragraphs, lists, user lines) */
   --send-size: 32px;
 
   /* Account palette: muted mid-tones that keep white initials legible */

@@ -1,10 +1,22 @@
-import { createContext, isValidElement, memo, useContext, type AnchorHTMLAttributes, type HTMLAttributes, type ReactNode } from 'react';
+import {
+  createContext,
+  isValidElement,
+  memo,
+  useContext,
+  useMemo,
+  useState,
+  type AnchorHTMLAttributes,
+  type HTMLAttributes,
+  type ReactNode,
+} from 'react';
 import type { Element } from 'hast';
 import Markdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { CopyButton } from './CopyButton';
 import { MarkdownCopyChip } from './MarkdownCopyChip';
 import { tableSource } from './markdownSource';
+import { MoreButton } from './MoreButton';
+import { useHighlightedCode } from './codeHighlight';
 import './Chat.css';
 
 export interface AssistantTextProps {
@@ -36,17 +48,56 @@ function languageOf(children: ReactNode): string | null {
   return m ? m[1]! : null;
 }
 
-/** Fenced code block: language label + copy button over the code. */
-function CodeBlock({ node: _node, children, ...props }: HTMLAttributes<HTMLPreElement> & { node?: unknown }) {
+/** Lines of a fenced block shown before "N줄 더 보기"; blocks up to CODE_PREVIEW_LINES + 6 lines show whole. */
+export const CODE_PREVIEW_LINES = 30;
+
+/** Soft wrap of fenced code: the last choice applies to every block rendered afterwards this session. */
+let codeWrapPreference = false;
+
+function CodeTokens({ code, lang }: { code: string; lang: string | null }) {
+  const tokens = useHighlightedCode(code, lang);
+  if (!tokens) return <>{code}</>;
+  return (
+    <>
+      {tokens.map((t, i) => (t.cls ? <span key={i} className={t.cls}>{t.text}</span> : t.text))}
+    </>
+  );
+}
+
+/**
+ * Fenced code block: language label, wrap toggle and copy button over the code, syntax colours, sideways scroll for
+ * long lines. A long block shows its first CODE_PREVIEW_LINES lines (its height stops growing while it streams in)
+ * with "N줄 더 보기" / "접기".
+ */
+function CodeBlock({ node: _node, children, className: _className, ...props }: HTMLAttributes<HTMLPreElement> & { node?: unknown }) {
   const code = textOf(children).replace(/\n$/, '');
   const lang = languageOf(children);
+  const [all, setAll] = useState(false);
+  const [wrap, setWrap] = useState(codeWrapPreference);
+  const lines = useMemo(() => code.split('\n'), [code]);
+  const long = lines.length > CODE_PREVIEW_LINES + 6;
+  const shown = long && !all ? lines.slice(0, CODE_PREVIEW_LINES).join('\n') : code;
+  const toggleWrap = () => {
+    codeWrapPreference = !wrap;
+    setWrap(!wrap);
+  };
   return (
-    <div className="hc-code">
+    <div className={`hc-code${long && !all ? ' hc-code--clipped' : ''}`}>
       <div className="hc-code__bar">
         <span className="hc-code__lang">{lang ?? 'text'}</span>
+        <span className="hc-code__count">{lines.length}줄</span>
+        <span className="hc-code__spacer" />
+        <button type="button" className="hc-diff__tool hc-code__tool" aria-pressed={wrap} onClick={toggleWrap} title="긴 줄 줄바꿈">
+          줄바꿈
+        </button>
         <CopyButton text={code} label="코드 복사" className="hc-code__copy" />
       </div>
-      <pre {...props}>{children}</pre>
+      <pre {...props} className={wrap ? 'hc-code__pre hc-code__pre--wrap' : 'hc-code__pre'}>
+        <code className={lang ? `language-${lang}` : undefined}>
+          <CodeTokens code={shown} lang={lang} />
+        </code>
+      </pre>
+      {long ? <MoreButton count={all ? null : lines.length - CODE_PREVIEW_LINES} onClick={() => setAll(!all)} className="hc-code__more" /> : null}
     </div>
   );
 }

@@ -13,6 +13,14 @@
   flex-direction: column;
 }
 
+.hc-messages-frame--scrubber {
+  --scrubber-gutter: 36px; /* --tick-w + 8px: the column never runs under the ticks */
+}
+.hc-messages-frame--scrubber > .hc-messages {
+  padding-left: max(var(--space-6), var(--scrubber-gutter));
+  padding-right: max(var(--space-6), var(--scrubber-gutter));
+}
+
 .hc-scrubber {
   --tick-w: 28px;          /* hit column width */
   --bar-max: 24px;         /* bar box; lengths below scale it */
@@ -25,8 +33,9 @@
   z-index: 3;
   top: 0;
   bottom: 0;
-  /* Just left of the portrait column; flush with the pane edge once the window is narrow. */
-  left: max(0px, calc((100% - var(--composer-max-w)) / 2 - var(--tick-w) - 8px));
+  /* Just left of the conversation column; flush with the pane edge (inside the reserved gutter, see
+     .hc-messages-frame--scrubber) once the window is narrower than the column. */
+  left: max(0px, calc((100% - var(--transcript-max-w)) / 2 - var(--tick-w) - 8px));
   width: var(--tick-w);
   display: flex;
   flex-direction: column;

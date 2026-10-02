@@ -1,9 +1,10 @@
-import { createContext, memo, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { displayPath } from '../../../core/displayPath';
 import type { ToolItem } from '../../../shared/types';
 import { Collapse } from '../common';
 import { CheckCircleIcon, ChevronIcon, ErrorCircleIcon, SpinnerIcon, iconForTool } from './icons';
 import { DiffView } from './DiffView';
+import { MoreButton } from './MoreButton';
 import { ToolImages } from '../Images/ChatImages';
 import { imageCaption } from '../../../core/agentImages';
 import { useTicker } from './TurnActivity';
@@ -64,6 +65,34 @@ function useSettled(running: boolean): boolean {
   return settled;
 }
 
+/** Lines of tool output shown before "N줄 더 보기" (and a character cap, for one huge line). */
+export const OUTPUT_PREVIEW_LINES = 16;
+const OUTPUT_PREVIEW_CHARS = 2400;
+
+/** Shortened view of a long output: its first lines, or null when it is short enough to show whole. */
+function outputPreview(text: string): { head: string; rest: number } | null {
+  const lines = text.split('\n');
+  if (lines.length <= OUTPUT_PREVIEW_LINES + 4 && text.length <= OUTPUT_PREVIEW_CHARS * 1.5) return null;
+  let head = lines.slice(0, OUTPUT_PREVIEW_LINES).join('\n');
+  if (head.length > OUTPUT_PREVIEW_CHARS) head = `${head.slice(0, OUTPUT_PREVIEW_CHARS)}…`;
+  const shownLines = head.split('\n').length;
+  return { head, rest: Math.max(1, lines.length - shownLines) };
+}
+
+/** A tool's text output: mono, wrapped, the first lines of a long one with "N줄 더 보기" / "접기". */
+function ToolOutputText({ text, error }: { text: string; error: boolean }) {
+  const [all, setAll] = useState(false);
+  const preview = useMemo(() => outputPreview(text), [text]);
+  const cls = `hc-tool__result${error ? ' hc-tool__result--error' : ''}`;
+  if (!preview) return <pre className={cls}>{text}</pre>;
+  return (
+    <>
+      <pre className={`${cls}${all ? '' : ' hc-tool__result--clipped'}`}>{all ? text : preview.head}</pre>
+      <MoreButton count={all ? null : preview.rest} onClick={() => setAll(!all)} className="hc-tool__more" />
+    </>
+  );
+}
+
 function StatusIcon({ state }: { state: 'running' | 'error' | 'done' }) {
   if (state === 'running') return <SpinnerIcon width={13} height={13} />;
   if (state === 'error') return <ErrorCircleIcon width={13} height={13} />;
@@ -85,6 +114,8 @@ export const ToolCard = memo(function ToolCard({ item, defaultExpanded = false }
   const diffs = item.diffs ?? [];
   const editFallback =
     !hasPatch && diffs.length === 0 && item.name === 'Edit' && typeof item.input.old_string === 'string' && typeof item.input.new_string === 'string';
+  // A Write of a new file carries no patch: its content shows as added lines.
+  const writeFallback = !hasPatch && diffs.length === 0 && item.name === 'Write' && typeof item.input.content === 'string';
 
   return (
     <div
@@ -129,9 +160,8 @@ export const ToolCard = memo(function ToolCard({ item, defaultExpanded = false }
           {editFallback ? (
             <DiffView oldText={item.input.old_string as string} newText={item.input.new_string as string} />
           ) : null}
-          {item.result !== undefined ? (
-            <pre className={`hc-tool__result${hasError ? ' hc-tool__result--error' : ''}`}>{item.result}</pre>
-          ) : null}
+          {writeFallback ? <DiffView oldText="" newText={item.input.content as string} /> : null}
+          {item.result !== undefined ? <ToolOutputText text={item.result} error={hasError} /> : null}
         </div>
       </Collapse>
       {item.images && item.images.length > 0 ? (
@@ -198,9 +228,7 @@ export const ToolRow = memo(function ToolRow({ item }: { item: ToolItem }) {
       <Collapse open={open}>
         <div className="hc-tool__output" data-testid="tool-output">
           {item.result !== undefined ? (
-            <pre className={`hc-tool__result${state === 'error' ? ' hc-tool__result--error' : ''}`}>
-              {item.result.trim() === '' ? '(출력 없음)' : item.result}
-            </pre>
+            <ToolOutputText text={item.result.trim() === '' ? '(출력 없음)' : item.result} error={state === 'error'} />
           ) : (
             <p className="hc-tool__waiting">{live ? '실행 중…' : '결과를 받지 못했습니다.'}</p>
           )}

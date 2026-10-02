@@ -30,14 +30,15 @@ const noteHighlight = HighlightStyle.define([
   { tag: t.quote, color: 'var(--label-secondary)' },
   { tag: [t.processingInstruction, t.meta, t.contentSeparator], color: 'var(--label-tertiary)' },
   { tag: t.list, color: 'var(--label)' },
-  // Fenced code (language-data parsers)
-  { tag: [t.keyword, t.modifier, t.operatorKeyword, t.controlKeyword], color: 'var(--ansi-magenta)' },
-  { tag: [t.string, t.special(t.string), t.regexp], color: 'var(--ansi-green)' },
-  { tag: [t.number, t.bool, t.null, t.atom], color: 'var(--tp-fill)' },
-  { tag: [t.comment, t.lineComment, t.blockComment], color: 'var(--label-tertiary)', fontStyle: 'italic' },
-  { tag: [t.typeName, t.className, t.namespace], color: 'var(--select)' },
-  { tag: [t.function(t.variableName), t.function(t.propertyName)], color: 'var(--ansi-bright-blue)' },
-  { tag: [t.propertyName, t.attributeName], color: 'var(--ansi-bright-cyan)' },
+  // Fenced code (language-data parsers): the --syn-* palette the conversation's code blocks use.
+  { tag: [t.keyword, t.modifier, t.operatorKeyword, t.controlKeyword], color: 'var(--syn-keyword)' },
+  { tag: [t.string, t.special(t.string), t.regexp], color: 'var(--syn-string)' },
+  { tag: [t.number, t.bool, t.null, t.atom], color: 'var(--syn-number)' },
+  { tag: [t.comment, t.lineComment, t.blockComment], color: 'var(--syn-comment)', fontStyle: 'italic' },
+  { tag: [t.typeName, t.className, t.namespace], color: 'var(--syn-type)' },
+  { tag: [t.function(t.variableName), t.function(t.propertyName)], color: 'var(--syn-function)' },
+  { tag: [t.propertyName, t.attributeName], color: 'var(--syn-property)' },
+  { tag: [t.operator, t.punctuation], color: 'var(--syn-punct)' },
   { tag: [t.definition(t.variableName)], color: 'var(--label)' },
   { tag: t.invalid, color: 'var(--crit-text)' },
 ]);

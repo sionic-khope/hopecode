@@ -208,7 +208,7 @@ export function MessageList({
   return (
     <ThreadImageContext.Provider value={threadId ?? null}>
     <SubagentNavContext.Provider value={openSubagent}>
-    <div className="hc-messages-frame">
+    <div className={`hc-messages-frame${showScrubber ? ' hc-messages-frame--scrubber' : ''}`}>
     <div className="hc-messages" ref={scrollRef} onScroll={onScroll}>
       {subNode ? (
         <div className="hc-messages__inner">

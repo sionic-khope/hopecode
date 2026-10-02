@@ -307,6 +307,10 @@
   border-radius: var(--radius-control);
   background: var(--bg-card);
 }
+/* The file row already shows +N −M. */
+.hc-changes__diff .hc-diff__stat {
+  visibility: hidden;
+}
 .hc-changes__diffnote {
   display: flex;
   align-items: center;

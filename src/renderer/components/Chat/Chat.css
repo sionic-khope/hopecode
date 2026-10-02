@@ -20,12 +20,14 @@
   min-height: 0;
   overflow-y: auto;
   padding: var(--space-4) var(--space-6) var(--space-4);
+  container: messages / inline-size;
 }
+/* The column is wide (code, diffs and tool output use all of it); prose keeps --read-max-w inside it. */
 .hc-messages__inner {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  max-width: var(--composer-max-w);
+  max-width: var(--transcript-max-w);
   margin: 0 auto;
 }
 .hc-messages__empty {
@@ -54,8 +56,8 @@
 /* ---------- Agent column (avatar + content) ---------- */
 .hc-agent-row {
   display: grid;
-  grid-template-columns: 52px minmax(0, 1fr);
-  column-gap: var(--space-3);
+  grid-template-columns: 44px minmax(0, 1fr);
+  column-gap: 10px;
 }
 .hc-agent-row__avatar {
   display: flex;
@@ -73,8 +75,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 52px;
-  height: 52px;
+  width: 44px;
+  height: 44px;
   background: var(--bg-card);
   box-shadow: inset 0 0 0 2px var(--frame);
   color: var(--label-secondary);
@@ -97,7 +99,7 @@
 /* ---------- Dialogue box (assistant text in the transcript) ---------- */
 .hc-say {
   position: relative;
-  padding: 14px 20px 16px;
+  padding: 14px 16px 16px;
   background: var(--bg-card);
   border: var(--frame-w) solid var(--frame);
   /* Notched pixel corners: the frame's outer corner pixel is cut away. */
@@ -175,7 +177,7 @@
 }
 /* The user's line: a yellow-framed box on the right. */
 .hc-msg-user__bubble {
-  max-width: 78%;
+  max-width: min(78%, var(--read-max-w));
   padding: 12px 16px;
   border-radius: var(--radius-card);
   background: var(--bubble);
@@ -210,6 +212,10 @@
 }
 .hc-md p {
   margin: 0 0 var(--space-3);
+}
+/* Reading measure: prose stops at --read-max-w; code blocks, tables and tool output run the full column. */
+.hc-md > :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6) {
+  max-width: var(--read-max-w);
 }
 .hc-md ul,
 .hc-md ol {
@@ -248,37 +254,139 @@
 }
 .hc-md pre {
   margin: 0;
-  padding: var(--space-3) var(--space-4);
+  padding: 10px var(--space-4) 12px;
   background: transparent;
   overflow-x: auto;
+  white-space: pre;
+  tab-size: 4;
+}
+.hc-md pre.hc-code__pre--wrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .hc-md pre code {
   padding: 0;
   background: transparent;
   box-shadow: none;
-  color: var(--label);
+  color: var(--code-fg);
+  white-space: inherit;
 }
-/* Fenced code block card: language label + copy button. */
+/* Fenced code block: a 1px hairline frame (it sits inside the dialogue box), language + line count + wrap + copy. */
 .hc-code {
   margin: 0 0 var(--space-3);
   border-radius: var(--radius-control);
   background: var(--bg-code);
-  box-shadow: inset 0 0 0 2px var(--separator);
+  box-shadow: inset 0 0 0 1px var(--code-line);
   overflow: hidden;
 }
 .hc-code__bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  height: 32px;
-  padding: 0 6px 0 var(--space-4);
-  border-bottom: 2px solid var(--separator);
+  gap: var(--space-2);
+  height: 30px;
+  padding: 0 4px 0 var(--space-4);
+  border-bottom: 1px solid var(--code-line);
 }
 .hc-code__lang {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-  color: var(--label-tertiary);
+  color: var(--label-secondary);
   text-transform: lowercase;
+}
+.hc-code__count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--diff-ln);
+  font-variant-numeric: tabular-nums;
+}
+.hc-code__spacer {
+  flex: 1;
+}
+/* A clipped block fades into its "더 보기" line. */
+.hc-code--clipped > pre {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), rgba(0, 0, 0, 0.35));
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), rgba(0, 0, 0, 0.35));
+}
+
+/* Syntax colours (classHighlighter `tok-*` runs; --syn-* tokens shared with the note editor). */
+.tok-keyword,
+.tok-modifier {
+  color: var(--syn-keyword);
+}
+.tok-string,
+.tok-string2,
+.tok-inserted,
+.tok-url {
+  color: var(--syn-string);
+}
+.tok-number,
+.tok-bool,
+.tok-atom,
+.tok-literal {
+  color: var(--syn-number);
+}
+.tok-comment,
+.tok-meta {
+  color: var(--syn-comment);
+  font-style: italic;
+}
+.tok-typeName,
+.tok-className,
+.tok-namespace,
+.tok-macroName {
+  color: var(--syn-type);
+}
+.tok-definition,
+.tok-labelName {
+  color: var(--syn-function);
+}
+.tok-propertyName {
+  color: var(--syn-property);
+}
+.tok-operator,
+.tok-punctuation {
+  color: var(--syn-punct);
+}
+.tok-heading,
+.tok-strong {
+  font-weight: 700;
+}
+.tok-emphasis {
+  font-style: italic;
+}
+.tok-invalid,
+.tok-deleted {
+  color: var(--crit-text);
+}
+
+/* "N줄 더 보기" / "접기": a full-width hairline row under a shortened block. */
+.hc-more {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 28px;
+  border-top: 1px solid var(--code-line);
+  color: var(--label-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition:
+    color var(--motion-1) var(--ease-soft),
+    background-color var(--motion-1) var(--ease-soft);
+}
+.hc-more:hover {
+  color: var(--label-selected);
+  background: var(--accent-tint);
+}
+.hc-more:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--select);
+}
+.hc-more__glyph {
+  font-size: 10px;
 }
 .hc-code__copy {
   width: 26px;
@@ -520,40 +628,58 @@
 .hc-tool--open .hc-tool__chevron {
   transform: rotate(180deg);
 }
+/* Card body: no inner frames -- the diff runs flush to the card's edges, parts split by 1px hairlines. */
 .hc-tool__body {
-  border-top: 2px solid var(--separator);
-  padding: var(--space-3);
+  border-top: 1px solid var(--code-line);
+  padding: 0;
+}
+.hc-tool__body > * + * {
+  border-top: 1px solid var(--code-line);
+}
+.hc-tool__body > .hc-diff {
+  box-shadow: none;
 }
 .hc-tool__result {
   margin: 0;
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-control);
   background: var(--bg-code);
-  box-shadow: inset 0 0 0 2px var(--separator);
-  color: var(--label);
+  color: var(--code-fg);
   font-family: var(--font-mono);
   font-size: var(--mono-sm);
   line-height: var(--lh-mono-sm);
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 320px;
-  overflow: auto;
+  overflow-x: auto;
   -webkit-user-select: text;
   user-select: text;
 }
-.hc-tool__result--error {
+.hc-tool__body > .hc-tool__result {
+  background: transparent;
+  color: var(--label-secondary);
+}
+.hc-tool__result--clipped {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), rgba(0, 0, 0, 0.35));
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), rgba(0, 0, 0, 0.35));
+}
+.hc-tool__result--error,
+.hc-tool__body > .hc-tool__result--error {
   background: var(--diff-del-bg);
   color: var(--diff-del-fg);
 }
-.hc-tool__body > * + * {
-  margin-top: var(--space-2);
+.hc-tool__body > .hc-more {
+  border-top: 1px solid var(--code-line);
 }
 /* ACP whole-file diffs: one path line per file above its DiffView. */
+.hc-tool__file-diff {
+  padding-top: var(--space-2);
+}
 .hc-tool__file-path {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   margin-bottom: 6px;
+  padding: 0 var(--space-3);
   font-family: var(--font-mono);
   font-size: var(--mono-sm);
   color: var(--label-secondary);
@@ -685,15 +811,20 @@
 .hc-tool__output {
   margin: 2px 0 6px calc(var(--tool-gutter) + 7px);
   padding: 2px 0 2px 12px;
-  border-left: 2px solid var(--separator);
+  border-left: 1px solid var(--line-strong);
 }
 .hc-tool--row .hc-tool__result {
   padding: 0;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
-  color: var(--label-secondary);
-  max-height: 260px;
+  color: var(--diff-ctx-fg);
+}
+.hc-tool__output > .hc-more {
+  justify-content: flex-start;
+  margin-top: 4px;
+  border-top: none;
+  height: 24px;
 }
 .hc-tool--row .hc-tool__result--error {
   background: transparent;
@@ -770,46 +901,132 @@
 }
 
 /* ---------- Diff view ---------- */
+/* A hairline-framed block: a bar (+N −M, wrap toggle), then rows that scroll sideways under a pinned gutter. Each
+   changed line carries three cues besides its colour: the +/− marker, a 2px bar on the left edge, the line wash. */
 .hc-diff {
+  --diff-ln-w: calc(var(--diff-digits, 2) * 1ch + 10px);
   border-radius: var(--radius-control);
-  overflow: hidden;
-  box-shadow: inset 0 0 0 2px var(--separator);
+  box-shadow: inset 0 0 0 1px var(--code-line);
   font-family: var(--font-mono);
   font-size: var(--mono-sm);
   line-height: var(--lh-mono-sm);
-  max-height: 360px;
-  overflow-y: auto;
-  background: var(--bg-elevated);
+  background: var(--diff-gutter-bg);
   -webkit-user-select: text;
   user-select: text;
 }
+.hc-diff__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 26px;
+  padding: 0 4px 0 var(--space-3);
+  border-bottom: 1px solid var(--code-line);
+  font-size: 11.5px;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.hc-diff__stat {
+  flex: 1;
+  display: inline-flex;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.hc-diff__stat-add {
+  color: var(--diff-add-mark);
+}
+.hc-diff__stat-del {
+  color: var(--diff-del-mark);
+}
+/* Small toggle (wrap): a 1px chip, yellow when on. Shared with the code block bar. */
+.hc-diff__tool {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  box-shadow: inset 0 0 0 1px var(--code-line);
+  color: var(--label-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--text-2xs);
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color var(--motion-1) var(--ease-soft),
+    box-shadow var(--motion-1) var(--ease-soft);
+}
+.hc-diff__tool:hover {
+  color: var(--label);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+.hc-diff__tool[aria-pressed='true'] {
+  color: var(--label-selected);
+  box-shadow: inset 0 0 0 1px var(--accent-border);
+}
+.hc-diff__tool:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+.hc-diff__scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+/* Rows are as wide as the longest line (washes run to its end), never narrower than the block. */
+.hc-diff__lines {
+  width: max-content;
+  min-width: 100%;
+}
+.hc-diff--wrap .hc-diff__lines {
+  width: auto;
+}
 .hc-diff__row {
   display: flex;
+  min-height: var(--lh-mono-sm);
+  color: var(--diff-ctx-fg);
 }
+/* Gutter: old / new line numbers + marker, pinned to the left edge while the code scrolls. Opaque (it covers the
+   code passing under it). */
 .hc-diff__gutter {
+  position: sticky;
+  left: 0;
+  z-index: 1;
   flex: none;
-  width: 38px;
-  padding: 0 6px;
-  text-align: right;
-  color: var(--label-tertiary);
+  display: flex;
+  background: var(--diff-gutter-bg);
   -webkit-user-select: none;
   user-select: none;
 }
-.hc-diff__gutter--old {
-  background: var(--diff-gutter-old);
+.hc-diff__ln {
+  width: var(--diff-ln-w);
+  padding-right: 4px;
+  box-sizing: border-box;
+  text-align: right;
+  color: var(--diff-ln);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.hc-diff--new-file .hc-diff__ln:first-child {
+  display: none;
+}
+.hc-diff--new-file .hc-diff__hunk-label,
+.hc-diff--new-file .hc-diff__fold-label {
+  padding-left: calc(var(--diff-ln-w) + 22px);
 }
 .hc-diff__marker {
-  flex: none;
-  width: 16px;
+  width: 22px;
   text-align: center;
-  -webkit-user-select: none;
-  user-select: none;
+  font-weight: 700;
 }
 .hc-diff__text {
-  flex: 1;
-  min-width: 0;
-  padding-right: var(--space-2);
+  flex: 1 0 auto;
+  padding-right: var(--space-4);
   white-space: pre;
+  tab-size: 4;
+}
+.hc-diff--wrap .hc-diff__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .hc-diff__row--add {
   background: var(--diff-add-bg);
@@ -817,7 +1034,13 @@
 }
 .hc-diff__row--add .hc-diff__gutter {
   background: var(--diff-add-gutter);
-  color: var(--diff-add-fg);
+  box-shadow: inset 2px 0 0 var(--diff-add-mark);
+}
+.hc-diff__row--add .hc-diff__ln {
+  color: var(--diff-add-ln);
+}
+.hc-diff__row--add .hc-diff__marker {
+  color: var(--diff-add-mark);
 }
 .hc-diff__row--del {
   background: var(--diff-del-bg);
@@ -825,14 +1048,77 @@
 }
 .hc-diff__row--del .hc-diff__gutter {
   background: var(--diff-del-gutter);
-  color: var(--diff-del-fg);
+  box-shadow: inset 2px 0 0 var(--diff-del-mark);
 }
-.hc-diff__row--context {
-  color: var(--label-secondary);
+.hc-diff__row--del .hc-diff__ln {
+  color: var(--diff-del-ln);
+}
+.hc-diff__row--del .hc-diff__marker {
+  color: var(--diff-del-mark);
+}
+/* Changed words of a paired -/+ line. */
+.hc-diff__word {
+  padding: 1px 0;
+  border-radius: 0;
+  color: inherit;
+}
+.hc-diff__row--add .hc-diff__word {
+  background: var(--diff-add-word);
+  color: var(--diff-add-word-fg);
+}
+.hc-diff__row--del .hc-diff__word {
+  background: var(--diff-del-word);
+  color: var(--diff-del-word-fg);
 }
 .hc-diff__row--meta {
-  color: var(--label-tertiary);
+  color: var(--diff-hunk-fg);
   font-style: italic;
+}
+/* Hunk header between hunks and the fold expander: full-width hairline rows, label pinned left. */
+.hc-diff__hunk {
+  box-sizing: border-box;
+  width: 100%;
+  height: 24px;
+  line-height: 24px;
+  border-top: 1px solid var(--code-line);
+  border-bottom: 1px solid var(--code-line);
+  background: var(--bg-code);
+  color: var(--diff-hunk-fg);
+  font-size: 12px;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.hc-diff__hunk-label,
+.hc-diff__fold-label {
+  position: sticky;
+  left: 0;
+  display: inline-block;
+  padding-left: calc(var(--diff-ln-w) * 2 + 22px);
+}
+.hc-diff__fold {
+  all: unset;
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: 24px;
+  line-height: 24px;
+  border-top: 1px dashed var(--code-line);
+  border-bottom: 1px dashed var(--code-line);
+  background: var(--bg-code);
+  color: var(--diff-hunk-fg);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+.hc-diff__fold:hover {
+  color: var(--label-selected);
+  background: var(--accent-tint);
+}
+.hc-diff__fold:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--select);
+}
+.hc-diff__more {
+  font-family: var(--font-ui);
 }
 
 /* ---------- Permission card: yellow frame, it needs an answer ---------- */
@@ -885,13 +1171,13 @@
   padding: 10px var(--space-3);
   border-radius: var(--radius-control);
   background: var(--bg-code);
-  box-shadow: inset 0 0 0 2px var(--separator);
+  box-shadow: inset 0 0 0 1px var(--code-line);
   font-family: var(--font-mono);
   font-size: var(--mono-sm);
   line-height: var(--lh-mono-sm);
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 160px;
+  max-height: 240px;
   overflow: auto;
 }
 .hc-permission__actions {
@@ -1668,8 +1954,8 @@ button.hc-chip--warn[aria-expanded='true'] {
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-control);
   background: var(--bg-code);
-  box-shadow: inset 0 0 0 2px var(--separator);
-  color: var(--label);
+  box-shadow: inset 0 0 0 1px var(--code-line);
+  color: var(--code-fg);
   font-family: var(--font-mono);
   font-size: var(--mono-sm);
   line-height: var(--lh-mono-sm);
@@ -1867,4 +2153,17 @@ button.hc-chip--warn[aria-expanded='true'] {
   color: var(--label-tertiary);
   font-size: var(--text-sm);
   line-height: var(--lh-sm);
+}
+
+/* Narrow conversation (right panel open, small window): the portrait column folds away so code keeps its width. */
+@container messages (max-width: 640px) {
+  .hc-agent-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .hc-agent-row__avatar {
+    display: none;
+  }
+  .hc-say {
+    padding: 12px 12px 14px;
+  }
 }
