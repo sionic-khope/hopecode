@@ -2,6 +2,7 @@
 // AGENT_KINDS, main's SessionManager picks the runner by `thread.agent` (`features.runtime`). Adding an agent = a new
 // AgentKind member, an entry here and a runner factory in main (sessionManager runnerFactories).
 import type { AgentKind } from './types';
+import { t } from './i18n';
 
 export interface AgentFeatures {
   /** Sessions run in a per-thread git worktree when the setting allows it. */
@@ -81,7 +82,9 @@ export const AGENTS: Readonly<Record<AgentKind, AgentDescriptor>> = {
   hermes: {
     id: 'hermes',
     name: 'Hermes',
-    description: 'Nous Research · 시스템 기본 모델',
+    get description() {
+      return `Nous Research · ${t('agent.systemDefaultModel')}`;
+    },
     iconAsset: 'agents/hermes.svg',
     features: {
       worktree: true,

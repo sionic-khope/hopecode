@@ -34,6 +34,7 @@ import {
   writeNote,
 } from '../notes/vaultFs';
 import { assertReq, isNonEmptyString, isNullableString, isPlainObject, isString } from './guards';
+import { t } from '../../shared/i18n';
 
 export const NOTES_CHANNELS = [
   'notes:addVault',
@@ -95,7 +96,7 @@ export function buildNotesHandlers(store: Pick<Store, 'get' | 'update'>, broadca
 
   const activeVault = (channel: string): string => {
     const vault = store.get().settings.activeNoteVault;
-    assertReq(channel, vault !== '', '노트 폴더를 먼저 지정하세요');
+    assertReq(channel, vault !== '', t('notes.err.noVault'));
     return vault;
   };
 
@@ -126,9 +127,9 @@ export function buildNotesHandlers(store: Pick<Store, 'get' | 'update'>, broadca
       if (!picked) return store.get().settings;
       const real = await vaultRoot(picked);
       assertReq('notes:addVault', isNoteVaultPath(real), 'invalid folder');
-      assertReq('notes:addVault', !(await isTooBroadVault(real)), '홈 폴더나 디스크 최상위 폴더는 노트 폴더로 쓸 수 없습니다');
+      assertReq('notes:addVault', !(await isTooBroadVault(real)), t('notes.err.tooBroad'));
       if (noteVaults.includes(real)) return saveVaults(noteVaults, real);
-      assertReq('notes:addVault', noteVaults.length < NOTE_VAULTS_MAX, `노트 폴더는 ${NOTE_VAULTS_MAX}개까지 등록할 수 있습니다`);
+      assertReq('notes:addVault', noteVaults.length < NOTE_VAULTS_MAX, t('notes.err.maxVaults', { max: NOTE_VAULTS_MAX }));
       return saveVaults([...noteVaults, real], real);
     },
 
@@ -215,7 +216,7 @@ export function buildNotesHandlers(store: Pick<Store, 'get' | 'update'>, broadca
     'notes:commit': async (req) => {
       assertReq('notes:commit', isPlainObject(req) && isString(req.message), 'message required');
       const vault = activeVault('notes:commit');
-      assertReq('notes:commit', store.get().settings.noteGitVaults.includes(vault), '이 노트 폴더는 git 기능이 꺼져 있습니다');
+      assertReq('notes:commit', store.get().settings.noteGitVaults.includes(vault), t('notes.err.gitOff'));
       return notes.git.commit(vault, (req as { message: string }).message);
     },
 
@@ -260,10 +261,10 @@ export function buildNotesHandlers(store: Pick<Store, 'get' | 'update'>, broadca
       const vault = activeVault(ch);
       const path = needPath(ch, r.path);
       const requestId = r.requestId as string;
-      if (running.has(requestId)) return { ok: false, error: '이미 실행 중인 요청입니다' };
-      if (running.size >= NOTE_AI_MAX_RUNNING) return { ok: false, error: '진행 중인 요청이 끝난 뒤 다시 보내세요' };
+      if (running.has(requestId)) return { ok: false, error: t('notes.err.alreadyRunning') };
+      if (running.size >= NOTE_AI_MAX_RUNNING) return { ok: false, error: t('notes.err.busy') };
       if (selection && selection.from < selection.to && !document.slice(selection.from, selection.to).trim()) {
-        return { ok: false, error: '고칠 부분이 비어 있습니다' };
+        return { ok: false, error: t('notes.err.emptySelection') };
       }
 
       const refs = await siblingNotes(vault, path, STYLE_REF_MAX_FILES);
@@ -304,7 +305,7 @@ export function buildNotesHandlers(store: Pick<Store, 'get' | 'update'>, broadca
           // A failed run keeps only its error: what streamed before it (a Codex turn cut at a tool call) is dropped.
           const row = !result.ok
             ? { role: 'assistant' as const, text: result.error, status: 'error' as const }
-            : { role: 'assistant' as const, text: text.trim() ? text : result.stopped ? '중지했다.' : '받은 내용이 없다.', status: result.stopped ? ('stopped' as const) : ('done' as const) };
+            : { role: 'assistant' as const, text: text.trim() ? text : result.stopped ? t('notes.chat.stopped') : t('notes.chat.empty'), status: result.stopped ? ('stopped' as const) : ('done' as const) };
           await notes.chats.append(vault, path, row).catch(() => {});
         }
         emit(result.ok ? { requestId, type: 'done', stopped: result.stopped } : { requestId, type: 'error', message: result.error });

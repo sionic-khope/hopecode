@@ -2,7 +2,7 @@
 import type { SessionUpdate, StopReason } from '@agentclientprotocol/sdk';
 import type { AcpCommandLite, ChatEvent, ChatImage, ChatItem, ToolFileDiff, ToolItem } from '../shared/types';
 import {
-  IMAGE_BUDGET_NOTICE,
+  imageBudgetNotice,
   MAX_MESSAGE_IMAGES_PER_TURN,
   acpToolImages,
   admitTurnImages,
@@ -19,6 +19,7 @@ import type {
   ReduceAcpUpdateFn,
   ToolNameForFn,
 } from './acpTypes';
+import { t } from '../shared/i18n';
 
 const MAX_RAW_INPUT_CHARS = 8 * 1024;
 const MAX_RESULT_CHARS = 16 * 1024;
@@ -29,9 +30,6 @@ const MAX_DIFFS = 50;
 export const MAX_LABEL_CHARS = 256;
 /** Settled tools remembered for late updates. */
 const MAX_SETTLED_TOOLS = 200;
-const INTERRUPTED_TEXT = '중단됨';
-const FAILED_TEXT = '실패';
-const TERMINAL_TEXT = '(terminal 출력은 지원되지 않음)';
 /** codex-acp collab tool that starts a subagent (`collabAgentToolCall`, tool `spawnAgent`). */
 const CODEX_SPAWN_TITLE = 'spawnAgent';
 /** Subagent type the card / sprite shows for a Codex-spawned agent. */
@@ -89,7 +87,7 @@ function contentText(content: ToolContentLike[]): string {
     if (c.type === 'content' && c.content?.type === 'text' && typeof c.content.text === 'string') {
       parts.push(c.content.text);
     } else if (c.type === 'terminal') {
-      parts.push(TERMINAL_TEXT);
+      parts.push(t('tool.terminalUnsupported'));
     }
   }
   return cap(parts.join('\n'), MAX_RESULT_CHARS);
@@ -294,7 +292,7 @@ export const reduceAcpUpdate: ReduceAcpUpdateFn = (state, update, now): AcpReduc
   const imagesDropped = () => {
     if (next.imageBudgetNoticed) return;
     next = { ...next, imageBudgetNoticed: true };
-    pushNotice('warn', IMAGE_BUDGET_NOTICE);
+    pushNotice('warn', imageBudgetNotice());
   };
 
   /**
@@ -552,7 +550,7 @@ function findSpawn(state: AcpReducerState, childId: string): ToolItem | undefine
 }
 
 function applyEnd(item: ToolItem, failed: boolean, text: string, now: number): void {
-  item.result = text || (failed ? FAILED_TEXT : '');
+  item.result = text || (failed ? t('tool.failed') : '');
   if (failed) item.isError = true;
   item.completedAt = now;
 }
@@ -571,7 +569,7 @@ export const finalizeAcpTurn: FinalizeAcpTurnFn = (state, stopReason: StopReason
     const settled: ToolItem = { ...tool, completedAt: now };
     if (aborted) {
       settled.isError = true;
-      settled.result = INTERRUPTED_TEXT;
+      settled.result = t('tool.interrupted');
     } else {
       settled.result = tool.result ?? '';
     }

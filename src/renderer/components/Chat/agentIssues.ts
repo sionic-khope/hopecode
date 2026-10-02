@@ -1,5 +1,6 @@
 // Pure classification of what agents report when a turn goes wrong (error card copy) and of warning text an agent
 // streams as if it were an answer (shown as a warn notice instead). The raw text is already redacted by main.
+import { t, type MessageKey } from '../../../shared/i18n';
 
 export type AgentErrorKind = 'auth' | 'rate-limit' | 'model-metadata' | 'timeout' | 'network' | 'crash' | 'start' | 'unknown';
 
@@ -9,91 +10,94 @@ export interface AgentErrorCopy {
   description: string;
 }
 
-/** First matching rule wins: specific causes before the generic ones they could also match (timeout before network). */
+/**
+ * First matching rule wins: specific causes before the generic ones they could also match (timeout before network).
+ * Main reports in the UI language, so each rule also knows how the app's own messages read in en / ja / zh-Hans.
+ */
 const ERROR_RULES: readonly { kind: Exclude<AgentErrorKind, 'unknown'>; test: RegExp }[] = [
   {
     kind: 'auth',
-    test: /로그인이 필요|인증이 만료|인증(?:에)? 실패|unauthori[sz]ed|authentication (?:required|failed)|not logged in|invalid[_ ]api[_ ]key|token (?:has )?expired|\b401\b/i,
+    test: /로그인이 필요|인증이 만료|인증(?:에)? 실패|ログインが必要|認証の有効期限が切れ|認証に失敗|需要登录|认证已过期|认证失败|login required|unauthori[sz]ed|authentication (?:required|failed|has expired)|not logged in|invalid[_ ]api[_ ]key|token (?:has )?expired|\b401\b/i,
   },
-  { kind: 'rate-limit', test: /rate[ _-]?limit|too many requests|usage limit|quota|한도(?:에)? 도달|\b429\b/i },
+  { kind: 'rate-limit', test: /rate[ _-]?limit|too many requests|usage limit|limit reached|quota|한도(?:에)? 도달|上限に達|达到.{0,4}上限|\b429\b/i },
   { kind: 'model-metadata', test: /model metadata|model[_ ]not[_ ]found|unknown model|model .{1,80} (?:not found|does not exist)/i },
-  { kind: 'timeout', test: /시간 초과|timed? ?out|timeout|deadline exceeded/i },
+  { kind: 'timeout', test: /시간 초과|タイムアウト|超时|timed? ?out|timeout|deadline exceeded/i },
   {
     kind: 'network',
     test: /network|fetch failed|socket hang up|ECONNRESET|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|stream disconnected|connection (?:reset|refused|closed|error)/i,
   },
-  { kind: 'start', test: /실행 파일을 시작할 수 없|시작하지 못했습니다|ENOENT|EACCES|spawn/i },
-  { kind: 'crash', test: /프로세스가 종료|예기치 않게 종료|중지되었습니다|exited|crash|SIGKILL|SIGSEGV|SIGTERM/i },
+  { kind: 'start', test: /실행 파일을 시작할 수 없|시작하지 못했습니다|起動できません|起動に失敗|无法启动|启动失败|cannot start|failed to start|ENOENT|EACCES|spawn/i },
+  { kind: 'crash', test: /프로세스가 종료|예기치 않게 종료|중지되었습니다|プロセスが終了|予期せず終了|停止しました|进程已退出|意外退出|已停止|exited|crash|SIGKILL|SIGSEGV|SIGTERM/i },
 ];
 
-/** Korean title + explanation for an error notice of an `agentName` thread. Unknown messages get the generic copy. */
+/** Title + explanation (current language) for an error notice of an `agentName` thread. Unknown messages get the generic copy. */
 export function describeAgentError(raw: string, agentName: string): AgentErrorCopy {
   const kind = ERROR_RULES.find((r) => r.test.test(raw))?.kind ?? 'unknown';
   switch (kind) {
     case 'auth':
       return {
         kind,
-        title: `${agentName} 로그인 필요`,
-        description: '로그인이 필요하거나 인증이 만료되었습니다. 다시 로그인한 뒤 시도하세요.',
+        title: t('agentError.auth', { agent: agentName }),
+        description: t('agentError.auth.desc'),
       };
     case 'rate-limit':
       return {
         kind,
-        title: '사용 한도에 도달함',
-        description: '요청이 너무 많거나 사용 한도에 도달했습니다. 잠시 기다린 뒤 다시 시도하세요.',
+        title: t('agentError.rateLimit'),
+        description: t('agentError.rateLimit.desc'),
       };
     case 'model-metadata':
       return {
         kind,
-        title: '모델 정보를 찾지 못함',
-        description: `${agentName}가 선택한 모델을 알지 못합니다. 모델을 바꾸거나 에이전트를 업데이트한 뒤 다시 시도하세요.`,
+        title: t('agentError.model'),
+        description: t('agentError.model.desc', { agent: agentName }),
       };
     case 'timeout':
       return {
         kind,
-        title: '응답 시간 초과',
-        description: `${agentName}가 제때 응답하지 않았습니다. 다시 시도하거나 새 세션에서 시도해 보세요.`,
+        title: t('agentError.timeout'),
+        description: t('agentError.timeout.desc', { agent: agentName }),
       };
     case 'network':
       return {
         kind,
-        title: '네트워크 오류',
-        description: '서버에 연결하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도하세요.',
+        title: t('agentError.network'),
+        description: t('agentError.network.desc'),
       };
     case 'start':
       return {
         kind,
-        title: `${agentName}를 시작하지 못함`,
-        description: '에이전트 실행 파일을 시작하지 못했습니다. 설치와 로그인 상태를 확인한 뒤 다시 시도하세요.',
+        title: t('agentError.start', { agent: agentName }),
+        description: t('agentError.start.desc'),
       };
     case 'crash':
       return {
         kind,
-        title: `${agentName} 프로세스 종료`,
-        description: '에이전트 프로세스가 예기치 않게 종료되었습니다. 다시 시도하면 새 프로세스로 이어갑니다.',
+        title: t('agentError.crash', { agent: agentName }),
+        description: t('agentError.crash.desc'),
       };
     default:
       return {
         kind: 'unknown',
-        title: `${agentName} 응답 실패`,
-        description: '에이전트가 요청을 처리하지 못했습니다. 다시 시도하거나 새 세션에서 시도해 보세요.',
+        title: t('agentError.unknown', { agent: agentName }),
+        description: t('agentError.unknown.desc'),
       };
   }
 }
 
 export interface AgentWarning {
-  /** Korean notice text. */
+  /** Notice text (current language). */
   text: string;
   /** The agent's own line (shown small under the notice). */
   raw: string;
 }
 
 /** Warning lines agents print into the answer stream. Each matches from the start of the text. */
-const WARNING_RULES: readonly { test: RegExp; text: string }[] = [
+const WARNING_RULES: readonly { test: RegExp; text: MessageKey }[] = [
   {
     // codex: "Model metadata for `gpt-x` not found. Defaulting to fallback metadata; this can degrade performance…"
     test: /^\s*(?:warning:\s*)?model metadata for\b[^\n]*/i,
-    text: '모델 메타데이터를 찾지 못해 기본값으로 실행합니다. 응답 품질이나 기능이 제한될 수 있습니다.',
+    text: 'agentWarning.modelMetadata',
   },
 ];
 
@@ -108,7 +112,7 @@ export function splitAgentWarning(text: string): { warning: AgentWarning; rest: 
     if (!m) continue;
     const raw = m[0].trim();
     const rest = text.slice(m.index + m[0].length).replace(/^\s+/, '');
-    return { warning: { text: rule.text, raw }, rest };
+    return { warning: { text: t(rule.text), raw }, rest };
   }
   return null;
 }

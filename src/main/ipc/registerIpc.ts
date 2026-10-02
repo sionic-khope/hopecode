@@ -45,7 +45,6 @@ import { MAX_ATTACH_READ_BYTES, MAX_ATTACH_TOTAL_BYTES, MAX_ATTACHMENTS, unsuppo
 import type { SlashCommandService } from '../commands/slashCommands';
 import {
   CODEX_MODEL_PATTERN,
-  DEFAULT_THREAD_TITLE,
   DRAFT_PTY_SESSION_ID,
   SAFE_ID_PATTERN,
   USAGE_HISTORY_RETENTION_MS,
@@ -53,7 +52,7 @@ import {
 import { AGENTS, DEFAULT_AGENT, isAgentKind } from '../../shared/agents';
 import { isStrictlyInside } from '../containment';
 import { markdownFileName, threadToMarkdown } from '../../core/threadMarkdown';
-import { deriveThreadTitle } from '../../core/threadTitle';
+import { defaultThreadTitle, deriveThreadTitle } from '../../core/threadTitle';
 import { isTurnItemId, toggleTurnBookmark } from '../../core/turnScrubber';
 import { isSafeBranchName } from '../../core/ghPrs';
 import { applySettingsPatch, isEditorId, validateSettingsPatch } from '../../core/settings';
@@ -89,6 +88,7 @@ import {
   isStringArray,
   isUiPermissionMode,
 } from './guards';
+import { t } from '../../shared/i18n';
 
 /** The slice of `Electron.IpcMainInvokeEvent` the sender check reads. */
 export interface IpcEventLike {
@@ -157,6 +157,8 @@ export interface RegisterIpcServices {
   onSettingsChanged?: (next: AppSettings, prev: AppSettings) => void;
   /** Fixture / headless e2e run (bootstrap `testMode`: no system notifications). */
   testMode?: boolean;
+  /** OS locale for `language: 'system'` (bootstrap `systemLocale`); absent = '' (English). */
+  systemLocale?: () => string;
   /** ⌘K thread search, 풀 리퀘스트, 예약, 플러그인 (navHandlers.ts). */
   nav?: NavServices;
   /** 노트 모드 (notesHandlers.ts); absent = every notes:* channel refuses. */
@@ -191,7 +193,6 @@ type Handlers = { [K in InvokeChannel]: (req: unknown) => Promise<InvokeResponse
 
 const AGENT_KINDS = Object.keys(AGENTS) as AgentKind[];
 
-const SCRATCH_GIT_ERROR = '프로젝트 없는 채팅에서는 사용할 수 없습니다';
 const NO_REPO_CHANGES: GitChanges = { isRepo: false, branch: null, baseBranch: null, files: [], ahead: 0, dirty: false };
 const NO_REMOTE: GitRemoteInfo = { remote: null, remoteUrl: null, branch: null, baseBranch: null, ghAvailable: false };
 
@@ -445,6 +446,7 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel | Note
         homeDir: homedir(),
         pendingPermissions: sessionManager.pendingPermissions(),
         testMode: s.testMode === true,
+        systemLocale: s.systemLocale?.() ?? '',
         localAuth: localAuth.list(),
         agentUsage: Object.fromEntries(
           AGENT_KINDS.filter((a) => AGENTS[a].usageSource === 'hermes').map((a) => [a, agentUsage.get(a)]),
@@ -536,7 +538,7 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel | Note
       );
       const project = requireProject('thread:create', projectId);
       const thread = await createThreadRecord(project, {
-        title: title ?? DEFAULT_THREAD_TITLE,
+        title: title ?? defaultThreadTitle(),
         model,
         permissionMode: safeInitialMode(
           (permissionMode as Thread['permissionMode'] | undefined) ?? store.get().settings.defaultPermissionMode,
@@ -1104,13 +1106,13 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel | Note
     'git:revertFile': async (req) => {
       const { thread } = requireThreadFolder('git:revertFile', req);
       const path = requireRelPath('git:revertFile', (req as { path?: unknown }).path);
-      if (thread.projectId === null) return { ok: false, error: SCRATCH_GIT_ERROR };
+      if (thread.projectId === null) return { ok: false, error: t('git.scratchUnavailable') };
       return s.gitService.revertFile(thread.cwd, path);
     },
 
     'git:commit': async (req) => {
       const { thread } = requireThreadFolder('git:commit', req);
-      if (thread.projectId === null) return { ok: false, error: SCRATCH_GIT_ERROR };
+      if (thread.projectId === null) return { ok: false, error: t('git.scratchUnavailable') };
       const message = (req as { message?: unknown }).message;
       assertReq('git:commit', isString(message) && message.length <= 10_000, 'message must be a string');
       return s.gitService.commit(thread.cwd, message as string);
@@ -1118,8 +1120,8 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel | Note
 
     'git:merge': async (req) => {
       const { thread, projectPath } = requireThreadFolder('git:merge', req);
-      if (thread.projectId === null) return { ok: false, error: SCRATCH_GIT_ERROR };
-      if (!thread.worktree) return { ok: false, error: 'worktree 스레드가 아닙니다' };
+      if (thread.projectId === null) return { ok: false, error: t('git.scratchUnavailable') };
+      if (!thread.worktree) return { ok: false, error: t('git.notWorktreeThread') };
       return s.gitService.merge(thread.cwd, projectPath);
     },
 
@@ -1131,7 +1133,7 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel | Note
 
     'git:pushPr': async (req) => {
       const { thread, projectPath } = requireThreadFolder('git:pushPr', req);
-      if (thread.projectId === null) return { ok: false, error: SCRATCH_GIT_ERROR };
+      if (thread.projectId === null) return { ok: false, error: t('git.scratchUnavailable') };
       const { title, body } = req as { title?: unknown; body?: unknown };
       assertReq('git:pushPr', isNonEmptyString(title) && title.length <= 300, 'title required');
       assertReq('git:pushPr', isString(body) && body.length <= 20_000, 'body must be a string');
@@ -1140,12 +1142,12 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel | Note
 
     'git:createBranch': async (req) => {
       const { thread } = requireThreadFolder('git:createBranch', req);
-      if (thread.projectId === null) return { ok: false, error: SCRATCH_GIT_ERROR };
+      if (thread.projectId === null) return { ok: false, error: t('git.scratchUnavailable') };
       const name = (req as { name?: unknown }).name;
       assertReq('git:createBranch', isString(name) && name.length <= 256, 'name must be a string');
       // Only a thread's own worktree (created and recorded by main) is ever switched.
       if (!thread.worktree || resolve(thread.cwd) !== resolve(thread.worktree.path)) {
-        return { ok: false, error: 'worktree 스레드에서만 브랜치를 만들 수 있습니다' };
+        return { ok: false, error: t('git.branchWorktreeOnly') };
       }
       return s.gitService.createBranch(thread.worktree.path, name as string);
     },
@@ -1161,11 +1163,11 @@ function buildHandlers(s: RegisterIpcServices): Omit<Handlers, NavChannel | Note
       );
       const path = await dialogs.saveMarkdown(markdownFileName(thread.title));
       if (!path) return { ok: false };
-      if (!isAbsolute(path)) return { ok: false, error: '저장 경로가 올바르지 않습니다' };
+      if (!isAbsolute(path)) return { ok: false, error: t('export.badPath') };
       try {
         await writeFile(path, markdown, 'utf8');
       } catch (err) {
-        return { ok: false, error: `저장하지 못했습니다: ${err instanceof Error ? err.message : String(err)}` };
+        return { ok: false, error: t('export.saveFailed', { error: err instanceof Error ? err.message : String(err) }) };
       }
       return { ok: true, path };
     },

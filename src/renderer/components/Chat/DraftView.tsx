@@ -10,6 +10,8 @@ import type { SlashSource } from './SlashMenu';
 import { AcpModelChip, AgentChip, FolderChip, ModelPicker, PermissionChip, SystemModelTag } from './ComposerControls';
 import { codexEffortChoices, codexModelChoices, effortValueLabel, hermesModelChip } from './acpChips';
 import { BoltIcon } from './icons';
+import { t } from '../../../shared/i18n';
+import { tNodes } from '../../i18n';
 import './Chat.css';
 
 export interface DraftViewProps {
@@ -28,12 +30,14 @@ export interface DraftViewProps {
 }
 
 /** Starter prompts on the empty screen; a click puts the text in the composer (nothing is sent). */
-export const SUGGESTED_PROMPTS: readonly { key: string; title: string; text: string; icon: 'tour' | 'bug' | 'test' | 'docs' }[] = [
-  { key: 'tour', title: '코드베이스 둘러보기', text: '이 저장소의 구조와 주요 모듈이 어떻게 연결되는지 설명해 주세요.', icon: 'tour' },
-  { key: 'bug', title: '버그 찾아 고치기', text: '최근 변경 사항에서 버그가 생길 만한 곳을 찾아 원인을 설명하고 고쳐 주세요.', icon: 'bug' },
-  { key: 'test', title: '테스트 보강하기', text: '테스트가 부족한 핵심 로직을 찾아 단위 테스트를 추가해 주세요.', icon: 'test' },
-  { key: 'docs', title: 'README 다듬기', text: 'README를 읽고 설치·실행 방법에서 빠지거나 오래된 부분을 보완해 주세요.', icon: 'docs' },
-];
+export function suggestedPrompts(): { key: string; title: string; text: string; icon: 'tour' | 'bug' | 'test' | 'docs' }[] {
+  return [
+    { key: 'tour', title: t('draft.suggest.tour'), text: t('draft.suggest.tour.text'), icon: 'tour' },
+    { key: 'bug', title: t('draft.suggest.bug'), text: t('draft.suggest.bug.text'), icon: 'bug' },
+    { key: 'test', title: t('draft.suggest.test'), text: t('draft.suggest.test.text'), icon: 'test' },
+    { key: 'docs', title: t('draft.suggest.docs'), text: t('draft.suggest.docs.text'), icon: 'docs' },
+  ];
+}
 
 const SUGGESTION_ICON = {
   tour: <GlyphCode width={16} height={16} />,
@@ -45,10 +49,10 @@ const SUGGESTION_ICON = {
 /** Time-of-day greeting. */
 export function greeting(date: Date = new Date()): string {
   const h = date.getHours();
-  if (h < 5) return '늦은 밤이에요';
-  if (h < 12) return '좋은 아침이에요';
-  if (h < 18) return '좋은 오후예요';
-  return '좋은 저녁이에요';
+  if (h < 5) return t('draft.greeting.night');
+  if (h < 12) return t('draft.greeting.morning');
+  if (h < 18) return t('draft.greeting.afternoon');
+  return t('draft.greeting.evening');
 }
 
 /**
@@ -169,20 +173,26 @@ export function DraftView({
           <BrandMark size={64} />
         </div>
         <p className="hc-draft__greeting">{greeting()}</p>
-        <h1 className="hc-draft__title">무엇을 만들어 볼까요?</h1>
+        <h1 className="hc-draft__title">{t('draft.title')}</h1>
         {project ? (
           <p className="hc-draft__sub">
             {draft.base ? (
               <span data-testid="draft-pr-base">
-                <span className="hc-draft__folder">{project.name}</span>의 PR #{draft.base.pr}{' '}
-                <span className="hc-draft__folder">{draft.base.branch}</span>에서 새 worktree로 시작합니다{' '}
+                {tNodes(
+                  'draft.base',
+                  {
+                    project: <span className="hc-draft__folder">{project.name}</span>,
+                    branch: <span className="hc-draft__folder">{draft.base.branch}</span>,
+                  },
+                  { pr: draft.base.pr },
+                )}{' '}
                 <button type="button" className="hc-draft__base-clear" onClick={() => onDraftChange({ base: null })}>
-                  PR 해제
+                  {t('draft.base.clear')}
                 </button>
               </span>
             ) : (
               <>
-                <span className="hc-draft__folder">{project.name}</span>에서 새 worktree로 시작합니다
+                {tNodes('draft.worktree', { project: <span className="hc-draft__folder">{project.name}</span> })}
               </>
             )}
           </p>
@@ -232,8 +242,8 @@ export function DraftView({
           New Task Start
         </button>
       </div>
-      <ul className="hc-suggest" aria-label="추천 프롬프트">
-        {SUGGESTED_PROMPTS.map((p, i) => (
+      <ul className="hc-suggest" aria-label={t('draft.suggest.aria')}>
+        {suggestedPrompts().map((p, i) => (
           <li key={p.key} style={{ ['--hc-i' as string]: i }}>
             <button
               type="button"

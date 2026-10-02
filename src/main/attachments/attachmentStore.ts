@@ -19,6 +19,7 @@ import {
   type ImageMediaType,
 } from '../../core/attachments';
 import type { AttachRejection, AttachResult, AttachmentInfo, ChatImage, PromptFile } from '../../shared/types';
+import { t } from '../../shared/i18n';
 
 /** Scales an image down until its encoding fits `maxBytes` (Electron nativeImage in the app); null = cannot. */
 export type ImageResizer = (bytes: Buffer, mediaType: ImageMediaType, maxBytes: number) => { bytes: Buffer; mediaType: ImageMediaType } | null;
@@ -88,31 +89,31 @@ export class AttachmentStore {
   /** A picked / dropped file: absolute path -> real path -> regular file within the read cap -> typed content. */
   async fromPath(path: unknown): Promise<AttachmentInfo> {
     if (typeof path !== 'string' || path.length === 0 || path.length > 4096 || path.includes('\0') || !isAbsolute(path)) {
-      throw new AttachmentError('잘못된 경로입니다');
+      throw new AttachmentError(t('attach.badPath'));
     }
     let real: string;
     try {
       real = await realpath(path);
     } catch {
-      throw new AttachmentError('파일을 찾을 수 없습니다');
+      throw new AttachmentError(t('error.fileNotFound'));
     }
     // stat before open: a FIFO / device would block the open itself.
     const pre = await stat(real).catch(() => null);
-    if (!pre) throw new AttachmentError('파일을 찾을 수 없습니다');
-    if (pre.isDirectory()) throw new AttachmentError('폴더는 첨부할 수 없습니다');
-    if (!pre.isFile()) throw new AttachmentError('일반 파일만 첨부할 수 있습니다');
-    if (pre.size > MAX_ATTACH_READ_BYTES) throw new AttachmentError(`${formatBytes(MAX_ATTACH_READ_BYTES)}보다 큽니다`);
+    if (!pre) throw new AttachmentError(t('error.fileNotFound'));
+    if (pre.isDirectory()) throw new AttachmentError(t('attach.folder'));
+    if (!pre.isFile()) throw new AttachmentError(t('attach.regularOnly'));
+    if (pre.size > MAX_ATTACH_READ_BYTES) throw new AttachmentError(t('attach.tooLarge', { size: formatBytes(MAX_ATTACH_READ_BYTES) }));
     const fh = await open(real, OPEN_FLAGS).catch(() => {
-      throw new AttachmentError('일반 파일만 첨부할 수 있습니다');
+      throw new AttachmentError(t('attach.regularOnly'));
     });
     let bytes: Buffer;
     try {
       const st = await fh.stat();
       // Swapped between the checks and the open: refuse rather than read something else.
-      if (!st.isFile() || st.ino !== pre.ino || st.dev !== pre.dev) throw new AttachmentError('일반 파일만 첨부할 수 있습니다');
+      if (!st.isFile() || st.ino !== pre.ino || st.dev !== pre.dev) throw new AttachmentError(t('attach.regularOnly'));
       const buf = Buffer.alloc(Math.min(st.size, MAX_ATTACH_READ_BYTES) + 1);
       const { bytesRead } = await fh.read(buf, 0, buf.length, 0);
-      if (bytesRead > MAX_ATTACH_READ_BYTES) throw new AttachmentError(`${formatBytes(MAX_ATTACH_READ_BYTES)}보다 큽니다`);
+      if (bytesRead > MAX_ATTACH_READ_BYTES) throw new AttachmentError(t('attach.tooLarge', { size: formatBytes(MAX_ATTACH_READ_BYTES) }));
       bytes = buf.subarray(0, bytesRead);
     } finally {
       await fh.close();
@@ -122,9 +123,9 @@ export class AttachmentStore {
 
   /** Pasted / path-less dropped bytes. */
   fromBytes(name: unknown, bytes: unknown): AttachmentInfo {
-    if (typeof name !== 'string' || name.length > 4096) throw new AttachmentError('잘못된 파일 이름입니다');
-    if (!(bytes instanceof Uint8Array)) throw new AttachmentError('잘못된 파일입니다');
-    if (bytes.length > MAX_ATTACH_READ_BYTES) throw new AttachmentError(`${formatBytes(MAX_ATTACH_READ_BYTES)}보다 큽니다`);
+    if (typeof name !== 'string' || name.length > 4096) throw new AttachmentError(t('attach.badName'));
+    if (!(bytes instanceof Uint8Array)) throw new AttachmentError(t('attach.badFile'));
+    if (bytes.length > MAX_ATTACH_READ_BYTES) throw new AttachmentError(t('attach.tooLarge', { size: formatBytes(MAX_ATTACH_READ_BYTES) }));
     return this.add(safeName(name), Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength), undefined);
   }
 
@@ -135,13 +136,13 @@ export class AttachmentStore {
     for (const [i, item] of items.entries()) {
       const name = safeName(nameOf(item));
       if (i >= MAX_ATTACHMENTS) {
-        rejected.push({ name, reason: `한 메시지에 ${MAX_ATTACHMENTS}개까지 첨부할 수 있습니다` });
+        rejected.push({ name, reason: t('attach.maxCount', { max: MAX_ATTACHMENTS }) });
         continue;
       }
       try {
         attachments.push(await read(item));
       } catch (err) {
-        rejected.push({ name, reason: err instanceof AttachmentError ? err.reason : '파일을 읽지 못했습니다' });
+        rejected.push({ name, reason: err instanceof AttachmentError ? err.reason : t('attach.readFailed') });
       }
     }
     return { attachments, rejected };

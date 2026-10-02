@@ -76,6 +76,8 @@ import type {
   UiPermissionMode,
   UsageSample,
 } from '../shared/types';
+import { useLanguage } from './i18n';
+import { t } from '../shared/i18n';
 
 const USAGE_HISTORY_RANGE_MS = 7 * DAY_MS;
 const USAGE_HISTORY_REFRESH_MS = 5 * MINUTE_MS;
@@ -92,17 +94,17 @@ function sendErrorMessage(result: ChatSendResult | { accepted: false; reason?: C
   if (result.accepted) return null;
   switch (result.reason) {
     case 'busy':
-      return '이 스레드가 아직 실행 중입니다. 턴이 끝나기를 기다리거나 정지를 누르세요.';
+      return t('send.err.busy');
     case 'no-accounts':
-      return '사용할 수 있는 계정이 없습니다. 계정 화면에서 계정을 추가하거나 활성화하세요.';
+      return t('send.err.noAccounts');
     case 'auth':
-      return '모든 계정에 다시 로그인해야 합니다. 계정 화면에서 다시 로그인하세요.';
+      return t('send.err.auth');
     case 'agent-unavailable':
-      return '이 에이전트를 사용할 수 없습니다. 설치·로그인 상태를 계정 화면에서 확인하세요.';
+      return t('send.err.agentUnavailable');
     case 'attachment':
-      return '첨부를 보낼 수 없습니다: 이 에이전트가 받을 수 없는 형식이거나 첨부가 만료되었습니다. 다시 첨부해 주세요.';
+      return t('send.err.attachment');
     default:
-      return '메시지를 보내지 못했습니다.';
+      return t('send.err.generic');
   }
 }
 
@@ -130,6 +132,7 @@ const loadEditorList = () => invoke('editor:list');
  * underneath.
  */
 export function App() {
+  const language = useLanguage();
   const projects = useAppStore(selectProjects);
   const threads = useAppStore(selectThreads);
   const accounts = useAppStore(selectAccounts);
@@ -223,7 +226,7 @@ export function App() {
       .sendMessage(threadId, text, images, attachmentIds)
       // `{accepted:true, reason:'waiting'}`: queued behind the pool reset; the thread shows its countdown.
       .then((result) => setSendError(sendErrorMessage(result)))
-      .catch((err: unknown) => setSendError(`메시지를 보내지 못했습니다: ${ipcErrorMessage(err)}`));
+      .catch((err: unknown) => setSendError(t('send.err.withError', { error: ipcErrorMessage(err) })));
   }, []);
 
   const onStartThread = useCallback(async (text: string, attachmentIds?: string[]) => {
@@ -239,7 +242,7 @@ export function App() {
       setSendError(sendErrorMessage({ accepted: false, reason: result.reason }));
       return false;
     } catch (err) {
-      setSendError(`채팅을 시작하지 못했습니다: ${ipcErrorMessage(err)}`);
+      setSendError(t('send.err.start', { error: ipcErrorMessage(err) }));
       return false;
     }
   }, []);
@@ -327,7 +330,7 @@ export function App() {
   const onOpenEditor = useCallback((editor: EditorId) => {
     const threadId = useAppStore.getState().selectedThreadId;
     if (!threadId) return;
-    void invoke('editor:open', { threadId, editor }).catch((err: unknown) => setSendError(`앱에서 열지 못했습니다: ${ipcErrorMessage(err)}`));
+    void invoke('editor:open', { threadId, editor }).catch((err: unknown) => setSendError(t('send.err.openApp', { error: ipcErrorMessage(err) })));
   }, []);
 
   const onRenameThread = useCallback((threadId: string, title: string) => useAppStore.getState().renameThread(threadId, title), []);
@@ -380,7 +383,7 @@ export function App() {
     void useAppStore
       .getState()
       .setThreadPermissionMode(threadId, mode)
-      .catch((err: unknown) => setSendError(`권한 모드를 바꾸지 못했습니다: ${ipcErrorMessage(err)}`));
+      .catch((err: unknown) => setSendError(t('send.err.mode', { error: ipcErrorMessage(err) })));
   }, []);
   // 더보기 > 계정 고정: the open thread's pin, or the draft's before the thread exists.
   const onPinAccount = useCallback((accountId: string | null) => {
@@ -424,6 +427,7 @@ export function App() {
   const paletteCommands = useMemo<PaletteCommand[]>(() => {
     const s = () => useAppStore.getState();
     const byProject = new Map(projects.map((p) => [p.id, p.name]));
+    const threadGroup = t('md.thread');
     const threadItems: PaletteCommand[] = [...threads]
       .filter((t) => !t.archived)
       .sort((a, b) => b.updatedAt - a.updatedAt)
@@ -431,7 +435,7 @@ export function App() {
         id: `thread:${t.id}`,
         title: t.title,
         subtitle: t.projectId === null ? undefined : byProject.get(t.projectId),
-        group: '스레드',
+        group: threadGroup,
         icon: (
           <span className="hc-palette__agent" data-agent={t.agent}>
             <AgentIcon kind={t.agent} size={15} />
@@ -443,27 +447,27 @@ export function App() {
       }));
     const primaryEditor = editors.find((e) => e.id === settings.defaultEditor) ?? editors[0];
     const actions: PaletteCommand[] = [
-      { id: 'new-chat', title: '새 채팅', group: '작업', shortcut: '⌘N', keywords: ['new', 'chat', 'draft'], run: () => s().newDraft() },
+      { id: 'new-chat', title: t('menu.newChat'), group: t('palette.group.actions'), shortcut: '⌘N', keywords: ['new', 'chat', 'draft'], run: () => s().newDraft() },
       {
         id: 'new-task-start',
         title: 'New Task Start',
-        group: '작업',
+        group: t('palette.group.actions'),
         shortcut: '⌘⇧N',
         icon: <BoltIcon />,
         keywords: ['new task', 'start', 'template', 'worktree'],
         run: () => s().startNewTask(),
       },
-      { id: 'settings', title: '설정', group: '작업', shortcut: '⌘,', icon: <GlyphSettings />, keywords: ['settings', 'preferences'], run: onOpenSettings },
-      { id: 'accounts', title: '계정 관리', group: '작업', icon: <GlyphPeople />, keywords: ['accounts'], run: onOpenAccounts },
-      { id: 'usage', title: '사용량', group: '작업', icon: <GlyphChart />, keywords: ['usage', 'limit'], run: onOpenUsage },
-      { id: 'prs', title: '풀 리퀘스트', group: '작업', icon: <IconPullRequest />, keywords: ['pull request', 'pr', 'github', 'gh'], run: onOpenPrs },
-      { id: 'schedule', title: '예약', group: '작업', icon: <IconClock />, keywords: ['schedule', 'cron', 'automation'], run: onOpenSchedule },
-      { id: 'plugins', title: '플러그인', group: '작업', icon: <IconPlug />, keywords: ['plugins', 'skills', 'mcp', 'hooks'], run: onOpenPlugins },
-      { id: 'notes', title: '노트', group: '작업', icon: <IconNote />, keywords: ['notes', 'markdown', 'study', '노트'], run: onOpenNotes },
+      { id: 'settings', title: t('settings.title'), group: t('palette.group.actions'), shortcut: '⌘,', icon: <GlyphSettings />, keywords: ['settings', 'preferences'], run: onOpenSettings },
+      { id: 'accounts', title: t('palette.accounts'), group: t('palette.group.actions'), icon: <GlyphPeople />, keywords: ['accounts'], run: onOpenAccounts },
+      { id: 'usage', title: t('nav.usage'), group: t('palette.group.actions'), icon: <GlyphChart />, keywords: ['usage', 'limit'], run: onOpenUsage },
+      { id: 'prs', title: t('nav.prs'), group: t('palette.group.actions'), icon: <IconPullRequest />, keywords: ['pull request', 'pr', 'github', 'gh'], run: onOpenPrs },
+      { id: 'schedule', title: t('nav.schedule'), group: t('palette.group.actions'), icon: <IconClock />, keywords: ['schedule', 'cron', 'automation'], run: onOpenSchedule },
+      { id: 'plugins', title: t('nav.plugins'), group: t('palette.group.actions'), icon: <IconPlug />, keywords: ['plugins', 'skills', 'mcp', 'hooks'], run: onOpenPlugins },
+      { id: 'notes', title: t('nav.notes'), group: t('palette.group.actions'), icon: <IconNote />, keywords: ['notes', 'markdown', 'study', t('nav.notes')], run: onOpenNotes },
       {
         id: 'panel-changes',
-        title: panel === 'changes' ? '변경사항 패널 닫기' : '변경사항 패널 열기',
-        group: '패널',
+        title: panel === 'changes' ? t('panel.closeChanges') : t('palette.openChanges'),
+        group: t('shortcuts.panels'),
         shortcut: '⌘⇧D',
         icon: <GlyphChanges />,
         keywords: ['changes', 'diff', 'git'],
@@ -474,8 +478,8 @@ export function App() {
       },
       {
         id: 'panel-terminal',
-        title: terminalOpen ? '하단 터미널 닫기' : '하단 터미널 열기',
-        group: '패널',
+        title: terminalOpen ? t('toolbar.terminal.close') : t('toolbar.terminal.open'),
+        group: t('shortcuts.panels'),
         shortcut: '⌘J',
         icon: <GlyphTerminal />,
         keywords: ['terminal', 'shell'],
@@ -488,22 +492,23 @@ export function App() {
         ? [
             {
               id: 'open-editor',
-              title: `${primaryEditor.name}에서 열기`,
+              title: t('env.openIn', { editor: primaryEditor.name }),
               subtitle: activeThread.title,
-              group: '패널',
+              group: t('shortcuts.panels'),
               icon: <GlyphCode />,
               keywords: ['editor', 'open', 'vscode', 'cursor'],
               run: () => onOpenEditor(primaryEditor.id),
             },
           ]
         : []),
-      { id: 'sidebar', title: sidebarCollapsed ? '사이드바 보기' : '사이드바 숨기기', group: '보기', shortcut: '⌘B', keywords: ['sidebar'], run: onToggleSidebar },
-      { id: 'shortcuts', title: '키보드 단축키', group: '보기', icon: <GlyphKeyboard />, keywords: ['shortcuts', 'keys'], run: onShowShortcuts },
-      { id: 'about', title: '앱 정보', group: '보기', icon: <GlyphInfo />, keywords: ['about', 'version'], run: onShowAbout },
+      { id: 'sidebar', title: sidebarCollapsed ? t('sidebar.show') : t('sidebar.hide'), group: t('palette.group.view'), shortcut: '⌘B', keywords: ['sidebar'], run: onToggleSidebar },
+      { id: 'shortcuts', title: t('nav.shortcuts'), group: t('palette.group.view'), icon: <GlyphKeyboard />, keywords: ['shortcuts', 'keys'], run: onShowShortcuts },
+      { id: 'about', title: t('nav.about'), group: t('palette.group.view'), icon: <GlyphInfo />, keywords: ['about', 'version'], run: onShowAbout },
     ];
     // Threads first: the palette opens as thread search; commands follow in the same list.
     return [...threadItems, ...actions];
   }, [
+    language,
     projects,
     threads,
     firstMessages,
@@ -557,7 +562,7 @@ export function App() {
       <aside className="app__sidebar" data-testid="sidebar" aria-hidden={sidebarHidden} inert={sidebarHidden}>
         <div className="app__sidebar-card">
           <div className="app__titlebar app__titlebar--sidebar drag-region">
-            <WindowButton label="사이드바 숨기기 (⌘B)" onClick={onToggleSidebar}>
+            <WindowButton label={`${t('sidebar.hide')} (⌘B)`} onClick={onToggleSidebar}>
               <IconSidebar />
             </WindowButton>
           </div>
@@ -613,10 +618,10 @@ export function App() {
         >
           {sidebarCollapsed ? (
             <div className="app__window-actions">
-              <WindowButton label="사이드바 보기 (⌘B)" onClick={onToggleSidebar}>
+              <WindowButton label={`${t('sidebar.show')} (⌘B)`} onClick={onToggleSidebar}>
                 <IconSidebar />
               </WindowButton>
-              <WindowButton label="새 채팅 (⌘N)" onClick={onNewChat}>
+              <WindowButton label={`${t('menu.newChat')} (⌘N)`} onClick={onNewChat}>
                 <IconCompose />
               </WindowButton>
             </div>
@@ -759,7 +764,7 @@ export function App() {
           onClose={onCloseTerminal}
         />
       </main>
-      <section className="app__panel" aria-label="오른쪽 패널">
+      <section className="app__panel" aria-label={t('app.rightPanel')}>
         <RightPanel
           tab={shownPanel}
           thread={activeThread}
@@ -774,7 +779,7 @@ export function App() {
         open={paletteOpen}
         onClose={() => useAppStore.getState().setPaletteOpen(false)}
         commands={paletteCommands}
-        placeholder="스레드 제목·내용 검색 또는 명령 실행…"
+        placeholder={t('app.palettePlaceholder')}
       />
       <ShortcutsModal open={modal === 'shortcuts'} onClose={onCloseModal} />
       <AboutModal open={modal === 'about'} onClose={onCloseModal} loadInfo={loadAppInfo} homeDir={homeDir} />

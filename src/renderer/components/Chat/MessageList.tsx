@@ -22,6 +22,8 @@ import { UserFiles } from '../Images/ComposerAttachments';
 import { collectTurns } from '../../../core/turnScrubber';
 import { TurnScrubber } from './TurnScrubber';
 import './TurnScrubber.css';
+import { useLanguage } from '../../i18n';
+import { t } from '../../../shared/i18n';
 import './Chat.css';
 
 export interface MessageListProps {
@@ -94,7 +96,7 @@ function routingByTurn(nodes: readonly ChatNode[]): Map<string, SubagentSummary[
 function AgentImages({ images }: { images: NonNullable<Extract<ChatItem, { type: 'assistant-text' }>['images']> }) {
   return (
     <div className="hc-say-images">
-      <ToolImages images={images} label="에이전트 이미지" />
+      <ToolImages images={images} label={t('images.agent')} />
     </div>
   );
 }
@@ -121,7 +123,7 @@ export function MessageList({
   streamingItemId = null,
   permissionRequests,
   onPermissionDecision,
-  emptyLabel = '아직 메시지가 없습니다',
+  emptyLabel = t('messages.empty'),
   onScrolledChange,
   agent = 'claude-code',
   onEditResend,
@@ -130,6 +132,7 @@ export function MessageList({
   errorActions = null,
   scrubber = null,
 }: MessageListProps) {
+  const language = useLanguage();
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
   // Subagent view (Codex style): the main area shows one subagent's transcript until "← 메인 대화" / Escape.
@@ -184,7 +187,7 @@ export function MessageList({
   const errorId = useMemo(() => (errorActions ? latestErrorId(items) : null), [errorActions, items]);
   const subNode = subView && subView.threadId === threadId ? findSubagentNode(nodes, subView.toolUseId) : null;
   const subKey = subNode?.item.toolUseId ?? null;
-  const turns = useMemo(() => (scrubber ? collectTurns(items) : []), [scrubber, items]);
+  const turns = useMemo(() => (scrubber ? collectTurns(items) : []), [scrubber, items, language]);
   const bookmarkList = scrubber?.bookmarks;
   const bookmarks = useMemo(() => (bookmarkList && bookmarkList.length > 0 ? new Set(bookmarkList) : NO_BOOKMARKS), [bookmarkList]);
   const showScrubber = scrubber !== null && !subNode && turns.length >= SCRUBBER_MIN_TURNS;
@@ -298,6 +301,7 @@ function answerOf(item: AssistantTextItem): { text: string; warning: ReturnType<
 
 /** One paragraph run of the turn: markdown, its images, and a model warning streamed ahead of it. */
 const TurnText = memo(function TurnText({ item, streaming }: { item: AssistantTextItem; streaming: boolean }) {
+  useLanguage();
   const { text, warning } = answerOf(item);
   return (
     <>
@@ -346,7 +350,7 @@ function AgentTurn({
         <div className="hc-say hc-say--lead hc-turn__box">
           <AgentNameTag agent={agent} />
           {streaming || copyText === '' ? null : (
-            <MarkdownCopyChip getText={() => copyText} label="응답을 마크다운으로 복사" className="hc-turn__copy" />
+            <MarkdownCopyChip getText={() => copyText} label={t('reply.copy')} className="hc-turn__copy" />
           )}
           {segments.map((seg) => {
             switch (seg.kind) {
@@ -406,6 +410,7 @@ const MessageItem = memo(function MessageItem({
   onEditResend?: (text: string) => void;
   errorActions?: ErrorCardActions | null;
 }) {
+  useLanguage();
   switch (item.type) {
     case 'user':
       return (
@@ -415,14 +420,14 @@ const MessageItem = memo(function MessageItem({
               <button
                 type="button"
                 className="hc-msg-action"
-                aria-label="편집해서 다시 보내기"
-                title="편집해서 다시 보내기"
+                aria-label={t('message.editResend')}
+                title={t('message.editResend')}
                 onClick={() => onEditResend(item.text)}
               >
                 <GlyphEditResend width={14} height={14} />
               </button>
             ) : null}
-            <CopyButton text={item.text} label="메시지 복사" className="hc-msg-action" />
+            <CopyButton text={item.text} label={t('message.copy')} className="hc-msg-action" />
           </div>
           <div className="hc-msg-user__bubble">
             {item.images && item.images.length > 0 ? <UserImages images={item.images} /> : null}

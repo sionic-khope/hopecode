@@ -2,6 +2,7 @@
 // wall-clock fields with `new Date(y, m, d, h, min)`), and the "due / missed" judgment the main scheduler applies.
 import { EFFORT_LEVELS, UI_PERMISSION_MODES } from '../shared/constants';
 import type { Schedule, ScheduleInput, ScheduleRepeat, Weekday } from '../shared/nav';
+import { formatDate, t } from '../shared/i18n';
 
 /** An occurrence found later than this after its time was not run on time (app closed, machine asleep): "놓침". */
 export const SCHEDULE_GRACE_MS = 5 * 60_000;
@@ -10,7 +11,11 @@ export const SCHEDULE_RUNS_KEPT = 20;
 /** Upper bound when counting missed occurrences (a daily schedule closed for years stops counting here). */
 const MAX_MISSED_COUNT = 999;
 
-export const WEEKDAY_LABELS: readonly string[] = ['일', '월', '화', '수', '목', '금', '토'];
+/** Weekday name (0 = Sunday) in the current language: `월` / `Mon` (short) or `월요일` / `Monday` (long). */
+export function weekdayLabel(weekday: number, width: 'short' | 'long' = 'short'): string {
+  // 2024-01-07 was a Sunday.
+  return formatDate(new Date(2024, 0, 7 + weekday), { weekday: width });
+}
 
 /** `HH:MM` (24h) -> hours/minutes, or null. */
 export function parseTime(time: string): { h: number; m: number } | null {
@@ -105,21 +110,21 @@ function isObj(v: unknown): v is Record<string, unknown> {
 }
 
 function parseRepeat(raw: unknown): ScheduleRepeat | string {
-  if (!isObj(raw)) return '반복 설정이 필요합니다';
+  if (!isObj(raw)) return t('schedule.err.repeatRequired');
   switch (raw.kind) {
     case 'once':
-      return typeof raw.at === 'number' && Number.isFinite(raw.at) ? { kind: 'once', at: Math.floor(raw.at) } : '실행 시각이 올바르지 않습니다';
+      return typeof raw.at === 'number' && Number.isFinite(raw.at) ? { kind: 'once', at: Math.floor(raw.at) } : t('schedule.err.badAt');
     case 'daily':
     case 'weekdays':
-      return typeof raw.time === 'string' && parseTime(raw.time) ? { kind: raw.kind, time: raw.time } : '시각은 HH:MM 형식이어야 합니다';
+      return typeof raw.time === 'string' && parseTime(raw.time) ? { kind: raw.kind, time: raw.time } : t('schedule.err.badTime');
     case 'weekly':
-      if (typeof raw.time !== 'string' || !parseTime(raw.time)) return '시각은 HH:MM 형식이어야 합니다';
+      if (typeof raw.time !== 'string' || !parseTime(raw.time)) return t('schedule.err.badTime');
       if (typeof raw.weekday !== 'number' || !Number.isInteger(raw.weekday) || raw.weekday < 0 || raw.weekday > 6) {
-        return '요일이 올바르지 않습니다';
+        return t('schedule.err.badWeekday');
       }
       return { kind: 'weekly', weekday: raw.weekday as Weekday, time: raw.time };
     default:
-      return '알 수 없는 반복 설정입니다';
+      return t('schedule.err.unknownRepeat');
   }
 }
 
@@ -131,23 +136,23 @@ export function validateScheduleInput(
   raw: unknown,
   opts: { projectIds: ReadonlySet<string>; now?: number },
 ): { ok: true; input: ScheduleInput } | { ok: false; error: string } {
-  if (!isObj(raw)) return { ok: false, error: '예약 정보가 없습니다' };
-  if (typeof raw.projectId !== 'string' || !opts.projectIds.has(raw.projectId)) return { ok: false, error: '등록된 프로젝트를 고르세요' };
-  if (typeof raw.prompt !== 'string' || raw.prompt.trim().length === 0) return { ok: false, error: '프롬프트를 입력하세요' };
-  if (raw.prompt.length > SCHEDULE_PROMPT_MAX) return { ok: false, error: '프롬프트가 너무 깁니다' };
-  if (typeof raw.model !== 'string' || raw.model.length === 0 || raw.model.length > 200) return { ok: false, error: '모델이 올바르지 않습니다' };
-  if (raw.permissionMode === 'bypassPermissions') return { ok: false, error: '예약에서는 전체 액세스 권한 모드를 쓸 수 없습니다' };
+  if (!isObj(raw)) return { ok: false, error: t('schedule.err.missing') };
+  if (typeof raw.projectId !== 'string' || !opts.projectIds.has(raw.projectId)) return { ok: false, error: t('schedule.err.pickProject') };
+  if (typeof raw.prompt !== 'string' || raw.prompt.trim().length === 0) return { ok: false, error: t('schedule.err.enterPrompt') };
+  if (raw.prompt.length > SCHEDULE_PROMPT_MAX) return { ok: false, error: t('schedule.err.promptTooLong') };
+  if (typeof raw.model !== 'string' || raw.model.length === 0 || raw.model.length > 200) return { ok: false, error: t('schedule.err.badModel') };
+  if (raw.permissionMode === 'bypassPermissions') return { ok: false, error: t('schedule.err.noBypass') };
   if (typeof raw.permissionMode !== 'string' || !(UI_PERMISSION_MODES as readonly string[]).includes(raw.permissionMode)) {
-    return { ok: false, error: '권한 모드가 올바르지 않습니다' };
+    return { ok: false, error: t('schedule.err.badMode') };
   }
   if (raw.effort !== null && !(typeof raw.effort === 'string' && (EFFORT_LEVELS as readonly string[]).includes(raw.effort))) {
-    return { ok: false, error: '추론 강도가 올바르지 않습니다' };
+    return { ok: false, error: t('schedule.err.badEffort') };
   }
-  if (typeof raw.enabled !== 'boolean') return { ok: false, error: '활성 여부가 필요합니다' };
+  if (typeof raw.enabled !== 'boolean') return { ok: false, error: t('schedule.err.enabledRequired') };
   const repeat = parseRepeat(raw.repeat);
   if (typeof repeat === 'string') return { ok: false, error: repeat };
   if (repeat.kind === 'once' && opts.now !== undefined && raw.enabled && repeat.at <= opts.now) {
-    return { ok: false, error: '이미 지난 시각입니다' };
+    return { ok: false, error: t('schedule.err.past') };
   }
   return {
     ok: true,
@@ -173,14 +178,14 @@ export function formatHm(ms: number): string {
 export function describeRepeat(repeat: ScheduleRepeat): string {
   switch (repeat.kind) {
     case 'once': {
-      const d = new Date(repeat.at);
-      return `1회 · ${d.getMonth() + 1}월 ${d.getDate()}일 ${formatHm(repeat.at)}`;
+      const date = formatDate(repeat.at, { month: 'short', day: 'numeric' });
+      return t('schedule.repeat.once', { date, time: formatHm(repeat.at) });
     }
     case 'daily':
-      return `매일 ${repeat.time}`;
+      return t('schedule.repeat.daily', { time: repeat.time });
     case 'weekdays':
-      return `평일 ${repeat.time}`;
+      return t('schedule.repeat.weekdays', { time: repeat.time });
     case 'weekly':
-      return `매주 ${WEEKDAY_LABELS[repeat.weekday]} ${repeat.time}`;
+      return t('schedule.repeat.weekly', { day: weekdayLabel(repeat.weekday), time: repeat.time });
   }
 }

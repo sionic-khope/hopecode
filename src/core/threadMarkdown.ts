@@ -1,5 +1,6 @@
 // Thread -> Markdown for "공유" (file export in main, clipboard copy in the renderer). Pure: no fs, no DOM.
 import type { ChatItem, ToolItem } from '../shared/types';
+import { t } from '../shared/i18n';
 
 export interface ThreadMarkdownMeta {
   title: string;
@@ -41,8 +42,8 @@ export function toolTarget(item: Pick<ToolItem, 'name' | 'input'>): string {
 }
 
 function toolStatus(item: ToolItem): string {
-  if (item.result === undefined) return '실행 중';
-  return item.isError ? '실패' : '완료';
+  if (item.result === undefined) return t('md.tool.running');
+  return item.isError ? t('md.tool.failed') : t('md.tool.done');
 }
 
 /** Inline code span that survives backticks inside `text`. */
@@ -56,7 +57,7 @@ function inlineCode(text: string): string {
 
 function toolLine(item: ToolItem): string {
   const target = toolTarget(item);
-  return `- 도구 **${item.name}**${target ? ` ${inlineCode(target)}` : ''} (${toolStatus(item)})`;
+  return `- ${t('md.tool')} **${item.name}**${target ? ` ${inlineCode(target)}` : ''} (${toolStatus(item)})`;
 }
 
 function quote(text: string): string {
@@ -77,10 +78,10 @@ function isoDate(ms: number): string {
  */
 export function threadToMarkdown(meta: ThreadMarkdownMeta, items: readonly ChatItem[]): string {
   const agent = meta.agentName ?? 'Claude';
-  const out: string[] = [`# ${meta.title.replace(/\s*\n\s*/g, ' ').trim() || '스레드'}`];
+  const out: string[] = [`# ${meta.title.replace(/\s*\n\s*/g, ' ').trim() || t('md.thread')}`];
   const facts = [
-    meta.project ? `- 프로젝트: ${meta.project}` : null,
-    meta.exportedAt !== undefined ? `- 내보낸 시각: ${isoDate(meta.exportedAt)}` : null,
+    meta.project ? `- ${t('md.project')}: ${meta.project}` : null,
+    meta.exportedAt !== undefined ? `- ${t('md.exportedAt')}: ${isoDate(meta.exportedAt)}` : null,
   ].filter((l): l is string => l !== null);
   if (facts.length > 0) out.push(facts.join('\n'));
 
@@ -88,7 +89,7 @@ export function threadToMarkdown(meta: ThreadMarkdownMeta, items: readonly ChatI
   for (const item of items) {
     switch (item.type) {
       case 'user':
-        out.push('## 사용자', item.text.trim());
+        out.push(`## ${t('md.user')}`, item.text.trim());
         section = 'user';
         break;
       case 'assistant-text':
@@ -103,12 +104,13 @@ export function threadToMarkdown(meta: ThreadMarkdownMeta, items: readonly ChatI
         section = 'agent';
         break;
       case 'notice':
-        out.push(quote(`${item.level === 'error' ? '오류' : item.level === 'warn' ? '경고' : '알림'}: ${item.text.trim()}`));
+        out.push(quote(`${item.level === 'error' ? t('md.notice.error') : item.level === 'warn' ? t('md.notice.warn') : t('md.notice.info')}: ${item.text.trim()}`));
         break;
     }
   }
   // Consecutive tool lines form one list.
-  return `${out.join('\n\n').replace(/(^- 도구 .*)\n\n(?=- 도구 )/gm, '$1\n')}\n`;
+  const tool = t('md.tool').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return `${out.join('\n\n').replace(new RegExp(`(^- ${tool} .*)\\n\\n(?=- ${tool} )`, 'gm'), '$1\n')}\n`;
 }
 
 /** File name for the save dialog: the title without path / reserved characters, `.md`. */

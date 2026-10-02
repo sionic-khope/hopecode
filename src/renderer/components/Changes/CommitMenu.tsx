@@ -5,8 +5,9 @@ import { ipcErrorMessage } from '../../errors';
 import { useAppStore } from '../../store';
 import { Button, Modal, Popover } from '../common';
 import { BranchGlyph } from './ChangesPanel';
-import { SCRATCH_NO_GIT_NOTE, isScratchThread } from './scratchGit';
+import { isScratchThread, scratchNoGitNote } from './scratchGit';
 import { autoCommitMessage, summarizeCounts } from './commitMessage';
+import { t } from '../../../shared/i18n';
 import './Changes.css';
 
 // ---------------------------------------------------------------------------
@@ -81,11 +82,11 @@ function bodyOf(message: string): string {
 
 /** Why "Push + PR 만들기" is unavailable, or null when it can run. */
 function pushBlocker(info: GitRemoteInfo | null, loading: boolean): string | null {
-  if (!info) return loading ? '저장소 정보를 확인하는 중…' : '저장소 정보를 불러오지 못했어요';
-  if (!info.remote) return 'remote가 없습니다';
-  if (!info.ghAvailable) return 'gh CLI가 설치되어 있지 않습니다';
-  if (!info.branch) return '현재 브랜치를 확인할 수 없어요';
-  if (!info.baseBranch) return 'PR 기준 브랜치가 없어요';
+  if (!info) return loading ? t('commit.repo.loading') : t('commit.repo.failed');
+  if (!info.remote) return t('commit.repo.noRemote');
+  if (!info.ghAvailable) return t('commit.repo.noGh');
+  if (!info.branch) return t('commit.repo.noBranch');
+  if (!info.baseBranch) return t('commit.repo.noBase');
   return null;
 }
 
@@ -123,7 +124,7 @@ function MergeModal({
     invoke('git:merge', { threadId })
       .then((res) => {
         if (res.ok) {
-          setOutcome({ kind: 'ok', text: `병합했습니다 → ${res.into}` });
+          setOutcome({ kind: 'ok', text: t('commit.merged', { into: res.into }) });
           bumpGitRevision(threadId);
         } else {
           setOutcome({ kind: 'error', text: res.error });
@@ -139,35 +140,35 @@ function MergeModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="원래 브랜치에 병합할까요?"
-      subtitle="이 스레드의 작업 브랜치를 프로젝트 브랜치로 합칩니다."
+      title={t('commit.merge.title')}
+      subtitle={t('commit.merge.subtitle')}
       icon={<MergeGlyph />}
       width={440}
       dismissible={!busy}
       actions={
         done ? (
           <Button variant="primary" onClick={onClose} data-autofocus>
-            닫기
+            {t('common.close')}
           </Button>
         ) : (
           <>
             <Button variant="secondary" onClick={onClose} disabled={busy}>
-              취소
+              {t('common.cancel')}
             </Button>
             <Button variant="primary" onClick={merge} disabled={busy} data-autofocus>
-              {busy ? '병합하는 중…' : '병합'}
+              {busy ? t('commit.merging') : t('commit.merge')}
             </Button>
           </>
         )
       }
     >
       <dl className="hc-kv">
-        <dt>브랜치</dt>
+        <dt>{t('env.branch')}</dt>
         <dd>
-          {branch} → {baseBranch ?? '원래 브랜치'}
+          {branch} → {baseBranch ?? t('commit.baseBranch')}
         </dd>
       </dl>
-      <p className="hc-commit__note">커밋하지 않은 변경 사항이 있거나 충돌이 생기면 병합하지 않고 멈춰요.</p>
+      <p className="hc-commit__note">{t('commit.merge.note')}</p>
       <OutcomeLine outcome={outcome} />
     </Modal>
   );
@@ -215,7 +216,7 @@ function PushPrModal({
       .then((res) => {
         if (res.ok) {
           setPrUrl(res.url);
-          setOutcome({ kind: 'ok', text: res.url ? 'PR을 만들었습니다' : 'Push했습니다. PR 주소는 확인하지 못했어요.' });
+          setOutcome({ kind: 'ok', text: res.url ? t('commit.prCreated') : t('commit.pushedNoUrl') });
         } else {
           setOutcome({ kind: 'error', text: res.error });
         }
@@ -230,23 +231,23 @@ function PushPrModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Push하고 PR을 만들까요?"
-      subtitle="외부에 게시되는 작업입니다"
+      title={t('commit.pr.title')}
+      subtitle={t('commit.pr.subtitle')}
       icon={<PullRequestGlyph />}
       width={500}
       dismissible={!busy}
       actions={
         done ? (
           <Button variant="primary" onClick={onClose} data-autofocus>
-            닫기
+            {t('common.close')}
           </Button>
         ) : (
           <>
             <Button variant="secondary" onClick={onClose} disabled={busy}>
-              취소
+              {t('common.cancel')}
             </Button>
             <Button variant="primary" onClick={submit} disabled={busy || title.trim() === ''}>
-              {busy ? '만드는 중…' : 'Push + PR 만들기'}
+              {busy ? t('env.creating') : t('commit.pushPr')}
             </Button>
           </>
         )
@@ -258,7 +259,7 @@ function PushPrModal({
           {info?.remote ?? '-'}
           {info?.remoteUrl ? <span className="hc-commit__dim"> · {info.remoteUrl}</span> : null}
         </dd>
-        <dt>브랜치</dt>
+        <dt>{t('env.branch')}</dt>
         <dd>
           {info?.branch ?? '-'} → {info?.baseBranch ?? '-'}
         </dd>
@@ -267,7 +268,7 @@ function PushPrModal({
         <div className="hc-commit__result">
           <OutcomeLine outcome={outcome} />
           {prUrl ? (
-            <code className="hc-commit__url" aria-label="PR 주소">
+            <code className="hc-commit__url" aria-label={t('commit.pr.url')}>
               {prUrl}
             </code>
           ) : null}
@@ -275,7 +276,7 @@ function PushPrModal({
       ) : (
         <div className="hc-commit__fields">
           <label className="hc-commit__field">
-            <span className="hc-commit__label">PR 제목</span>
+            <span className="hc-commit__label">{t('commit.pr.prTitle')}</span>
             <input
               className="hc-commit__input"
               value={title}
@@ -286,7 +287,7 @@ function PushPrModal({
             />
           </label>
           <label className="hc-commit__field">
-            <span className="hc-commit__label">설명</span>
+            <span className="hc-commit__label">{t('commit.pr.body')}</span>
             <textarea
               className="hc-commit__textarea hc-commit__textarea--tall"
               value={body}
@@ -344,12 +345,12 @@ export function CommitMenu(props: CommitMenuProps) {
     <button
       type="button"
       className="hc-toolbar-btn hc-toolbar-btn--split hc-commit-trigger"
-      aria-label="커밋"
-      title={SCRATCH_NO_GIT_NOTE}
+      aria-label={t('notes.commit')}
+      title={scratchNoGitNote()}
       disabled
     >
       <CommitGlyph />
-      <span className="hc-commit-trigger__label">커밋</span>
+      <span className="hc-commit-trigger__label">{t('notes.commit')}</span>
     </button>
   );
 }
@@ -437,7 +438,7 @@ function GitCommitMenu({ thread, anchorRef, request = null }: CommitMenuProps) {
       setMessage(auto);
       textareaRef.current?.focus();
     } else {
-      setOutcome({ kind: 'error', text: '커밋할 변경 사항이 없어요.' });
+      setOutcome({ kind: 'error', text: t('commit.nothing') });
     }
   };
 
@@ -448,7 +449,7 @@ function GitCommitMenu({ thread, anchorRef, request = null }: CommitMenuProps) {
     invoke('git:commit', { threadId: thread.id, message: message.trim() })
       .then((res) => {
         if (res.ok) {
-          setOutcome({ kind: 'ok', text: `커밋했습니다 · ${shortSha(res.sha)}` });
+          setOutcome({ kind: 'ok', text: t('commit.committed', { sha: shortSha(res.sha) }) });
           setMessage('');
           bumpGitRevision(thread.id);
         } else {
@@ -512,17 +513,17 @@ function GitCommitMenu({ thread, anchorRef, request = null }: CommitMenuProps) {
           ref={ownTriggerRef}
           type="button"
           className="hc-toolbar-btn hc-toolbar-btn--split hc-commit-trigger"
-          aria-label="커밋"
+          aria-label={t('notes.commit')}
           aria-haspopup="dialog"
           aria-expanded={open}
-          title="커밋"
+          title={t('notes.commit')}
           onClick={() => {
             if (!open) setOutcome(null);
             setOpen((v) => !v);
           }}
         >
           <CommitGlyph />
-          <span className="hc-commit-trigger__label">커밋</span>
+          <span className="hc-commit-trigger__label">{t('notes.commit')}</span>
           <span className="hc-commit-trigger__chev">
             <ChevronDownGlyph />
           </span>
@@ -535,12 +536,12 @@ function GitCommitMenu({ thread, anchorRef, request = null }: CommitMenuProps) {
         anchorRef={triggerRef}
         placement="bottom-end"
         width={360}
-        aria-label="커밋"
+        aria-label={t('notes.commit')}
         className="hc-commit-pop"
       >
         <div className="hc-commit">
           <div className="hc-commit__head">
-            <h3 className="hc-commit__title">변경 사항 커밋</h3>
+            <h3 className="hc-commit__title">{t('commit.dialog.title')}</h3>
             {branch ? (
               <span className="hc-changes__branch hc-changes__branch--sm" title={branch}>
                 <BranchGlyph size={11} />
@@ -551,25 +552,25 @@ function GitCommitMenu({ thread, anchorRef, request = null }: CommitMenuProps) {
 
           <div className="hc-commit__summary" aria-live="polite">
             {!changes ? (
-              <span className="hc-commit__dim">변경 사항을 확인하는 중…</span>
+              <span className="hc-commit__dim">{t('commit.checking')}</span>
             ) : !isRepo ? (
-              <span className="hc-commit__dim">git 저장소가 아닙니다</span>
+              <span className="hc-commit__dim">{t('git.notRepo')}</span>
             ) : hasChanges ? (
               <>
-                <span>파일 {counts.files}개</span>
+                <span>{t('changes.files', { count: counts.files })}</span>
                 <span className="hc-changes__add">+{counts.additions}</span>
                 <span className="hc-changes__del">−{counts.deletions}</span>
               </>
             ) : (
-              <span className="hc-commit__dim">변경 사항 없음</span>
+              <span className="hc-commit__dim">{t('commit.noChanges')}</span>
             )}
           </div>
 
           <textarea
             ref={textareaRef}
             className="hc-commit__textarea"
-            aria-label="커밋 메시지"
-            placeholder="무엇을 바꿨나요?"
+            aria-label={t('notes.commitMessage')}
+            placeholder={t('commit.placeholder')}
             rows={4}
             value={message}
             disabled={committing || !isRepo}
@@ -583,14 +584,14 @@ function GitCommitMenu({ thread, anchorRef, request = null }: CommitMenuProps) {
           <div className="hc-commit__row">
             <Button variant="plain" size="sm" onClick={() => void generate()} disabled={generating || committing || !isRepo}>
               <SparkGlyph />
-              {generating ? '만드는 중…' : '자동 생성'}
+              {generating ? t('env.creating') : t('commit.generate')}
             </Button>
             <span className="hc-commit__spacer" />
             <span className="hc-commit__hint" aria-hidden>
               ⌘⏎
             </span>
             <Button variant="primary" size="sm" onClick={commit} disabled={!canCommit} aria-keyshortcuts="Meta+Enter">
-              {committing ? '커밋하는 중…' : '커밋'}
+              {committing ? t('commit.committing') : t('notes.commit')}
             </Button>
           </div>
 
@@ -605,9 +606,9 @@ function GitCommitMenu({ thread, anchorRef, request = null }: CommitMenuProps) {
                   <MergeGlyph />
                 </span>
                 <span className="hc-mnu__text">
-                  <span className="hc-mnu__label">원래 브랜치에 병합</span>
+                  <span className="hc-mnu__label">{t('commit.mergeToBase')}</span>
                   <span className="hc-mnu__desc">
-                    {branch ?? thread.worktree.branch} → {baseBranch ?? '원래 브랜치'}
+                    {branch ?? thread.worktree.branch} → {baseBranch ?? t('commit.baseBranch')}
                   </span>
                 </span>
               </button>
@@ -617,7 +618,7 @@ function GitCommitMenu({ thread, anchorRef, request = null }: CommitMenuProps) {
                 <PullRequestGlyph />
               </span>
               <span className="hc-mnu__text">
-                <span className="hc-mnu__label">Push + PR 만들기</span>
+                <span className="hc-mnu__label">{t('commit.pushPr')}</span>
                 <span className="hc-mnu__desc">
                   {blocker ?? `${remote?.branch} → ${remote?.baseBranch}`}
                 </span>

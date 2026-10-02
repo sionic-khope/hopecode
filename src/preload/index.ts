@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'ele
 import { MAX_ATTACH_READ_BYTES, MAX_ATTACHMENTS, formatBytes } from '../core/attachments';
 import { PRELOAD_ONLY_CHANNELS, isEventChannel, isInvokeChannel, type HopecodeApi } from '../shared/ipc';
 import type { AttachRejection, AttachResult } from '../shared/types';
+import { isLanguage, translate, type MessageKey, type MessageParams } from '../shared/i18n';
 
 const preloadOnly: ReadonlySet<string> = new Set(PRELOAD_ONLY_CHANNELS);
 
@@ -27,11 +28,15 @@ const api: HopecodeApi = {
     const paths: string[] = [];
     const blobs: { name: string; bytes: Uint8Array }[] = [];
     const rejected: AttachRejection[] = [];
+    // This world has its own copy of shared/i18n: the language comes from `<html lang>`, which the renderer keeps set.
+    // (The preload is typed without the DOM lib.)
+    const lang = (globalThis as { document?: { documentElement?: { lang?: string } } }).document?.documentElement?.lang;
+    const tr = (key: MessageKey, params: MessageParams) => translate(isLanguage(lang) ? lang : 'en', key, params);
     for (const [i, file] of Array.from(files).entries()) {
       const path = webUtils.getPathForFile(file);
-      if (i >= MAX_ATTACHMENTS) rejected.push({ name: file.name, reason: `한 메시지에 ${MAX_ATTACHMENTS}개까지 첨부할 수 있습니다` });
+      if (i >= MAX_ATTACHMENTS) rejected.push({ name: file.name, reason: tr('attach.maxCount', { max: MAX_ATTACHMENTS }) });
       else if (path) paths.push(path);
-      else if (file.size > MAX_ATTACH_READ_BYTES) rejected.push({ name: file.name, reason: `${formatBytes(MAX_ATTACH_READ_BYTES)}보다 큽니다` });
+      else if (file.size > MAX_ATTACH_READ_BYTES) rejected.push({ name: file.name, reason: tr('attach.tooLarge', { size: formatBytes(MAX_ATTACH_READ_BYTES) }) });
       else blobs.push({ name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) });
     }
     const res = (await ipcRenderer.invoke('attach:drop', { paths, files: blobs })) as AttachResult;

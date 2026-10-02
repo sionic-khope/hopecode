@@ -3,14 +3,16 @@ import type { NoteCardMark } from '../../../shared/notes';
 import { cardTargetLabel, cardTitle, type NoteCard as NoteCardData } from '../../../core/notes/noteReply';
 import { Button } from '../common';
 import { AssistantText } from '../Chat/AssistantText';
+import { useLanguage } from '../../i18n';
+import { t, type MessageKey } from '../../../shared/i18n';
 
 /** Lines of a card shown before "펼치기". */
 const PREVIEW_LINES = 6;
 
-const KIND_TAG: Record<NoteCardData['kind'], string> = {
-  insert: '삽입',
-  replace: '섹션 교체',
-  'replace-all': '전체 교체',
+const KIND_TAG: Record<NoteCardData['kind'], MessageKey> = {
+  insert: 'noteCard.kind.insert',
+  replace: 'noteCard.kind.replace',
+  'replace-all': 'noteCard.kind.replaceAll',
 };
 
 export interface NoteCardProps {
@@ -26,6 +28,7 @@ export interface NoteCardProps {
 
 /** A piece of note text from the conversation: what it is, where it goes, a preview, and "본문에 넣기". */
 export const NoteCard = memo(function NoteCard({ card, mark, problem, busy, onApply, onRevert }: NoteCardProps) {
+  useLanguage();
   const [open, setOpen] = useState(false);
   const lines = card.body.split('\n');
   const long = lines.length > PREVIEW_LINES;
@@ -37,9 +40,9 @@ export const NoteCard = memo(function NoteCard({ card, mark, problem, busy, onAp
     .join(' ');
 
   return (
-    <article className={cls} data-testid="note-card" data-kind={card.kind} aria-label={`노트 카드: ${cardTitle(card)}`}>
+    <article className={cls} data-testid="note-card" data-kind={card.kind} aria-label={t('noteCard.aria', { title: cardTitle(card) })}>
       <header className="hc-notecard__head">
-        <span className="hc-notecard__kind">{KIND_TAG[card.kind]}</span>
+        <span className="hc-notecard__kind">{t(KIND_TAG[card.kind])}</span>
         <span className="hc-notecard__title">{cardTitle(card)}</span>
       </header>
       <div className="hc-notecard__target" data-testid="note-card-target">
@@ -51,23 +54,23 @@ export const NoteCard = memo(function NoteCard({ card, mark, problem, busy, onAp
       <footer className="hc-notecard__foot">
         {long ? (
           <button type="button" className="hc-notecard__toggle" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-            {open ? '접기' : `펼치기 · ${lines.length}줄`}
+            {open ? t('more.collapse') : `${t('noteCard.expand')} · ${t('code.lines', { count: lines.length })}`}
           </button>
         ) : null}
         <span className="hc-notecard__spacer" />
         {!card.complete ? (
           <span className="hc-notecard__wait">
             <span className="hc-notecard__dot" aria-hidden />
-            작성 중…
+            {t('noteCard.writing')}
           </span>
         ) : applied ? (
           <>
             <span className="hc-notecard__state" data-testid="note-card-state">
-              적용됨
+              {t('noteCard.applied')}
             </span>
             {canRevert ? (
               <Button size="sm" onClick={onRevert} disabled={busy} data-testid="note-card-revert" data-sfx="back">
-                되돌리기
+                {t('noteCard.revert')}
               </Button>
             ) : null}
           </>
@@ -79,7 +82,7 @@ export const NoteCard = memo(function NoteCard({ card, mark, problem, busy, onAp
               </span>
             ) : null}
             <Button variant="primary" size="sm" onClick={onApply} disabled={busy || problem !== null} data-testid="note-card-apply">
-              본문에 넣기
+              {t('noteCard.apply')}
             </Button>
           </>
         )}

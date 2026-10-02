@@ -5,6 +5,7 @@ import { execFile } from 'node:child_process';
 import { accessSync, constants, existsSync, mkdtempSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { delimiter, isAbsolute, join } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
+import { t } from '../../shared/i18n';
 
 /** Oldest `codex-cli` the codex-acp 2.x adapter is used with (older engines lack the app-server API it speaks). */
 export const CODEX_MIN_VERSION = '0.150.0';
@@ -101,20 +102,20 @@ export function compareVersions(a: string, b: string): number {
  * owned by root or the current user: anything else could be swapped by another user / process.
  */
 export function inspectEngineFile(path: string, deps: EngineFileDeps = {}): EngineInspection {
-  if (!isAbsolute(path)) return { ok: false, error: '절대 경로를 입력하세요' };
+  if (!isAbsolute(path)) return { ok: false, error: t('codexPath.err.absolute') };
   let real: string;
   let st: { isFile(): boolean; mode: number; uid: number };
   try {
     real = (deps.realpath ?? realpathSync)(path);
     st = (deps.stat ?? statSync)(real);
   } catch {
-    return { ok: false, error: '파일을 찾을 수 없습니다' };
+    return { ok: false, error: t('error.fileNotFound') };
   }
-  if (!st.isFile()) return { ok: false, error: '일반 파일이 아닙니다' };
-  if (!(deps.isExecutable ?? defaultIsExecutable)(real)) return { ok: false, error: '실행 가능한 파일이 아닙니다' };
-  if ((st.mode & 0o022) !== 0) return { ok: false, error: '그룹 또는 다른 사용자가 수정할 수 있는 파일은 사용할 수 없습니다' };
+  if (!st.isFile()) return { ok: false, error: t('codexPath.err.notFile') };
+  if (!(deps.isExecutable ?? defaultIsExecutable)(real)) return { ok: false, error: t('codexPath.err.notExecutable') };
+  if ((st.mode & 0o022) !== 0) return { ok: false, error: t('codexPath.err.writable') };
   const me = (deps.uid ?? (() => process.getuid?.() ?? -1))();
-  if (st.uid !== 0 && st.uid !== me) return { ok: false, error: '소유자가 root 또는 현재 사용자가 아닌 파일은 사용할 수 없습니다' };
+  if (st.uid !== 0 && st.uid !== me) return { ok: false, error: t('codexPath.err.owner') };
   return { ok: true, path: real };
 }
 
@@ -155,9 +156,9 @@ export async function checkCodexEngine(
   const path = inspected.path;
   const out = await (deps.codexVersion ?? runCodexVersion)(path);
   const version = out === null ? null : parseCodexVersion(out);
-  if (!version) return { ok: false, error: '`--version`에서 codex-cli 버전을 읽지 못했습니다' };
+  if (!version) return { ok: false, error: t('codexPath.err.noVersion') };
   if (compareVersions(version, CODEX_MIN_VERSION) < 0) {
-    return { ok: false, error: `codex-cli ${version}은(는) 지원하지 않습니다 (${CODEX_MIN_VERSION} 이상 필요)` };
+    return { ok: false, error: t('codexPath.err.oldVersion', { version, min: CODEX_MIN_VERSION }) };
   }
   return { ok: true, engine: { path, version } };
 }

@@ -10,8 +10,9 @@ import { ToolPathContext, TurnLiveContext } from './ToolCard';
 import type { ErrorCardActions } from './ErrorCard';
 import { Composer } from './Composer';
 import type { SlashSource } from './SlashMenu';
-import { AcpModelChip, AgentChip, AgentModeChip, FolderTag, ModelPicker, NO_PROJECT_LABEL, PermissionChip, SystemModelTag } from './ComposerControls';
+import { AcpModelChip, AgentChip, AgentModeChip, FolderTag, ModelPicker, PermissionChip, noProjectLabel, SystemModelTag } from './ComposerControls';
 import { agentModeChip, codexThreadChip, hermesModelChip } from './acpChips';
+import { t } from '../../../shared/i18n';
 import './Chat.css';
 
 export interface ChatViewProps {
@@ -86,7 +87,7 @@ export function ChatView({
       void useAppStore
         .getState()
         .setThreadAgentConfig(threadId, configId, value)
-        .catch((err: unknown) => setControlError(`설정을 바꾸지 못했습니다: ${ipcErrorMessage(err)}`));
+        .catch((err: unknown) => setControlError(t('chat.err.config', { error: ipcErrorMessage(err) })));
     },
     [threadId],
   );
@@ -96,7 +97,7 @@ export function ChatView({
       void useAppStore
         .getState()
         .setThreadAgentMode(threadId, modeId)
-        .catch((err: unknown) => setControlError(`모드를 바꾸지 못했습니다: ${ipcErrorMessage(err)}`));
+        .catch((err: unknown) => setControlError(t('chat.err.mode', { error: ipcErrorMessage(err) })));
     },
     [threadId],
   );
@@ -126,7 +127,7 @@ export function ChatView({
       void useAppStore
         .getState()
         .setTurnBookmark(threadId, itemId, bookmarked)
-        .catch((err: unknown) => setControlError(`북마크를 저장하지 못했습니다: ${ipcErrorMessage(err)}`));
+        .catch((err: unknown) => setControlError(t('chat.err.bookmark', { error: ipcErrorMessage(err) })));
     },
     [threadId],
   );
@@ -160,7 +161,7 @@ export function ChatView({
         effortLabel={codex.effortLabel}
         models={codex.models}
         efforts={codex.efforts}
-        readOnlyTitle={codex.modelConfigId || codex.effortConfigId ? undefined : 'Codex 세션이 열리면 바꿀 수 있습니다'}
+        readOnlyTitle={codex.modelConfigId || codex.effortConfigId ? undefined : t('chat.codexWhenOpen')}
         onModelChange={codex.modelConfigId ? (v) => handleAgentConfig(codex.modelConfigId as string, v) : undefined}
         onEffortChange={codex.effortConfigId ? (v) => handleAgentConfig(codex.effortConfigId as string, v) : undefined}
       />
@@ -222,7 +223,7 @@ export function ChatView({
                 homeDir={homeDir}
               />
             ) : thread.projectId === null ? (
-              <FolderTag name={NO_PROJECT_LABEL} path={thread.cwd} homeDir={homeDir} />
+              <FolderTag name={noProjectLabel()} path={thread.cwd} homeDir={homeDir} />
             ) : null}
             {features.permissionModes ? <PermissionChip value={thread.permissionMode} onChange={handleMode} agent={thread.agent} /> : null}
             {modeChip ? (
@@ -271,7 +272,7 @@ function WaitingBanner({ until }: { until: number | null }) {
   const countdown = formatResetCountdown(until, now);
   return (
     <div className="hc-notice hc-notice--warn hc-chat__waiting" role="status">
-      모든 계정이 한도에 도달해 대기 중입니다{countdown ? ` · ${countdown} 후 재개` : ''}. 메시지는 자동으로 전송됩니다.
+      {countdown ? t('chat.waitingCountdown', { countdown }) : t('chat.waiting')}
     </div>
   );
 }

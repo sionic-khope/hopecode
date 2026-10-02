@@ -1,5 +1,7 @@
 import { memo, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { IconSpark } from './icons';
+import { useLanguage } from '../../i18n';
+import { formatNumber, t } from '../../../shared/i18n';
 
 export interface InlinePromptPlace {
   /** px inside the editor pane. */
@@ -26,6 +28,7 @@ export interface NoteInlinePromptProps {
 
 /** The small floating prompt over an editor selection: "선택한 부분을 어떻게 고칠까요?" — Enter sends, Esc closes. */
 export const NoteInlinePrompt = memo(function NoteInlinePrompt({ place, atCaret, agentLabel, running, error, onSubmit, onStop, onClose, onDeleteSelection }: NoteInlinePromptProps) {
+  useLanguage();
   const [text, setText] = useState('');
   const input = useRef<HTMLInputElement>(null);
 
@@ -53,7 +56,7 @@ export const NoteInlinePrompt = memo(function NoteInlinePrompt({ place, atCaret,
       className={`hc-noteinline hc-noteinline--${place.side}${running !== null ? ' hc-noteinline--running' : ''}`}
       style={{ top: place.top, left: place.left }}
       role="dialog"
-      aria-label="선택 부분 고치기"
+      aria-label={t('noteInline.aria')}
       data-testid="note-inline"
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
@@ -66,17 +69,17 @@ export const NoteInlinePrompt = memo(function NoteInlinePrompt({ place, atCaret,
     >
       <div className="hc-noteinline__head">
         <IconSpark className="hc-noteinline__spark" />
-        <span className="hc-noteinline__label">{atCaret ? '커서 위치에 무엇을 쓸까요?' : '선택한 부분을 어떻게 고칠까요?'}</span>
-        <span className="hc-noteinline__agent" title="오른쪽 대화창의 에이전트·모델을 씁니다">
+        <span className="hc-noteinline__label">{atCaret ? t('noteInline.label.caret') : t('noteInline.label.selection')}</span>
+        <span className="hc-noteinline__agent" title={t('noteInline.agentTitle')}>
           {agentLabel}
         </span>
       </div>
       {running !== null ? (
         <div className="hc-noteinline__status" role="status">
           <span className="hc-noteinline__dot" aria-hidden />
-          <span>고치는 중… {running.toLocaleString('ko-KR')}자</span>
+          <span>{t('noteInline.running', { count: formatNumber(running) })}</span>
           <button type="button" className="hc-noteinline__stop" onClick={onStop} data-testid="note-inline-stop">
-            중지
+            {t('noteInline.stop')}
           </button>
         </div>
       ) : (
@@ -85,8 +88,8 @@ export const NoteInlinePrompt = memo(function NoteInlinePrompt({ place, atCaret,
             ref={input}
             className="hc-noteinline__input"
             value={text}
-            placeholder={atCaret ? '예: 이 개념의 예시 코드' : '예: 더 짧게, 예시 추가, 표로 정리'}
-            aria-label={atCaret ? '커서 위치에 쓸 내용' : '선택한 부분을 고칠 방법'}
+            placeholder={atCaret ? t('noteInline.placeholder.caret') : t('noteInline.placeholder.selection')}
+            aria-label={atCaret ? t('noteInline.aria.caret') : t('noteInline.aria.selection')}
             data-testid="note-inline-input"
             onChange={(e) => setText(e.target.value)}
             onKeyDown={onKeyDown}
@@ -102,7 +105,7 @@ export const NoteInlinePrompt = memo(function NoteInlinePrompt({ place, atCaret,
         </div>
       ) : (
         <div className="hc-noteinline__hint" aria-hidden>
-          Enter 보내기 · Esc 닫기 · 끝나면 ⌘Z 한 번으로 되돌림
+          {t('noteInline.footer')}
         </div>
       )}
     </div>

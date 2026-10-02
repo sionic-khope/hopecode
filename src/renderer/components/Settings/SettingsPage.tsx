@@ -31,8 +31,10 @@ import { useAppStore } from '../../store';
 import { AgentIcon } from '../Agent/AgentIcon';
 import { Button, Menu, Modal, Segmented, Switch, type MenuSection } from '../common';
 import { GlyphChevronDown, GlyphFolderOpen, GlyphRefresh } from '../common/glyphs';
-import { EFFORT_LABEL, PERMISSION_MODE_LABEL } from '../Chat/ComposerControls';
-import { SYSTEM_DEFAULT_LABEL, codexEffortChoices, codexModelChoices } from '../Chat/acpChips';
+import { EFFORT_LABEL, permissionModeLabel } from '../Chat/ComposerControls';
+import { codexEffortChoices, codexModelChoices, systemDefaultLabel } from '../Chat/acpChips';
+import { LANGUAGES, LANGUAGE_NATIVE_NAMES, resolveLanguage, t, type LanguageSetting, type MessageKey } from '../../../shared/i18n';
+import { useLanguage } from '../../i18n';
 import './Settings.css';
 
 export interface SettingsPageProps {
@@ -56,19 +58,29 @@ export interface SettingsPageProps {
 
 const DEFAULT_MODES = UI_PERMISSION_MODES.filter((m): m is Exclude<UiPermissionMode, 'bypassPermissions'> => m !== 'bypassPermissions');
 
-const STATE_LABEL: Record<SharedEntryState, string> = {
-  linked: '연결됨',
-  'not-linked': '연결 안 됨',
-  broken: '끊어짐',
-  conflict: '별도 파일',
+const STATE_KEY: Record<SharedEntryState, MessageKey> = {
+  linked: 'settings.shared.linked',
+  'not-linked': 'settings.shared.notLinked',
+  broken: 'settings.shared.broken',
+  conflict: 'settings.shared.conflict',
 };
 
-/** Seconds -> `1분 30초` style. */
+/** Seconds -> `1분 30초` / `1 min 30 sec` style. */
 export function formatInterval(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
-  if (m === 0) return `${s}초`;
-  return s === 0 ? `${m}분` : `${m}분 ${s}초`;
+  if (m === 0) return t('settings.interval.sec', { s });
+  return s === 0 ? t('settings.interval.min', { m }) : t('settings.interval.minSec', { m, s });
+}
+
+/** 'system' first (named after what it resolves to), then each language in its own script. */
+function languageOptions(systemLocale: string | null): { value: LanguageSetting; label: string }[] {
+  const locales = systemLocale ? [systemLocale] : typeof navigator === 'undefined' ? [] : [...navigator.languages];
+  const system = LANGUAGE_NATIVE_NAMES[resolveLanguage('system', locales)];
+  return [
+    { value: 'system', label: t('settings.language.system', { language: system }) },
+    ...LANGUAGES.map((lang) => ({ value: lang as LanguageSetting, label: LANGUAGE_NATIVE_NAMES[lang] })),
+  ];
 }
 
 /**
@@ -91,6 +103,8 @@ export function SettingsPage({
   relinkShared,
   onBack,
 }: SettingsPageProps) {
+  useLanguage();
+  const systemLocale = useAppStore((s) => s.systemLocale);
   const [error, setError] = useState<string | null>(null);
   const [dataDir, setDataDir] = useState<string | null>(null);
   const [editors, setEditors] = useState<EditorInfo[]>([]);
@@ -122,7 +136,7 @@ export function SettingsPage({
 
   const save = (patch: SettingsPatch) => {
     setError(null);
-    void onUpdate(patch).catch((err: unknown) => setError(`설정을 저장하지 못했습니다: ${err instanceof Error ? err.message : String(err)}`));
+    void onUpdate(patch).catch((err: unknown) => setError(t('settings.err.save', { error: err instanceof Error ? err.message : String(err) })));
   };
 
   const commitIdle = () => {
@@ -148,7 +162,7 @@ export function SettingsPage({
     setError(null);
     void onUpdate({ codexPath: next }).catch((err: unknown) => {
       setCodexPathDraft(settings.codexPath);
-      setError(`Codex 실행 파일 경로를 저장하지 못했습니다: ${err instanceof Error ? err.message : String(err)}`);
+      setError(t('settings.err.codexPath', { error: err instanceof Error ? err.message : String(err) }));
     });
   };
 
@@ -176,14 +190,14 @@ export function SettingsPage({
   return (
     <div className="hc-settings" data-testid="settings">
       <header className="hc-settings__header">
-        <Button variant="plain" size="sm" icon aria-label="뒤로" onClick={onBack}>
+        <Button variant="plain" size="sm" icon aria-label={t('common.back')} onClick={onBack}>
           <svg width={13} height={13} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M10 3.5 5 8l5 4.5" />
           </svg>
         </Button>
         <div>
-          <h1 className="hc-settings__title">설정</h1>
-          <p className="hc-settings__lede">새 채팅의 기본값, 계정 전환, 공유 설정과 데이터를 관리합니다.</p>
+          <h1 className="hc-settings__title">{t('settings.title')}</h1>
+          <p className="hc-settings__lede">{t('settings.lede')}</p>
         </div>
       </header>
       {error ? (
@@ -192,91 +206,23 @@ export function SettingsPage({
         </div>
       ) : null}
 
-      <Section
-        title="새 채팅 기본 모델"
-        description="새 채팅에서 에이전트를 고르면 그 에이전트의 값으로 시작합니다. 에이전트마다 따로 저장됩니다."
-      >
-        <AgentGroup agent="claude-code" />
-        <Row label="모델" hint={`기본은 지금 ${defaultModelLabel}로 실행됩니다`}>
-          <SelectMenu
-            label="기본 모델"
-            value={settings.defaultModel}
-            options={modelOptions.map((m) => ({ value: m.value, label: modelMenuLabel(m.value, modelOptions, defaultModelLabel) }))}
-            isChecked={(value) => {
-              const option = modelOptions.find((m) => m.value === value);
-              return option ? isModelSelected(settings.defaultModel, option, modelOptions) : false;
-            }}
-            onChange={(defaultModel) => save({ defaultModel })}
+      <Section title={t('settings.general')} description={t('settings.general.desc')}>
+        <Row label={t('settings.language')} hint={t('settings.language.hint')}>
+          <SelectMenu<LanguageSetting>
+            label={t('settings.language')}
+            testId="settings-language"
+            value={settings.language}
+            options={languageOptions(systemLocale)}
+            onChange={(language) => save({ language })}
           />
         </Row>
-        <Row label="effort" hint="모델의 추론 깊이">
-          <Segmented<'auto' | EffortLevel>
-            aria-label="기본 effort"
-            size="sm"
-            value={settings.defaultEffort ?? 'auto'}
-            options={[{ value: 'auto', label: '자동' }, ...EFFORT_LEVELS.map((e) => ({ value: e, label: effortLabel(e) }))]}
-            onChange={(v) => save({ defaultEffort: v === 'auto' ? null : v })}
-          />
-        </Row>
-        <AgentGroup agent="codex" />
-        <Row label="모델" hint="Codex가 알려 준 모델 목록 (세션을 연 적이 없으면 기본 목록)">
-          <SelectMenu
-            label="Codex 기본 모델"
-            value={settings.codexDefaultModel}
-            options={codexModels.map((m) => ({ value: m.value, label: m.label }))}
-            onChange={(codexDefaultModel) => save({ codexDefaultModel })}
-          />
-        </Row>
-        <Row label="reasoning effort" hint="~/.codex/config.toml은 바꾸지 않고 이 앱의 세션에만 적용합니다">
-          <Segmented<CodexEffortLevel>
-            aria-label="Codex 기본 effort"
-            size="sm"
-            value={settings.codexDefaultEffort}
-            options={codexEfforts.map((e) => ({ value: e.value, label: effortLabel(e.value) }))}
-            onChange={(codexDefaultEffort) => save({ codexDefaultEffort })}
-          />
-        </Row>
-        <Row
-          label="Codex 실행 파일 경로"
-          hint={
-            codexInfo?.enginePath
-              ? `사용 중: ${codexInfo.enginePath} (codex-cli ${codexInfo.version ?? '?'}). 비우면 ChatGPT 앱 · PATH에서 찾습니다`
-              : '선택 사항. 비우면 ChatGPT 앱 · PATH에서 찾습니다'
-          }
-        >
-          <input
-            type="text"
-            className="hc-settings__text"
-            aria-label="Codex 실행 파일 경로"
-            data-testid="settings-codex-path"
-            placeholder="자동 감지"
-            spellCheck={false}
-            value={codexPathDraft}
-            onChange={(e) => setCodexPathDraft(e.target.value)}
-            onBlur={commitCodexPath}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') e.currentTarget.blur();
-            }}
-          />
-        </Row>
-        <AgentGroup agent="hermes" />
-        <Row label="모델 · effort" hint="Hermes 자신의 설정을 그대로 씁니다. `hermes model` 명령으로 변경하세요">
-          <span className="hc-settings__fixed" data-testid="hermes-default">
-            {hermesInfo?.defaultModel
-              ? `${SYSTEM_DEFAULT_LABEL} (${hermesModelLabel(hermesInfo.defaultModel)}${hermesInfo.defaultProvider ? ` · ${hermesInfo.defaultProvider}` : ''})`
-              : SYSTEM_DEFAULT_LABEL}
-          </span>
-        </Row>
-      </Section>
-
-      <Section title="일반" description="새 채팅을 시작할 때 쓰는 값입니다. 이미 시작된 채팅은 바뀌지 않습니다.">
-        <Row label="표시 이름" hint="사이드바 프로필에 표시됩니다. 비우면 계정 이름을 씁니다">
+        <Row label={t('settings.profileName')} hint={t('settings.profileName.hint')}>
           <input
             id="hc-profile-name"
             type="text"
             className="hc-settings__text"
-            aria-label="표시 이름"
-            placeholder="이름 (예: 케이홉)"
+            aria-label={t('settings.profileName')}
+            placeholder={t('settings.profileName.placeholder')}
             maxLength={PROFILE_NAME_MAX_CHARS}
             value={nameDraft}
             onChange={(e) => setNameDraft(e.target.value)}
@@ -286,26 +232,26 @@ export function SettingsPage({
             }}
           />
         </Row>
-        <Row label="기본 권한 모드" hint="전체 액세스는 채팅마다 확인을 거쳐 켭니다">
+        <Row label={t('settings.defaultMode')} hint={t('settings.defaultMode.hint')}>
           <Segmented
-            aria-label="기본 권한 모드"
+            aria-label={t('settings.defaultMode')}
             size="sm"
             value={settings.defaultPermissionMode === 'bypassPermissions' ? 'default' : settings.defaultPermissionMode}
-            options={DEFAULT_MODES.map((m) => ({ value: m, label: PERMISSION_MODE_LABEL[m] }))}
+            options={DEFAULT_MODES.map((m) => ({ value: m, label: permissionModeLabel(m) }))}
             onChange={(defaultPermissionMode) => save({ defaultPermissionMode })}
           />
         </Row>
         <Row
-          label="새 스레드마다 worktree 만들기"
+          label={t('settings.worktree')}
           hint={
             settings.useWorktree
-              ? 'git 저장소에서는 스레드마다 hopecode/<id> 브랜치의 worktree에서 작업합니다'
-              : '프로젝트 폴더에서 직접 작업합니다. 여러 스레드가 같은 파일을 바꿀 수 있어요'
+              ? t('settings.worktree.on')
+              : t('settings.worktree.off')
           }
         >
-          <Switch size="md" checked={settings.useWorktree} aria-label="새 스레드마다 worktree 만들기" onChange={(useWorktree) => save({ useWorktree })} />
+          <Switch size="md" checked={settings.useWorktree} aria-label={t('settings.worktree')} onChange={(useWorktree) => save({ useWorktree })} />
         </Row>
-        <Row label="유휴 세션 종료" hint="이 시간 동안 입력이 없으면 세션을 닫습니다. 다음 메시지에서 이어집니다 (0 = 닫지 않음)">
+        <Row label={t('settings.idle')} hint={t('settings.idle.hint')}>
           <span className="hc-settings__number">
             <input
               type="number"
@@ -313,7 +259,7 @@ export function SettingsPage({
               min={0}
               max={IDLE_CLOSE_MAX_MINUTES}
               step={1}
-              aria-label="유휴 세션 종료 (분)"
+              aria-label={t('settings.idle.aria')}
               value={idleDraft}
               onChange={(e) => setIdleDraft(e.target.value)}
               onBlur={commitIdle}
@@ -321,34 +267,34 @@ export function SettingsPage({
                 if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
               }}
             />
-            <span>분</span>
+            <span>{t('settings.idle.unit')}</span>
           </span>
         </Row>
-        <Row label="기본 에디터" hint="대화 화면의 ‘에디터에서 열기’ 버튼이 여는 앱">
+        <Row label={t('settings.editor')} hint={t('settings.editor.hint')}>
           <SelectMenu<EditorId | 'auto'>
-            label="기본 에디터"
+            label={t('settings.editor')}
             value={settings.defaultEditor ?? 'auto'}
             options={[
-              { value: 'auto', label: editors[0] ? `자동 (${editors[0].name})` : '자동' },
+              { value: 'auto', label: editors[0] ? t('settings.editor.autoWith', { name: editors[0].name }) : t('common.auto') },
               ...editors.map((e) => ({ value: e.id, label: e.name })),
             ]}
             onChange={(v) => save({ defaultEditor: v === 'auto' ? null : v })}
           />
         </Row>
-        <Row label="알림" hint="창이 뒤에 있을 때 턴 완료, 권한 요청, 계정 전환을 알립니다">
-          <Switch size="md" checked={settings.notifications} aria-label="알림" onChange={(notifications) => save({ notifications })} />
+        <Row label={t('settings.notifications')} hint={t('settings.notifications.hint')}>
+          <Switch size="md" checked={settings.notifications} aria-label={t('settings.notifications')} onChange={(notifications) => save({ notifications })} />
         </Row>
-        <Row label="사운드" hint="답변이 나올 때의 목소리와 클릭, 전송, 완료, 오류 효과음입니다. 오른쪽 위 스피커 버튼과 같은 설정입니다">
-          <Switch size="md" checked={settings.soundEnabled} aria-label="사운드" onChange={(soundEnabled) => save({ soundEnabled })} />
+        <Row label={t('settings.sound')} hint={t('settings.sound.hint')}>
+          <Switch size="md" checked={settings.soundEnabled} aria-label={t('settings.sound')} onChange={(soundEnabled) => save({ soundEnabled })} />
         </Row>
         <Row
-          label="New Task Start 템플릿"
-          hint="새 채팅 화면의 'New Task Start' 버튼(⌘⇧N)이 입력창에 붙여넣는 문구입니다. {project}는 폴더 이름, {date}는 오늘 날짜로 바뀝니다"
+          label={t('settings.template')}
+          hint={t('settings.template.hint')}
           stack
         >
           <textarea
             className="hc-settings__textarea"
-            aria-label="New Task Start 템플릿"
+            aria-label={t('settings.template')}
             maxLength={NEW_TASK_TEMPLATE_MAX_CHARS}
             value={templateDraft}
             onChange={(e) => setTemplateDraft(e.target.value)}
@@ -359,36 +305,113 @@ export function SettingsPage({
               {templateDraft.length} / {NEW_TASK_TEMPLATE_MAX_CHARS}
             </span>
             <Button variant="secondary" size="sm" onClick={resetTemplate}>
-              기본값으로 되돌리기
+              {t('settings.template.reset')}
             </Button>
           </div>
         </Row>
       </Section>
 
-      <Section title="계정" description={`계정 ${accounts.length}개 · 활성 ${accounts.filter((a) => a.enabled).length}개`}>
+      <Section
+        title={t('settings.models')}
+        description={t('settings.models.desc')}
+      >
+        <AgentGroup agent="claude-code" />
+        <Row label={t('settings.model')} hint={t('settings.model.hint', { model: defaultModelLabel })}>
+          <SelectMenu
+            label={t('settings.defaultModel')}
+            value={settings.defaultModel}
+            options={modelOptions.map((m) => ({ value: m.value, label: modelMenuLabel(m.value, modelOptions, defaultModelLabel) }))}
+            isChecked={(value) => {
+              const option = modelOptions.find((m) => m.value === value);
+              return option ? isModelSelected(settings.defaultModel, option, modelOptions) : false;
+            }}
+            onChange={(defaultModel) => save({ defaultModel })}
+          />
+        </Row>
+        <Row label="effort" hint={t('settings.effort.hint')}>
+          <Segmented<'auto' | EffortLevel>
+            aria-label={t('settings.effort.aria')}
+            size="sm"
+            value={settings.defaultEffort ?? 'auto'}
+            options={[{ value: 'auto', label: t('common.auto') }, ...EFFORT_LEVELS.map((e) => ({ value: e, label: effortLabel(e) }))]}
+            onChange={(v) => save({ defaultEffort: v === 'auto' ? null : v })}
+          />
+        </Row>
+        <AgentGroup agent="codex" />
+        <Row label={t('settings.model')} hint={t('settings.codexModel.hint')}>
+          <SelectMenu
+            label={t('settings.codexModel')}
+            value={settings.codexDefaultModel}
+            options={codexModels.map((m) => ({ value: m.value, label: m.label }))}
+            onChange={(codexDefaultModel) => save({ codexDefaultModel })}
+          />
+        </Row>
+        <Row label="reasoning effort" hint={t('settings.codexEffort.hint')}>
+          <Segmented<CodexEffortLevel>
+            aria-label={t('settings.codexEffort.aria')}
+            size="sm"
+            value={settings.codexDefaultEffort}
+            options={codexEfforts.map((e) => ({ value: e.value, label: effortLabel(e.value) }))}
+            onChange={(codexDefaultEffort) => save({ codexDefaultEffort })}
+          />
+        </Row>
         <Row
-          label="한도 도달 시 자동 전환"
+          label={t('settings.codexPath')}
+          hint={
+            codexInfo?.enginePath
+              ? t('settings.codexPath.hintInUse', { path: codexInfo.enginePath, version: codexInfo.version ?? '?' })
+              : t('settings.codexPath.hintEmpty')
+          }
+        >
+          <input
+            type="text"
+            className="hc-settings__text"
+            aria-label={t('settings.codexPath')}
+            data-testid="settings-codex-path"
+            placeholder={t('settings.codexPath.placeholder')}
+            spellCheck={false}
+            value={codexPathDraft}
+            onChange={(e) => setCodexPathDraft(e.target.value)}
+            onBlur={commitCodexPath}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur();
+            }}
+          />
+        </Row>
+        <AgentGroup agent="hermes" />
+        <Row label={t('settings.hermes.label')} hint={t('settings.hermes.hint')}>
+          <span className="hc-settings__fixed" data-testid="hermes-default">
+            {hermesInfo?.defaultModel
+              ? `${systemDefaultLabel()} (${hermesModelLabel(hermesInfo.defaultModel)}${hermesInfo.defaultProvider ? ` · ${hermesInfo.defaultProvider}` : ''})`
+              : systemDefaultLabel()}
+          </span>
+        </Row>
+      </Section>
+
+      <Section title={t('settings.accounts')} description={t('settings.accounts.desc', { count: accounts.length, enabled: accounts.filter((a) => a.enabled).length })}>
+        <Row
+          label={t('settings.autoSwitch')}
           hint={
             settings.autoSwitchAccounts
-              ? '한도에 도달하면 다음 계정으로 이어서 실행합니다'
-              : '같은 계정의 한도가 초기화될 때까지 기다린 뒤 이어서 실행합니다'
+              ? t('settings.autoSwitch.on')
+              : t('settings.autoSwitch.off')
           }
         >
           <Switch
             size="md"
             checked={settings.autoSwitchAccounts}
-            aria-label="한도 도달 시 자동 전환"
+            aria-label={t('settings.autoSwitch')}
             onChange={(autoSwitchAccounts) => save({ autoSwitchAccounts })}
           />
         </Row>
-        <Row label="사용량 조회 간격" hint="계정마다 이 간격으로 사용량을 새로 받아옵니다">
+        <Row label={t('settings.poll')} hint={t('settings.poll.hint')}>
           <span className="hc-settings__range">
             <input
               type="range"
               min={USAGE_POLL_MIN_SEC}
               max={USAGE_POLL_MAX_SEC}
               step={30}
-              aria-label="사용량 조회 간격 (초)"
+              aria-label={t('settings.poll.aria')}
               value={pollDraft}
               style={{ ['--hc-range' as string]: `${((pollDraft - USAGE_POLL_MIN_SEC) / (USAGE_POLL_MAX_SEC - USAGE_POLL_MIN_SEC)) * 100}%` }}
               onChange={(e) => setPollDraft(Number(e.target.value))}
@@ -403,8 +426,8 @@ export function SettingsPage({
       </Section>
 
       <Section
-        title="공유 설정"
-        description={`${shared ? tildePath(shared.sourceDir, homeDir) : '~/.claude'}의 항목을 계정마다 링크해 같은 설정·스킬·훅을 씁니다`}
+        title={t('settings.shared')}
+        description={t('settings.shared.desc', { dir: shared ? tildePath(shared.sourceDir, homeDir) : '~/.claude' })}
         action={
           <Button
             variant="secondary"
@@ -414,28 +437,28 @@ export function SettingsPage({
               setRelinking(true);
               void relinkShared()
                 .then(setShared)
-                .catch((err: unknown) => setError(`다시 연결하지 못했습니다: ${err instanceof Error ? err.message : String(err)}`))
+                .catch((err: unknown) => setError(t('settings.err.relink', { error: err instanceof Error ? err.message : String(err) })))
                 .finally(() => setRelinking(false));
             }}
           >
             <GlyphRefresh width={13} height={13} />
-            다시 연결
+            {t('settings.shared.relink')}
           </Button>
         }
       >
-        <ul className="hc-settings__shared" aria-label="공유 항목">
+        <ul className="hc-settings__shared" aria-label={t('settings.shared.list')}>
           {(shared?.entries ?? []).map((entry) => {
             const states = Object.values(entry.byAccount);
             const linked = states.filter((st) => st === 'linked').length;
             const problem = states.find((st) => st === 'broken' || st === 'conflict');
             const tone = !entry.inSource ? 'muted' : problem ? 'warn' : linked === states.length && states.length > 0 ? 'ok' : 'muted';
             const text = !entry.inSource
-              ? '원본 없음'
+              ? t('settings.shared.noSource')
               : states.length === 0
-                ? '계정 없음'
+                ? t('settings.shared.noAccounts')
                 : problem
-                  ? `${STATE_LABEL[problem]} · ${linked}/${states.length}`
-                  : `${STATE_LABEL.linked} ${linked}/${states.length}`;
+                  ? `${t(STATE_KEY[problem])} · ${linked}/${states.length}`
+                  : `${t(STATE_KEY.linked)} ${linked}/${states.length}`;
             return (
               <li key={entry.name} className="hc-settings__shared-row">
                 <code className="hc-settings__shared-name">{entry.name}</code>
@@ -443,20 +466,20 @@ export function SettingsPage({
               </li>
             );
           })}
-          {shared === null ? <li className="hc-settings__shared-row hc-settings__muted">불러오는 중…</li> : null}
+          {shared === null ? <li className="hc-settings__shared-row hc-settings__muted">{t('common.loading')}</li> : null}
         </ul>
       </Section>
 
-      <Section title="데이터">
-        <Row label="데이터 폴더" hint={dataDir ? tildePath(dataDir, homeDir) : ' '} hintMono>
+      <Section title={t('settings.data')}>
+        <Row label={t('settings.dataFolder')} hint={dataDir ? tildePath(dataDir, homeDir) : ' '} hintMono>
           <Button variant="secondary" size="sm" onClick={() => void onOpenDataFolder().catch((err: unknown) => setError(String(err)))}>
             <GlyphFolderOpen width={13} height={13} />
-            열기
+            {t('common.open')}
           </Button>
         </Row>
-        <Row label="보관된 스레드" hint={archivedCount > 0 ? `${archivedCount}개 · 대화 기록과 worktree가 함께 삭제됩니다` : '보관된 스레드가 없습니다'}>
+        <Row label={t('settings.archived')} hint={archivedCount > 0 ? t('settings.archived.hint', { count: archivedCount }) : t('settings.archived.none')}>
           <Button variant="destructive" size="sm" disabled={archivedCount === 0} onClick={() => setConfirmDelete(true)}>
-            모두 삭제…
+            {t('settings.archived.deleteAll')}
           </Button>
         </Row>
       </Section>
@@ -465,13 +488,13 @@ export function SettingsPage({
         open={confirmDelete}
         onClose={() => !deleting && setConfirmDelete(false)}
         role="alertdialog"
-        title="보관된 스레드를 모두 삭제할까요?"
+        title={t('settings.archived.confirmTitle')}
         dismissible={!deleting}
         width={420}
         actions={
           <>
             <Button variant="secondary" disabled={deleting} onClick={() => setConfirmDelete(false)}>
-              취소
+              {t('common.cancel')}
             </Button>
             <Button
               variant="primary"
@@ -481,17 +504,17 @@ export function SettingsPage({
                 setDeleting(true);
                 void onDeleteArchived()
                   .then(() => setConfirmDelete(false))
-                  .catch((err: unknown) => setError(`삭제하지 못했습니다: ${err instanceof Error ? err.message : String(err)}`))
+                  .catch((err: unknown) => setError(t('settings.err.delete', { error: err instanceof Error ? err.message : String(err) })))
                   .finally(() => setDeleting(false));
               }}
             >
-              모두 삭제
+              {t('settings.archived.deleteAllConfirm')}
             </Button>
           </>
         }
       >
         <p className="hc-settings__confirm">
-          보관된 스레드 {archivedCount}개의 대화 기록과 worktree가 삭제됩니다. 커밋하지 않은 변경 사항도 함께 사라지며 되돌릴 수 없습니다.
+          {t('settings.archived.confirmBody', { count: archivedCount })}
         </p>
       </Modal>
     </div>
@@ -555,8 +578,10 @@ function SelectMenu<T extends string>({
   options,
   onChange,
   isChecked,
+  testId,
 }: {
   label: string;
+  testId?: string;
   value: T;
   options: { value: T; label: string }[];
   onChange: (value: T) => void;
@@ -583,6 +608,7 @@ function SelectMenu<T extends string>({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`${label}: ${current?.label ?? value}`}
+        data-testid={testId}
         onClick={() => setOpen((v) => !v)}
       >
         <span className="hc-select__value">{current?.label ?? value}</span>

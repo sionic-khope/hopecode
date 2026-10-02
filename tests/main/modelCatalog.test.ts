@@ -7,7 +7,7 @@ import { createRecordingBroadcaster, makeAccount, makeThread } from '../../src/m
 import { createSessionHarness } from '../../src/main/fixtures/sessionHarness';
 import { createModelCatalog, probeModels, toModelOption } from '../../src/main/models/modelCatalog';
 import { createSessionManager } from '../../src/main/session/sessionManager';
-import { FALLBACK_MODELS } from '../../src/shared/constants';
+import { fallbackModels } from '../../src/shared/constants';
 import type { ModelOption } from '../../src/shared/types';
 
 let dir: string;
@@ -124,7 +124,7 @@ describe('SessionManager.listModels with the catalog', () => {
 
   it('falls back to the built-in list without a catalog or a session', async () => {
     const h = createSessionHarness({ accounts: [], threads: [] });
-    expect(await h.manager.listModels()).toEqual([...FALLBACK_MODELS]);
+    expect(await h.manager.listModels()).toEqual(fallbackModels());
   });
 });
 

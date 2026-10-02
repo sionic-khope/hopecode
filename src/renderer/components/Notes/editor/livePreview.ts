@@ -6,6 +6,7 @@ import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate
 import { syntaxTree } from '@codemirror/language';
 import type { SyntaxNodeRef } from '@lezer/common';
 import { invoke } from '../../../api';
+import { t } from '../../../../shared/i18n';
 
 class BulletWidget extends WidgetType {
   override eq(): boolean {
@@ -31,7 +32,7 @@ class CheckboxWidget extends WidgetType {
     el.type = 'checkbox';
     el.className = 'cm-md-task';
     el.checked = this.checked;
-    el.setAttribute('aria-label', this.checked ? '완료한 항목' : '할 일 항목');
+    el.setAttribute('aria-label', this.checked ? t('noteEditor.taskDone') : t('noteEditor.task'));
     return el;
   }
   override ignoreEvent(): boolean {
@@ -149,7 +150,7 @@ export function buildLivePreview(state: EditorState, ranges: readonly { from: nu
               const textTo = marks[1].from;
               if (textTo > textFrom) {
                 const href = url ? doc.sliceString(url.from, url.to) : '';
-                out.push(Decoration.mark({ class: 'cm-md-link', attributes: { 'data-href': href, title: href ? `${href} (⌘ 클릭으로 열기)` : '' } }).range(textFrom, textTo));
+                out.push(Decoration.mark({ class: 'cm-md-link', attributes: { 'data-href': href, title: href ? t('noteEditor.linkTitle', { href }) : '' } }).range(textFrom, textTo));
               }
               if (!touches(state, active, node.from, node.to)) {
                 out.push(hide.range(node.from, textFrom));

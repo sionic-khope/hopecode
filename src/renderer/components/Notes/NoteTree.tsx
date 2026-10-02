@@ -14,6 +14,9 @@ import { useNotesStore } from '../../store/notesStore';
 import { Button, Menu, Modal, type MenuSection } from '../common';
 import { IconChevron, IconFolder, IconFolderPlus, IconMore, IconSearch } from '../Sidebar/icons';
 import { IconNotePage } from './icons';
+import { useLanguage } from '../../i18n';
+import { t } from '../../../shared/i18n';
+import { tNodes } from '../../i18n';
 
 /** Loads (or reloads) one folder listing into the store; a folder that is gone is dropped from the cache. */
 export async function loadNoteDir(dir: string): Promise<void> {
@@ -124,6 +127,7 @@ export interface NoteTreeProps {
 
 /** The file drawer's body: the vault's folders and `.md` files, loaded one folder at a time; name search; create / rename / trash. */
 export const NoteTree = memo(function NoteTree({ vault, openPath, onOpen, onRenamed, onTrashed, draftRequest = null }: NoteTreeProps) {
+  useLanguage();
   const children = useNotesStore((s) => s.children);
   const expanded = useNotesStore((s) => s.expanded);
   const [error, setError] = useState<string | null>(null);
@@ -139,7 +143,7 @@ export const NoteTree = memo(function NoteTree({ vault, openPath, onOpen, onRena
   useEffect(() => {
     if (!vault) return;
     if (!useNotesStore.getState().children['']) {
-      loadNoteDir('').catch((err: unknown) => setError(`폴더를 읽지 못했습니다: ${noteError(err)}`));
+      loadNoteDir('').catch((err: unknown) => setError(t('noteTree.err.read', { error: noteError(err) })));
     }
   }, [vault]);
 
@@ -218,7 +222,7 @@ export const NoteTree = memo(function NoteTree({ vault, openPath, onOpen, onRena
       await loadNoteDir(parentOf(entry.path));
       onTrashed(entry.path);
     } catch (err) {
-      setError(`휴지통으로 옮기지 못했습니다: ${noteError(err)}`);
+      setError(t('noteTree.err.trash', { error: noteError(err) }));
     }
   };
 
@@ -233,8 +237,8 @@ export const NoteTree = memo(function NoteTree({ vault, openPath, onOpen, onRena
           key: 'entry',
           kind: 'action',
           items: [
-            { key: 'rename', label: '이름 바꾸기', onSelect: () => setRenaming(menuFor.path) },
-            { key: 'trash', label: '휴지통으로 이동', tone: 'danger', onSelect: () => setConfirm(menuFor) },
+            { key: 'rename', label: t('noteTree.rename'), onSelect: () => setRenaming(menuFor.path) },
+            { key: 'trash', label: t('noteTree.trash'), tone: 'danger', onSelect: () => setConfirm(menuFor) },
           ],
         },
       ]
@@ -248,7 +252,7 @@ export const NoteTree = memo(function NoteTree({ vault, openPath, onOpen, onRena
         <li key="__draft" className="hc-notetree__row hc-notetree__row--edit" style={{ ['--depth' as string]: depth }}>
           <NameInput
             initial=""
-            placeholder={draft.kind === 'file' ? '새 노트 이름' : '새 폴더 이름'}
+            placeholder={draft.kind === 'file' ? t('noteTree.newNoteName') : t('noteTree.newFolderName')}
             testId="note-new-name"
             onSubmit={create}
             onCancel={() => setDraft(null)}
@@ -259,7 +263,7 @@ export const NoteTree = memo(function NoteTree({ vault, openPath, onOpen, onRena
     if (!list) {
       rows.push(
         <li key="__loading" className="hc-notetree__row hc-notetree__row--muted" style={{ ['--depth' as string]: depth }}>
-          불러오는 중…
+          {t('common.loading')}
         </li>,
       );
       return rows;
@@ -271,7 +275,7 @@ export const NoteTree = memo(function NoteTree({ vault, openPath, onOpen, onRena
       if (renaming === entry.path) {
         rows.push(
           <li key={entry.path} className="hc-notetree__row hc-notetree__row--edit" style={{ ['--depth' as string]: depth }}>
-            <NameInput initial={entry.name} placeholder="새 이름" testId="note-rename" onSubmit={(name) => rename(entry, name)} onCancel={() => setRenaming(null)} />
+            <NameInput initial={entry.name} placeholder={t('noteTree.newName')} testId="note-rename" onSubmit={(name) => rename(entry, name)} onCancel={() => setRenaming(null)} />
           </li>,
         );
       } else {
@@ -311,7 +315,7 @@ export const NoteTree = memo(function NoteTree({ vault, openPath, onOpen, onRena
               <button
                 type="button"
                 className="hc-notetree__more"
-                aria-label={`${entry.name} 메뉴`}
+                aria-label={t('noteTree.entryMenu', { name: entry.name })}
                 onClick={(e) => {
                   e.stopPropagation();
                   openMenu(entry, e.currentTarget);
@@ -336,7 +340,7 @@ export const NoteTree = memo(function NoteTree({ vault, openPath, onOpen, onRena
     if (list.length === 0 && !(draft && draft.parent === dir)) {
       rows.push(
         <li key="__empty" className="hc-notetree__row hc-notetree__row--muted" style={{ ['--depth' as string]: depth }}>
-          비어 있음
+          {t('noteTree.empty')}
         </li>,
       );
     }
@@ -351,23 +355,23 @@ export const NoteTree = memo(function NoteTree({ vault, openPath, onOpen, onRena
           <input
             type="search"
             value={query}
-            placeholder="노트 이름 검색"
-            aria-label="노트 이름 검색"
+            placeholder={t('noteTree.search')}
+            aria-label={t('noteTree.search')}
             data-testid="note-search"
             onChange={(e) => setQuery(e.target.value)}
           />
         </label>
-        <Button variant="plain" size="sm" icon aria-label="새 노트" title="새 노트" data-testid="note-new-file" onClick={() => startDraft('file')}>
+        <Button variant="plain" size="sm" icon aria-label={t('noteTree.newNote')} title={t('noteTree.newNote')} data-testid="note-new-file" onClick={() => startDraft('file')}>
           <IconNotePage width={15} height={15} plus />
         </Button>
-        <Button variant="plain" size="sm" icon aria-label="새 폴더" title="새 폴더" data-testid="note-new-dir" onClick={() => startDraft('dir')}>
+        <Button variant="plain" size="sm" icon aria-label={t('noteTree.newFolder')} title={t('noteTree.newFolder')} data-testid="note-new-dir" onClick={() => startDraft('dir')}>
           <IconFolderPlus width={15} height={15} />
         </Button>
       </div>
       {selectedDir ? (
-        <div className="hc-notetree__target" title="새 노트·폴더가 만들어질 위치">
-          <span>위치</span> {selectedDir}
-          <button type="button" className="hc-notetree__target-clear" aria-label="위치를 노트 폴더 최상위로" onClick={() => setSelectedDir('')}>
+        <div className="hc-notetree__target" title={t('noteTree.target.title')}>
+          <span>{t('noteTree.target')}</span> {selectedDir}
+          <button type="button" className="hc-notetree__target-clear" aria-label={t('noteTree.target.clear')} onClick={() => setSelectedDir('')}>
             ×
           </button>
         </div>
@@ -378,7 +382,7 @@ export const NoteTree = memo(function NoteTree({ vault, openPath, onOpen, onRena
         </div>
       ) : null}
       {results ? (
-        <ul className="hc-notetree__list" aria-label="검색 결과" data-testid="note-search-results">
+        <ul className="hc-notetree__list" aria-label={t('noteTree.results')} data-testid="note-search-results">
           {results.paths.map((p) => (
             <li key={p}>
               <button type="button" className={`hc-notetree__result${p === openPath ? ' hc-notetree__row--active' : ''}`} onClick={() => onOpen(p)}>
@@ -388,11 +392,11 @@ export const NoteTree = memo(function NoteTree({ vault, openPath, onOpen, onRena
               </button>
             </li>
           ))}
-          {results.paths.length === 0 ? <li className="hc-notetree__row hc-notetree__row--muted">일치하는 노트가 없습니다</li> : null}
-          {results.truncated ? <li className="hc-notetree__row hc-notetree__row--muted">결과가 많아 일부만 보여 줍니다</li> : null}
+          {results.paths.length === 0 ? <li className="hc-notetree__row hc-notetree__row--muted">{t('noteQuick.noMatch')}</li> : null}
+          {results.truncated ? <li className="hc-notetree__row hc-notetree__row--muted">{t('noteTree.truncated')}</li> : null}
         </ul>
       ) : (
-        <ul className="hc-notetree__list" role="tree" aria-label="노트 파일">
+        <ul className="hc-notetree__list" role="tree" aria-label={t('noteDrawer.aria')}>
           {renderRows('', 0)}
         </ul>
       )}
@@ -401,28 +405,27 @@ export const NoteTree = memo(function NoteTree({ vault, openPath, onOpen, onRena
         onClose={() => setMenuFor(null)}
         anchorRef={menuAnchor}
         sections={menuSections}
-        label="노트 메뉴"
+        label={t('noteTree.menu')}
         placement="bottom-start"
         width={200}
       />
       <Modal
         open={confirm !== null}
         onClose={() => setConfirm(null)}
-        title="휴지통으로 옮길까요?"
+        title={t('noteTree.trash.confirm')}
         role="alertdialog"
         width={420}
         actions={
           <>
-            <Button onClick={() => setConfirm(null)}>취소</Button>
+            <Button onClick={() => setConfirm(null)}>{t('common.cancel')}</Button>
             <Button variant="destructive" data-testid="note-trash-confirm" onClick={() => confirm && void trash(confirm)}>
-              휴지통으로 이동
+              {t('noteTree.trash')}
             </Button>
           </>
         }
       >
         <p className="hc-notetree__confirm">
-          <strong>{confirm?.path}</strong>
-          {confirm?.kind === 'dir' ? ' 폴더와 그 안의 모든 파일을' : ' 노트를'} macOS 휴지통으로 옮깁니다. 휴지통에서 되살릴 수 있습니다.
+          {tNodes(confirm?.kind === 'dir' ? 'noteTree.trash.dirBody' : 'noteTree.trash.noteBody', { path: <strong>{confirm?.path}</strong> })}
         </p>
       </Modal>
     </div>

@@ -1,6 +1,7 @@
 import { useState, type RefObject } from 'react';
 import { Button, Menu, Popover } from '../common';
 import { ipcErrorMessage } from '../../errors';
+import { t } from '../../../shared/i18n';
 
 /** `onConfirm` result asking for a second, forced confirmation (e.g. a worktree with uncommitted changes). */
 export const NEEDS_FORCE = 'needs-force';
@@ -114,10 +115,10 @@ export function ConfirmDeletePopover({
         ) : null}
         <div className="hc-confirm__actions">
           <Button variant="plain" size="sm" onClick={close}>
-            취소
+            {t('common.cancel')}
           </Button>
           <Button variant="destructive" size="sm" disabled={busy} onClick={() => run(stage === 'force')}>
-            {stage === 'force' ? '강제 삭제' : confirmLabel}
+            {stage === 'force' ? t('itemMenu.forceDelete') : confirmLabel}
           </Button>
         </div>
       </div>

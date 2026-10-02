@@ -1,5 +1,6 @@
 // Vault-relative note paths as the renderer sends them (posix `/`). Pure checks; main still resolves every path and
 // compares realpaths against the vault root before touching the disk.
+import { t } from '../../shared/i18n';
 
 /** Folders never listed, searched, read or written (besides every name starting with `.`). */
 export const IGNORED_NOTE_DIRS: ReadonlySet<string> = new Set(['node_modules', 'public', '__pycache__']);
@@ -20,11 +21,11 @@ export function isMarkdownName(name: string): boolean {
 
 /** One path segment a user may type for a new or renamed entry; null when it is not acceptable. */
 export function noteNameError(name: string): string | null {
-  if (name.length === 0 || name.trim() !== name) return '이름 앞뒤에 공백을 둘 수 없습니다';
-  if (name.length > NOTE_NAME_MAX) return `이름은 ${NOTE_NAME_MAX}자까지 쓸 수 있습니다`;
-  if (name === '.' || name === '..' || name.includes('/') || name.includes('\\')) return '이름에 / 나 .. 를 쓸 수 없습니다';
-  if (/[\u0000-\u001f\u007f:]/.test(name)) return '이름에 제어 문자나 : 를 쓸 수 없습니다';
-  if (isHiddenNoteName(name)) return '. 으로 시작하거나 숨김 폴더와 같은 이름은 쓸 수 없습니다';
+  if (name.length === 0 || name.trim() !== name) return t('noteName.edgeSpaces');
+  if (name.length > NOTE_NAME_MAX) return t('noteName.tooLong', { max: NOTE_NAME_MAX });
+  if (name === '.' || name === '..' || name.includes('/') || name.includes('\\')) return t('noteName.slash');
+  if (/[\u0000-\u001f\u007f:]/.test(name)) return t('noteName.control');
+  if (isHiddenNoteName(name)) return t('noteName.hidden');
   return null;
 }
 

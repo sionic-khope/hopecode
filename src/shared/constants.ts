@@ -1,4 +1,5 @@
 import type { AppSettings, CodexEffortLevel, EffortLevel, ModelOption, UiPermissionMode } from './types';
+import { t } from './i18n';
 
 export const APP_NAME = 'deltax';
 /** Value prefix for CLAUDE_AGENT_SDK_CLIENT_APP (`deltax/<version>`). */
@@ -19,8 +20,6 @@ export const EFFORT_LEVELS: readonly EffortLevel[] = ['low', 'medium', 'high', '
 /** Codex reasoning efforts (kept apart from Claude's: Codex also has `ultra`). A session's thought_level option wins. */
 export const CODEX_EFFORT_LEVELS: readonly CodexEffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
 
-/** Title of a thread before its first message names it. */
-export const DEFAULT_THREAD_TITLE = '새 채팅';
 /** Auto titles (first user message) are cut to this many characters. */
 export const THREAD_TITLE_MAX_CHARS = 40;
 
@@ -38,13 +37,15 @@ export const NEW_TASK_TEMPLATE_MAX_CHARS = 4000;
  * Model list shown until the SDK reported one (startup probe cache or a live session). Values mirror the CLI's
  * supportedModels() rows; `default` runs as Fable 5.1 until a session says otherwise.
  */
-export const FALLBACK_MODELS: readonly ModelOption[] = [
-  { value: 'default', label: 'Default', description: '권장 모델', resolvedModel: 'claude-fable-5-1' },
-  { value: 'claude-fable-5-1', label: 'Fable 5.1', description: '가장 어려운 작업', resolvedModel: 'claude-fable-5-1' },
-  { value: 'opus', label: 'Opus 5.5', description: '복잡하고 긴 작업', resolvedModel: 'claude-opus-5-5' },
-  { value: 'sonnet', label: 'Sonnet 5', description: '빠른 일상 작업', resolvedModel: 'claude-sonnet-5' },
-  { value: 'haiku', label: 'Haiku 4.5', description: '가장 빠른 응답', resolvedModel: 'claude-haiku-4-5-20251001' },
-];
+export function fallbackModels(): ModelOption[] {
+  return [
+    { value: 'default', label: 'Default', description: t('model.fallback.default'), resolvedModel: 'claude-fable-5-1' },
+    { value: 'claude-fable-5-1', label: 'Fable 5.1', description: t('model.fallback.fable'), resolvedModel: 'claude-fable-5-1' },
+    { value: 'opus', label: 'Opus 5.5', description: t('model.fallback.opus'), resolvedModel: 'claude-opus-5-5' },
+    { value: 'sonnet', label: 'Sonnet 5', description: t('model.fallback.sonnet'), resolvedModel: 'claude-sonnet-5' },
+    { value: 'haiku', label: 'Haiku 4.5', description: t('model.fallback.haiku'), resolvedModel: 'claude-haiku-4-5-20251001' },
+  ];
+}
 
 // Usage poll interval bounds (settings, seconds).
 export const USAGE_POLL_MIN_SEC = 60;
@@ -55,10 +56,10 @@ export const IDLE_CLOSE_MAX_MINUTES = 240;
 
 /**
  * AppSettings schema revision. 2 = per-agent defaults: Claude `claude-opus-5-5` / high replaces the old
- * `default` / null, Codex defaults added. 3 = Codex default `gpt-6-sol` -> `gpt-6.1-sol`.
- * core/settings.sanitizeSettings migrates older files.
+ * `default` / null, Codex defaults added. 3 = Codex default `gpt-6-sol` -> `gpt-6.1-sol`. 4 = `language` added
+ * (older files follow the system locale). core/settings.sanitizeSettings migrates older files.
  */
-export const SETTINGS_REV = 3;
+export const SETTINGS_REV = 4;
 
 /** Codex model of a new chat (plan 2.11). */
 export const CODEX_DEFAULT_MODEL = 'gpt-6.1-sol';
@@ -75,12 +76,11 @@ export const CODEX_MODEL_LABELS: Readonly<Record<string, string>> = {
   'gpt-6.1-sol': 'GPT-6.1-Sol',
 };
 
-/** Alias of the pool account backed by this Mac's own Claude Code login (`Account.source === 'local-default'`). */
-export const LOCAL_CLAUDE_ACCOUNT_ALIAS = '로컬 (기본)';
 
 export const PROFILE_NAME_MAX_CHARS = 40;
 
 export const DEFAULT_SETTINGS: AppSettings = {
+  language: 'system',
   profileName: '',
   idleCloseMinutes: 10,
   defaultModel: 'claude-opus-5-5',
@@ -187,6 +187,8 @@ export const ENV_FIXTURE_PROJECT = 'HOPECODE_FIXTURE_PROJECT';
 export const ENV_SMOKE = 'HOPECODE_SMOKE';
 /** Headless e2e: hidden window, no dock icon, never focuses, native dialogs auto-answered (unpackaged only). */
 export const ENV_E2E = 'HOPECODE_E2E';
+/** Fixture / e2e runs: the OS locale `language: 'system'` resolves against (instead of `app.getLocale()`). */
+export const ENV_SYSTEM_LOCALE = 'HOPECODE_SYSTEM_LOCALE';
 export const ENV_RENDERER_URL = 'ELECTRON_RENDERER_URL';
 
 // Validation

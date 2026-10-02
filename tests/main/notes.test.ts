@@ -33,7 +33,7 @@ import { MAX_REPORTED, createNoteWatcher } from '../../src/main/notes/noteWatche
 import { createAcpFixtureLauncher } from '../../src/main/fixtures/acpFixtureLaunchers';
 import type { AcpLaunchSpec } from '../../src/main/contracts';
 import { createNoteChats } from '../../src/main/notes/noteChats';
-import { TOOL_BLOCKED_ERROR, runNoteAi, type NoteAiDeps } from '../../src/main/notes/noteAi';
+import { runNoteAi, toolBlockedError, type NoteAiDeps } from '../../src/main/notes/noteAi';
 import { buildNotesHandlers, type NotesServices } from '../../src/main/ipc/notesHandlers';
 import { createFakeQuery, createFixtureScenario } from '../../src/main/fixtures/fakeQuery';
 import { buildNoteInlinePrompt, buildNoteSystemPrompt } from '../../src/core/notes/notePrompt';
@@ -386,7 +386,7 @@ describe('runNoteAi (Codex, fake ACP agent)', () => {
       (t) => deltas.push(t),
       new AbortController().signal,
     );
-    expect(res).toEqual({ ok: false, stopped: false, error: TOOL_BLOCKED_ERROR });
+    expect(res).toEqual({ ok: false, stopped: false, error: toolBlockedError() });
     // Text before the tool call streamed (the renderer rolls it back on the error); nothing after it did.
     expect(deltas.join('')).not.toContain('FAKE-SECRET-KEY');
     await vi.waitFor(() => expect(readdirSync(stateDir).some((f) => f.endsWith('.cancelled'))).toBe(true));

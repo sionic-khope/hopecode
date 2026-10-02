@@ -19,6 +19,8 @@ import {
   toolGroupLabel,
   toolState,
 } from './toolGroups';
+import { useLanguage } from '../../i18n';
+import { t } from '../../../shared/i18n';
 import './Chat.css';
 
 export interface ToolCardProps {
@@ -101,6 +103,7 @@ function StatusIcon({ state }: { state: 'running' | 'error' | 'done' }) {
 
 /** Collapsible card for one tool_use / tool_result pair that needs its own surface (diff, permission, images). */
 export const ToolCard = memo(function ToolCard({ item, defaultExpanded = false }: ToolCardProps) {
+  useLanguage();
   const [open, toggle] = useRememberedOpen(`tool:${item.id}`, defaultExpanded);
   const Icon = iconForTool(item.name);
   const running = item.result === undefined;
@@ -135,7 +138,7 @@ export const ToolCard = memo(function ToolCard({ item, defaultExpanded = false }
         >
           {live ? (
             <span className="hc-tool__progress">
-              실행 중…<span className="hc-tool__elapsed" aria-hidden>{formatElapsed(now - item.createdAt)}</span>
+              {t('tool.runningEllipsis')}<span className="hc-tool__elapsed" aria-hidden>{formatElapsed(now - item.createdAt)}</span>
             </span>
           ) : null}
           <StatusIcon state={toolState(item)} />
@@ -151,8 +154,8 @@ export const ToolCard = memo(function ToolCard({ item, defaultExpanded = false }
             <div key={`${d.path}:${i}`} className="hc-tool__file-diff" data-testid="tool-file-diff">
               <div className="hc-tool__file-path" title={d.path}>
                 {displayPath(d.path, paths.cwd, paths.home)}
-                {d.oldText === '' ? <span className="hc-tool__file-tag">새 파일</span> : null}
-                {d.truncated ? <span className="hc-tool__file-tag">일부만 표시</span> : null}
+                {d.oldText === '' ? <span className="hc-tool__file-tag">{t('tool.newFile')}</span> : null}
+                {d.truncated ? <span className="hc-tool__file-tag">{t('tool.partial')}</span> : null}
               </div>
               <DiffView oldText={d.oldText} newText={d.newText} />
             </div>
@@ -182,6 +185,7 @@ export const ToolCard = memo(function ToolCard({ item, defaultExpanded = false }
  * is a button; its output opens under it behind a thin rule. A failed call starts open.
  */
 export const ToolRow = memo(function ToolRow({ item }: { item: ToolItem }) {
+  useLanguage();
   const state = toolState(item);
   const [open, toggle] = useRememberedOpen(`tool:${item.id}`, state === 'error');
   const Icon = iconForTool(item.name);
@@ -218,7 +222,7 @@ export const ToolRow = memo(function ToolRow({ item }: { item: ToolItem }) {
         >
           {live ? (
             <span className="hc-tool__progress">
-              실행 중…<span className="hc-tool__elapsed" aria-hidden>{formatElapsed(now - item.createdAt)}</span>
+              {t('tool.runningEllipsis')}<span className="hc-tool__elapsed" aria-hidden>{formatElapsed(now - item.createdAt)}</span>
             </span>
           ) : null}
           {duration !== null ? <span className="hc-tool__duration">{formatDuration(duration)}</span> : null}
@@ -228,9 +232,9 @@ export const ToolRow = memo(function ToolRow({ item }: { item: ToolItem }) {
       <Collapse open={open}>
         <div className="hc-tool__output" data-testid="tool-output">
           {item.result !== undefined ? (
-            <ToolOutputText text={item.result.trim() === '' ? '(출력 없음)' : item.result} error={state === 'error'} />
+            <ToolOutputText text={item.result.trim() === '' ? t('tool.noOutput') : item.result} error={state === 'error'} />
           ) : (
-            <p className="hc-tool__waiting">{live ? '실행 중…' : '결과를 받지 못했습니다.'}</p>
+            <p className="hc-tool__waiting">{live ? t('tool.runningEllipsis') : t('tool.noResult')}</p>
           )}
         </div>
       </Collapse>
@@ -243,6 +247,7 @@ export const ToolRow = memo(function ToolRow({ item }: { item: ToolItem }) {
  * line shows it live; a failure opens the group and adds a red "실패 n". Expanded, every call is a ToolRow.
  */
 export const ToolGroup = memo(function ToolGroup({ id, tools }: { id: string; tools: ToolItem[] }) {
+  useLanguage();
   const summary = summarizeToolGroup(tools);
   const [open, toggle] = useRememberedOpen(`group:${id}`, groupStartsOpen(tools));
   const turnLive = useContext(TurnLiveContext);
@@ -275,7 +280,7 @@ export const ToolGroup = memo(function ToolGroup({ id, tools }: { id: string; to
         </span>
         {summary.failed > 0 ? (
           <span className="hc-toolgroup__failed" data-testid="tool-group-failed">
-            실패 {summary.failed}
+            {t('tool.failed')} {summary.failed}
           </span>
         ) : null}
         {current !== null ? (

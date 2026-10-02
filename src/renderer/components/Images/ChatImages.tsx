@@ -2,6 +2,8 @@ import { createContext, memo, useContext, useEffect, useState } from 'react';
 import type { ChatImage } from '../../../shared/types';
 import { invoke } from '../../api';
 import { Button, Modal } from '../common';
+import { useLanguage } from '../../i18n';
+import { t } from '../../../shared/i18n';
 import './Images.css';
 
 /** Thread whose folder image paths resolve against (MessageList provides it). */
@@ -80,6 +82,7 @@ export interface ImageThumbProps {
 
 /** Thumbnail button; opens the lightbox. Hidden when the file cannot be read (deleted, too large, outside). */
 export const ImageThumb = memo(function ImageThumb({ source, label, size = 'md', caption, subtitle }: ImageThumbProps) {
+  useLanguage();
   const threadId = useContext(ThreadImageContext);
   const url = useImageUrl(threadId, source);
   const [open, setOpen] = useState(false);
@@ -89,7 +92,7 @@ export const ImageThumb = memo(function ImageThumb({ source, label, size = 'md',
       <button
         type="button"
         className={`hc-image-thumb hc-image-thumb--${size}`}
-        aria-label={`${label} 크게 보기`}
+        aria-label={t('images.enlarge', { name: label })}
         title={label}
         data-testid="image-thumb"
         onClick={() => setOpen(true)}
@@ -138,7 +141,7 @@ function ImageLightbox({
 
   const reveal = () => {
     if (!threadId || !path) return;
-    invoke('image:reveal', { threadId, path }).catch(() => setStatus({ ok: false, text: '파일을 찾지 못했습니다' }));
+    invoke('image:reveal', { threadId, path }).catch(() => setStatus({ ok: false, text: t('images.notFound') }));
   };
   /** What main reads for copy / save: the media store ref, the inline image, or the thread-folder file. */
   const request = (id: string) => {
@@ -149,16 +152,16 @@ function ImageLightbox({
   const copy = () => {
     if (!threadId) return;
     invoke('image:copy', request(threadId))
-      .then(() => setStatus({ ok: true, text: '이미지를 복사했습니다' }))
-      .catch(() => setStatus({ ok: false, text: '이미지를 복사하지 못했습니다' }));
+      .then(() => setStatus({ ok: true, text: t('images.copied') }))
+      .catch(() => setStatus({ ok: false, text: t('images.copyFailed') }));
   };
   const save = () => {
     if (!threadId) return;
     invoke('image:save', request(threadId))
       .then(({ saved }) => {
-        if (saved) setStatus({ ok: true, text: '이미지를 저장했습니다' });
+        if (saved) setStatus({ ok: true, text: t('images.saved') });
       })
-      .catch(() => setStatus({ ok: false, text: '이미지를 저장하지 못했습니다' }));
+      .catch(() => setStatus({ ok: false, text: t('images.saveFailed') }));
   };
 
   return (
@@ -178,17 +181,17 @@ function ImageLightbox({
           ) : null}
           {threadId && path ? (
             <Button variant="secondary" onClick={reveal}>
-              Finder에서 보기
+              {t('images.reveal')}
             </Button>
           ) : null}
           {threadId && !isSvg(source) ? (
             <Button variant="secondary" onClick={save}>
-              저장
+              {t('common.save')}
             </Button>
           ) : null}
           {threadId && !isSvg(source) ? (
             <Button variant="primary" onClick={copy}>
-              복사
+              {t('common.copy')}
             </Button>
           ) : null}
         </>
@@ -206,7 +209,7 @@ function ImageLightbox({
  * (screenshots: tool · page URL) shows under the strip and as the lightbox subtitle.
  */
 export function ToolImages({ images, path, caption, label: name }: { images: ChatImage[]; path?: string; caption?: string | null; label?: string }) {
-  const label = name ?? (path ? baseName(path) : '도구 결과 이미지');
+  const label = name ?? (path ? baseName(path) : t('images.toolResult'));
   return (
     <figure className="hc-image-figure" data-testid="tool-images">
       <div className="hc-image-strip">
@@ -233,7 +236,7 @@ export function UserImages({ images }: { images: ChatImage[] }) {
   return (
     <div className="hc-image-strip hc-image-strip--user" data-testid="user-images">
       {images.map((image, i) => (
-        <ImageThumb key={i} source={{ kind: 'inline', image }} label={`첨부 이미지 ${i + 1}`} size="sm" />
+        <ImageThumb key={i} source={{ kind: 'inline', image }} label={t('attach.imageLabel', { n: i + 1 })} size="sm" />
       ))}
     </div>
   );
@@ -244,8 +247,8 @@ export function ImageGalleryCard({ paths }: { paths: string[] }) {
   return (
     <div className="hc-image-gallery" data-testid="image-gallery">
       <div className="hc-image-gallery__header">
-        <span className="hc-image-gallery__title">이미지 {paths.length}개</span>
-        <span className="hc-image-gallery__hint">이 턴에서 생성·변경됨</span>
+        <span className="hc-image-gallery__title">{t('images.count', { count: paths.length })}</span>
+        <span className="hc-image-gallery__hint">{t('images.changedThisTurn')}</span>
       </div>
       <div className="hc-image-gallery__grid">
         {paths.map((path) => (

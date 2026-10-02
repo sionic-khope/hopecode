@@ -14,7 +14,8 @@ import {
   hermesModelChip,
 } from '../../src/renderer/components/Chat/acpChips';
 import { chatSectionThreads } from '../../src/renderer/components/Sidebar/chatSection';
-import { DENY_CANCELS_TURN, MAY_PERSIST, permissionButtons } from '../../src/renderer/components/Chat/permissionButtons';
+import { permissionButtons } from '../../src/renderer/components/Chat/permissionButtons';
+import { t } from '../../src/shared/i18n';
 
 function auth(agent: LocalAuthInfo['agent'], state: LocalAuthInfo['state']): LocalAuthInfo {
   return { agent, state, method: null, email: null, plan: null, provider: null, source: '', version: null, detail: null, checkedAt: 1 };
@@ -205,7 +206,7 @@ describe('permissionButtons', () => {
     });
     expect(b.allow.enabled).toBe(true);
     expect(b.allowSession).toEqual({ shown: true, caption: 'Allow for session', warn: false });
-    expect(b.deny.caption).toBe(DENY_CANCELS_TURN);
+    expect(b.deny.caption).toBe(t('perm.denyCancelsTurn'));
     expect(b.agentOptionNames).toEqual(['Allow once', 'Allow for session', 'Reject always']);
   });
 
@@ -221,6 +222,6 @@ describe('permissionButtons', () => {
     expect(b.allow.enabled).toBe(false);
     expect(b.deny.caption).toBeNull();
     expect(b.allowSession.warn).toBe(true);
-    expect(b.allowSession.caption).toBe(`Always allow · ${MAY_PERSIST}`);
+    expect(b.allowSession.caption).toBe(`Always allow · ${t('perm.mayPersist')}`);
   });
 });

@@ -6,7 +6,8 @@ import { useAppStore } from '../../store';
 import { Button, Modal } from '../common';
 import { DiffView } from '../Chat/DiffView';
 import { summarizeCounts } from './commitMessage';
-import { SCRATCH_NO_GIT_NOTE, isScratchThread } from './scratchGit';
+import { isScratchThread, scratchNoGitNote } from './scratchGit';
+import { t, type MessageKey } from '../../../shared/i18n';
 import './Changes.css';
 
 // ---------------------------------------------------------------------------
@@ -129,12 +130,12 @@ function splitPath(path: string): { dir: string; name: string } {
   return i >= 0 ? { dir: path.slice(0, i + 1), name: path.slice(i + 1) } : { dir: '', name: path };
 }
 
-const STATUS_LABEL: Record<GitChangedFile['status'], string> = {
-  M: '수정됨',
-  A: '추가됨',
-  D: '삭제됨',
-  R: '이름 변경됨',
-  U: '충돌',
+const STATUS_LABEL: Record<GitChangedFile['status'], MessageKey> = {
+  M: 'changes.status.M',
+  A: 'changes.status.A',
+  D: 'changes.status.D',
+  R: 'changes.status.R',
+  U: 'changes.status.U',
 };
 
 // ---------------------------------------------------------------------------
@@ -142,7 +143,7 @@ const STATUS_LABEL: Record<GitChangedFile['status'], string> = {
 // ---------------------------------------------------------------------------
 
 export function StatusBadge({ file }: { file: Pick<GitChangedFile, 'status' | 'untracked'> }) {
-  const label = file.untracked ? '추적되지 않음' : STATUS_LABEL[file.status];
+  const label = file.untracked ? t('changes.untracked') : t(STATUS_LABEL[file.status]);
   return (
     <span
       className={`hc-changes__badge hc-changes__badge--${file.status}${file.untracked ? ' hc-changes__badge--untracked' : ''}`}
@@ -158,7 +159,7 @@ export function StatusBadge({ file }: { file: Pick<GitChangedFile, 'status' | 'u
 function LineStat({ additions, deletions, binary = false }: { additions: number; deletions: number; binary?: boolean }) {
   if (binary) return <span className="hc-changes__stat hc-changes__stat--bin">bin</span>;
   return (
-    <span className="hc-changes__stat" aria-label={`${additions}줄 추가, ${deletions}줄 삭제`}>
+    <span className="hc-changes__stat" aria-label={t('changes.statAria', { additions, deletions })}>
       <span className="hc-changes__add">+{additions}</span>
       <span className="hc-changes__del">−{deletions}</span>
     </span>
@@ -231,8 +232,8 @@ function FileRow({
         <button
           type="button"
           className="hc-changes__revert"
-          aria-label={`${file.path} 되돌리기`}
-          title="되돌리기"
+          aria-label={`${file.path} ${t('noteCard.revert')}`}
+          title={t('noteCard.revert')}
           onClick={onRevert}
         >
           <RevertGlyph />
@@ -258,7 +259,7 @@ function DiffBody({ state, binary }: { state: DiffState; binary: boolean }) {
           <i />
           <i />
         </span>
-        불러오는 중…
+        {t('common.loading')}
       </div>
     );
   }
@@ -269,8 +270,8 @@ function DiffBody({ state, binary }: { state: DiffState; binary: boolean }) {
       </div>
     );
   }
-  if (binary || state.diff.binary) return <div className="hc-changes__diffnote">바이너리 파일이라 내용을 표시하지 않아요.</div>;
-  if (state.diff.hunks.length === 0) return <div className="hc-changes__diffnote">표시할 줄 단위 변경이 없어요.</div>;
+  if (binary || state.diff.binary) return <div className="hc-changes__diffnote">{t('changes.binary')}</div>;
+  if (state.diff.hunks.length === 0) return <div className="hc-changes__diffnote">{t('changes.noHunks')}</div>;
   return <DiffView patch={state.diff.hunks} />;
 }
 
@@ -339,8 +340,8 @@ function RevertModal({ threadId, file, onClose }: { threadId: string; file: GitC
       open={file !== null}
       onClose={onClose}
       role="alertdialog"
-      title="변경 사항을 되돌릴까요?"
-      subtitle="되돌린 뒤에는 다시 복구할 수 없어요."
+      title={t('changes.revert.title')}
+      subtitle={t('changes.revert.subtitle')}
       width={420}
       dismissible={!busy}
       icon={
@@ -351,10 +352,10 @@ function RevertModal({ threadId, file, onClose }: { threadId: string; file: GitC
       actions={
         <>
           <Button variant="secondary" onClick={onClose} disabled={busy}>
-            취소
+            {t('common.cancel')}
           </Button>
           <Button variant="destructive" onClick={confirm} disabled={busy} data-autofocus>
-            {busy ? '되돌리는 중…' : '되돌리기'}
+            {busy ? t('changes.reverting') : t('noteCard.revert')}
           </Button>
         </>
       }
@@ -367,8 +368,8 @@ function RevertModal({ threadId, file, onClose }: { threadId: string; file: GitC
           </div>
           <p className="hc-changes__confirm-text">
             {file.untracked
-              ? '아직 git이 추적하지 않는 새 파일이라, 되돌리면 파일이 삭제됩니다.'
-              : '이 파일의 모든 변경 사항이 마지막 커밋 상태로 돌아갑니다.'}
+              ? t('changes.revert.untracked')
+              : t('changes.revert.tracked')}
           </p>
           {error ? (
             <p className="hc-changes__error" role="alert">
@@ -399,15 +400,15 @@ function ScratchChanges({ thread }: { thread: Thread }) {
     invoke('editor:open', { threadId: thread.id, editor: 'finder' }).catch((err: unknown) => setError(ipcErrorMessage(err)));
   };
   return (
-    <section className="hc-changes" aria-label="변경사항" data-testid="changes-panel" data-scratch="true">
+    <section className="hc-changes" aria-label={t('panel.changes')} data-testid="changes-panel" data-scratch="true">
       <div className="hc-changes__body">
         <EmptyState
           kind="norepo"
-          title="프로젝트 없는 채팅입니다"
-          sub={SCRATCH_NO_GIT_NOTE}
+          title={t('changes.scratch.title')}
+          sub={scratchNoGitNote()}
           action={
             <Button variant="secondary" size="sm" onClick={openFolder} data-testid="changes-open-folder">
-              폴더 열기
+              {t('plugins.openFolder')}
             </Button>
           }
         />
@@ -461,11 +462,11 @@ function GitChangesPanel({ thread }: { thread: Thread }) {
     body = error ? (
       <EmptyState
         kind="error"
-        title="변경 사항을 불러오지 못했어요"
+        title={t('changes.loadFailed')}
         sub={error}
         action={
           <Button variant="secondary" size="sm" onClick={reload}>
-            다시 시도
+            {t('common.retry')}
           </Button>
         }
       />
@@ -473,9 +474,9 @@ function GitChangesPanel({ thread }: { thread: Thread }) {
       <SkeletonRows />
     );
   } else if (!data.isRepo) {
-    body = <EmptyState kind="norepo" title="git 저장소가 아닙니다" sub="이 폴더는 git으로 관리되고 있지 않아 변경 사항을 추적할 수 없어요." />;
+    body = <EmptyState kind="norepo" title={t('git.notRepo')} sub={t('changes.norepo.sub')} />;
   } else if (files.length === 0) {
-    body = <EmptyState kind="clean" title="변경 사항이 없습니다" sub="에이전트가 파일을 바꾸면 여기에 표시돼요." />;
+    body = <EmptyState kind="clean" title={t('changes.clean')} sub={t('changes.clean.sub')} />;
   } else {
     body = (
       <ul className="hc-changes__list">
@@ -499,7 +500,7 @@ function GitChangesPanel({ thread }: { thread: Thread }) {
   const ahead = data?.isRepo ? data.ahead : 0;
 
   return (
-    <section className="hc-changes" aria-label="변경사항" data-testid="changes-panel" aria-busy={loading}>
+    <section className="hc-changes" aria-label={t('panel.changes')} data-testid="changes-panel" aria-busy={loading}>
       <header className="hc-changes__header">
         <div className="hc-changes__branchline">
           {branch ? (
@@ -509,18 +510,18 @@ function GitChangesPanel({ thread }: { thread: Thread }) {
             </span>
           ) : null}
           {baseBranch ? (
-            <span className="hc-changes__base" title={`${baseBranch}에서 분기`}>
+            <span className="hc-changes__base" title={t('changes.branchedFrom', { base: baseBranch })}>
               ← {baseBranch}
             </span>
           ) : null}
-          {ahead > 0 ? <span className="hc-changes__ahead">커밋 {ahead}개 앞섬</span> : null}
+          {ahead > 0 ? <span className="hc-changes__ahead">{t('changes.ahead', { count: ahead })}</span> : null}
           <Button
             variant="plain"
             size="sm"
             icon
             className={`hc-changes__refresh${loading ? ' hc-changes__refresh--spin' : ''}`}
-            aria-label="새로고침"
-            title="새로고침"
+            aria-label={t('prs.refresh')}
+            title={t('prs.refresh')}
             onClick={reload}
           >
             <RefreshGlyph />
@@ -528,7 +529,7 @@ function GitChangesPanel({ thread }: { thread: Thread }) {
         </div>
         {files.length > 0 ? (
           <div className="hc-changes__totals">
-            <span className="hc-changes__count">파일 {totals.files}개</span>
+            <span className="hc-changes__count">{t('changes.files', { count: totals.files })}</span>
             <LineStat additions={totals.additions} deletions={totals.deletions} />
           </div>
         ) : null}

@@ -67,6 +67,8 @@ export async function launch(sandbox: Sandbox, opts: LaunchOptions = {}): Promis
     HOPECODE_FIXTURE_PROJECT: sandbox.project,
     // Headless run: main keeps the window hidden (no show/focus, no Dock/menu bar) and never opens native dialogs.
     HOPECODE_E2E: '1',
+    // Specs assert Korean UI text: 'system' language resolves against this locale, not the Mac's (opts.env may change it).
+    HOPECODE_SYSTEM_LOCALE: 'ko-KR',
   });
   // Extra fixture switches first, then the isolation keys again so a caller cannot drop them.
   Object.assign(env, opts.env ?? {}, { HOPECODE_HOME: sandbox.home, HOPECODE_FIXTURES: '1', HOPECODE_E2E: '1' });

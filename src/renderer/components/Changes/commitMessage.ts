@@ -1,17 +1,29 @@
 import type { GitChangedFile, GitFileStatus } from '../../../shared/types';
+import { t, type MessageKey } from '../../../shared/i18n';
 
 /** Longest subject line git tooling displays without wrapping. */
 export const SUBJECT_MAX = 72;
 /** Files listed in the body before the rest collapse into "…외 N개". */
 export const BODY_MAX_FILES = 10;
 
-const VERB: Record<GitFileStatus, string> = {
-  A: '추가',
-  M: '수정',
-  D: '삭제',
-  R: '이름 변경',
-  U: '충돌 해결',
+const VERB_KEY: Record<GitFileStatus, MessageKey> = {
+  A: 'commit.verb.add',
+  M: 'commit.verb.modify',
+  D: 'commit.verb.delete',
+  R: 'commit.verb.rename',
+  U: 'commit.verb.resolve',
 };
+const verbOf = (status: GitFileStatus): string => t(VERB_KEY[status]);
+/** The change kind as a count label in a mixed subject (`추가 2` / `added 2`). */
+const KIND_KEY: Record<GitFileStatus, MessageKey> = {
+  A: 'commit.kind.add',
+  M: 'commit.kind.modify',
+  D: 'commit.kind.delete',
+  R: 'commit.kind.rename',
+  U: 'commit.kind.resolve',
+};
+/** `<target> 수정` / `Update <target>`: word order follows the language. */
+const single = (target: string, verb: string): string => t('commit.subject.single', { target, verb });
 
 /** Order of the per-kind counts in a mixed subject. */
 const COUNT_ORDER: readonly GitFileStatus[] = ['A', 'M', 'D', 'R', 'U'];
@@ -48,15 +60,15 @@ function clamp(text: string, max = SUBJECT_MAX): string {
 
 /** Tries the full path first, then basenames, then truncates. */
 function singleSubject(file: GitChangedFile): string {
-  const verb = VERB[file.status];
+  const verb = verbOf(file.status);
   if (file.status === 'R' && file.oldPath) {
-    const full = `${file.oldPath} → ${file.path} ${verb}`;
+    const full = single(`${file.oldPath} → ${file.path}`, verb);
     if (full.length <= SUBJECT_MAX) return full;
-    return clamp(`${basename(file.oldPath)} → ${basename(file.path)} ${verb}`);
+    return clamp(single(`${basename(file.oldPath)} → ${basename(file.path)}`, verb));
   }
-  const full = `${file.path} ${verb}`;
+  const full = single(file.path, verb);
   if (full.length <= SUBJECT_MAX) return full;
-  return clamp(`${basename(file.path)} ${verb}`);
+  return clamp(single(basename(file.path), verb));
 }
 
 function subjectLine(files: readonly GitChangedFile[]): string {
@@ -71,15 +83,15 @@ function subjectLine(files: readonly GitChangedFile[]): string {
 
   if (byStatus.size === 1) {
     const [status] = byStatus.keys();
-    return clamp(`${scope}파일 ${files.length}개 ${VERB[status!]}`);
+    return clamp(t('commit.subject.same', { scope, count: files.length, verb: verbOf(status!) }));
   }
-  const parts = COUNT_ORDER.filter((s) => byStatus.has(s)).map((s) => `${VERB[s]} ${byStatus.get(s)}`);
-  return clamp(`${scope}파일 ${files.length}개 변경 (${parts.join(', ')})`);
+  const parts = COUNT_ORDER.filter((s) => byStatus.has(s)).map((s) => `${t(KIND_KEY[s])} ${byStatus.get(s)}`);
+  return clamp(t('commit.subject.mixed', { scope, count: files.length, parts: parts.join(', ') }));
 }
 
 function bodyLine(file: GitChangedFile): string {
   const name = file.status === 'R' && file.oldPath ? `${file.oldPath} → ${file.path}` : file.path;
-  const stat = file.binary ? '(바이너리)' : `(+${file.additions} −${file.deletions})`;
+  const stat = file.binary ? t('commit.binary') : `(+${file.additions} −${file.deletions})`;
   return `- ${file.status} ${name} ${stat}`;
 }
 
@@ -90,6 +102,6 @@ function bodyLine(file: GitChangedFile): string {
 export function autoCommitMessage(files: readonly GitChangedFile[]): string {
   if (files.length === 0) return '';
   const lines = files.slice(0, BODY_MAX_FILES).map(bodyLine);
-  if (files.length > BODY_MAX_FILES) lines.push(`- …외 ${files.length - BODY_MAX_FILES}개`);
+  if (files.length > BODY_MAX_FILES) lines.push(`- ${t('commit.more', { count: files.length - BODY_MAX_FILES })}`);
   return `${subjectLine(files)}\n\n${lines.join('\n')}`;
 }

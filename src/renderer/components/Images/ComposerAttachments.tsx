@@ -6,6 +6,7 @@ import { attachDropped, invoke } from '../../api';
 import { ipcErrorMessage } from '../../errors';
 import { playSfx } from '../../sound/engine';
 import { inlineDataUrl } from './ChatImages';
+import { t } from '../../../shared/i18n';
 import './Images.css';
 
 /** Who the attachments go to: the agent (and its session's prompt capabilities, null = not known yet) and folder. */
@@ -19,7 +20,7 @@ export interface AttachTarget {
 function problemText(problems: readonly AttachRejection[]): string | null {
   const first = problems[0];
   if (!first) return null;
-  const more = problems.length > 1 ? ` (외 ${problems.length - 1}건)` : '';
+  const more = problems.length > 1 ? ` ${t('attach.moreProblems', { count: problems.length - 1 })}` : '';
   return `${first.name}: ${first.reason}${more}`;
 }
 
@@ -30,11 +31,11 @@ async function readPasted(files: File[]): Promise<{ blobs: { name: string; bytes
   for (const [i, file] of files.entries()) {
     // Main refuses a paste of more than MAX_ATTACHMENTS items outright; the rest get their reason here.
     if (i >= MAX_ATTACHMENTS) {
-      rejected.push({ name: file.name, reason: `한 메시지에 ${MAX_ATTACHMENTS}개까지 첨부할 수 있습니다` });
+      rejected.push({ name: file.name, reason: t('attach.maxCount', { max: MAX_ATTACHMENTS }) });
       continue;
     }
     if (file.size > MAX_ATTACH_READ_BYTES) {
-      rejected.push({ name: file.name, reason: `${formatBytes(MAX_ATTACH_READ_BYTES)}보다 큽니다` });
+      rejected.push({ name: file.name, reason: t('attach.tooLarge', { size: formatBytes(MAX_ATTACH_READ_BYTES) }) });
       continue;
     }
     // Clipboard images arrive as `image.png`; a nameless one is named after its type so main can match the magic.
@@ -87,7 +88,7 @@ export function useComposerAttachments(target: AttachTarget | null) {
       setError(null);
       work
         .then(({ res, extra }) => accept(res, extra))
-        .catch((err: unknown) => setError(`첨부하지 못했습니다: ${ipcErrorMessage(err)}`));
+        .catch((err: unknown) => setError(t('attach.failed', { error: ipcErrorMessage(err) })));
     },
     [accept],
   );
@@ -159,14 +160,14 @@ export function useComposerAttachments(target: AttachTarget | null) {
    * reason and returns false when an attachment cannot go to this agent.
    */
   const checkBeforeSend = useCallback((): boolean => {
-    const t = targetRef.current;
-    if (!t) return true;
+    const target = targetRef.current;
+    if (!target) return true;
     const problems = current.current.flatMap((a) => {
-      const why = unsupportedReason(t.agent, t.caps, a, AGENTS[t.agent].name);
+      const why = unsupportedReason(target.agent, target.caps, a, AGENTS[target.agent].name);
       return why ? [{ name: a.name, reason: why }] : [];
     });
     if (problems.length === 0) return true;
-    setError(`${problemText(problems)} — 제거한 뒤 보내 주세요`);
+    setError(t('attach.removeBeforeSend', { problem: problemText(problems) ?? '' }));
     return false;
   }, []);
 
@@ -220,11 +221,11 @@ export function ComposerAttachmentTray({
       {items.map((a) => {
         if (a.kind === 'image' && a.image) {
           imageNo += 1;
-          const label = `첨부 이미지 ${imageNo}`;
+          const label = t('attach.imageLabel', { n: imageNo });
           return (
-            <div key={a.id} className="hc-composer-image" title={`${a.name} · ${formatBytes(a.size)}${a.resized ? ' (축소됨)' : ''}`}>
+            <div key={a.id} className="hc-composer-image" title={`${a.name} · ${formatBytes(a.size)}${a.resized ? ` ${t('attach.resized')}` : ''}`}>
               <img src={inlineDataUrl(a.image)} alt={label} draggable={false} />
-              <button type="button" className="hc-composer-image__remove" aria-label={`${label} 제거`} onClick={() => onRemove(a.id)}>
+              <button type="button" className="hc-composer-image__remove" aria-label={t('attach.remove', { name: label })} onClick={() => onRemove(a.id)}>
                 <RemoveGlyph />
               </button>
             </div>
@@ -233,7 +234,7 @@ export function ComposerAttachmentTray({
         return (
           <div key={a.id} className="hc-attach-chip" data-testid="attachment-chip" data-kind={a.kind}>
             <FileChipBody file={{ kind: a.kind === 'pdf' ? 'pdf' : 'text', name: a.name, size: a.size }} />
-            <button type="button" className="hc-attach-chip__remove" aria-label={`첨부 파일 ${a.name} 제거`} onClick={() => onRemove(a.id)}>
+            <button type="button" className="hc-attach-chip__remove" aria-label={t('attach.removeFile', { name: a.name })} onClick={() => onRemove(a.id)}>
               <RemoveGlyph />
             </button>
           </div>

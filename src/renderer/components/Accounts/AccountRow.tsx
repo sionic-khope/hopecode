@@ -6,6 +6,8 @@ import { ACCOUNT_COLORS } from '../../../shared/constants';
 import { Button, Pill, Switch, type PillTone } from '../common';
 import { UsageChart } from './UsageChart';
 import type { ChartRange } from './usageChartScale';
+import { t } from '../../../shared/i18n';
+import { tNodes } from '../../i18n';
 import './AccountsPage.css';
 
 export interface AccountRowProps {
@@ -28,10 +30,10 @@ interface StatusBadge {
 function statusBadge(usage: AccountUsage | undefined): StatusBadge | null {
   if (!usage) return null;
   if (usage.error === 'auth' || usage.error === 'token_expired') {
-    return { tone: 'warn', label: '재로그인 필요' };
+    return { tone: 'warn', label: t('acct.reloginNeeded') };
   }
   if (usage.extraUsageEnabled) {
-    return { tone: 'warn', label: '추가 사용량 켜짐' };
+    return { tone: 'warn', label: t('acct.overageOn') };
   }
   return null;
 }
@@ -93,7 +95,7 @@ export function AccountRow({ account, usage, usageHistory, now, onUpdate, onRemo
         <button
           type="button"
           className="hc-acct-row__handle"
-          aria-label={`${account.alias} 순서 변경`}
+          aria-label={t('acct.reorderAria', { alias: account.alias })}
           {...attributes}
           {...listeners}
         >
@@ -105,12 +107,12 @@ export function AccountRow({ account, usage, usageHistory, now, onUpdate, onRemo
             type="button"
             className="hc-acct-row__swatch"
             style={{ background: account.color }}
-            aria-label={`${account.alias} 색상 변경`}
+            aria-label={t('acct.colorAria', { alias: account.alias })}
             aria-expanded={colorPickerOpen}
             onClick={() => setColorPickerOpen((v) => !v)}
           />
           {colorPickerOpen ? (
-            <div className="hc-acct-row__palette" role="listbox" aria-label="계정 색상">
+            <div className="hc-acct-row__palette" role="listbox" aria-label={t('acct.colorList')}>
               {ACCOUNT_COLORS.map((color) => (
                 <button
                   key={color}
@@ -148,22 +150,22 @@ export function AccountRow({ account, usage, usageHistory, now, onUpdate, onRemo
               }}
             />
           ) : (
-            <button type="button" className="hc-acct-row__alias" onClick={() => setEditingAlias(true)} title="이름 변경">
+            <button type="button" className="hc-acct-row__alias" onClick={() => setEditingAlias(true)} title={t('acct.rename')}>
               {account.alias}
             </button>
           )}
           <span className="hc-acct-row__sub">
-            {account.email ?? '로그인 안 됨'}
+            {account.email ?? t('acct.notLoggedIn')}
             {account.plan ? ` · ${account.plan}` : ''}
           </span>
         </div>
 
         <div className="hc-acct-row__badges">
-          {isLocal ? <Pill tone="accent">로컬 (기본)</Pill> : null}
+          {isLocal ? <Pill tone="accent">{t('account.localAlias')}</Pill> : null}
           {badge ? <Pill tone={badge.tone}>{badge.label}</Pill> : null}
         </div>
 
-        <Switch checked={account.enabled} onChange={(checked) => onUpdate({ enabled: checked })} aria-label={`${account.alias} 활성화`} />
+        <Switch checked={account.enabled} onChange={(checked) => onUpdate({ enabled: checked })} aria-label={t('acct.enableAria', { alias: account.alias })} />
 
         {confirmingDelete ? (
           <div className="hc-acct-row__confirm">
@@ -175,10 +177,10 @@ export function AccountRow({ account, usage, usageHistory, now, onUpdate, onRemo
                 setRemoveError(null);
               }}
             >
-              취소
+              {t('common.cancel')}
             </Button>
             <Button variant="destructive" size="sm" disabled={removing} onClick={confirmRemove}>
-              {removing ? (isLocal ? '제외 중…' : '제거 중…') : isLocal ? '풀에서 제외' : '제거'}
+              {removing ? (isLocal ? t('acct.excluding') : t('acct.removing')) : isLocal ? t('acct.exclude') : t('project.remove.confirm')}
             </Button>
           </div>
         ) : (
@@ -186,8 +188,8 @@ export function AccountRow({ account, usage, usageHistory, now, onUpdate, onRemo
             variant="plain"
             size="sm"
             icon
-            aria-label={isLocal ? `${account.alias} 풀에서 제외` : `${account.alias} 제거`}
-            title={isLocal ? '풀에서 제외' : '계정 제거'}
+            aria-label={isLocal ? t('acct.excludeAria', { alias: account.alias }) : t('acct.removeAria', { alias: account.alias })}
+            title={isLocal ? t('acct.exclude') : t('acct.remove')}
             onClick={() => setConfirmingDelete(true)}
           >
             <TrashIcon />
@@ -198,19 +200,19 @@ export function AccountRow({ account, usage, usageHistory, now, onUpdate, onRemo
       {confirmingDelete ? (
         <div className={`hc-acct-row__remove-note${removeError ? ' hc-acct-row__remove-note--error' : ''}`} role={removeError ? 'alert' : undefined}>
           {removeError
-            ? `${account.alias} 계정을 ${isLocal ? '풀에서 제외' : '제거'}하지 못했습니다: ${removeError}`
+            ? (isLocal ? t('acct.excludeFailed', { alias: account.alias, error: removeError }) : t('acct.removeFailed', { alias: account.alias, error: removeError }))
             : isLocal
-              ? `${account.alias} 계정을 풀에서 제외할까요? 이 Mac의 Claude Code 로그인 파일(~/.claude)은 삭제하지 않습니다. 실행 중인 세션은 닫히고 대화 기록은 다른 계정으로 옮겨집니다.`
-              : `${account.alias} 계정을 제거할까요? 실행 중인 세션은 닫히고 대화 기록은 다른 계정으로 옮겨집니다. 로그인 정보와 설정 폴더는 삭제됩니다.`}
+              ? t('acct.excludeConfirm', { alias: account.alias })
+              : t('acct.removeConfirm', { alias: account.alias })}
         </div>
       ) : null}
 
       {showReLoginHint ? (
         <div className="hc-acct-row__hint">
-          이 계정으로 <code>claude auth login --claudeai</code>를 실행한 뒤 새로 고치세요.
+          {tNodes('acct.reloginHint', { command: <code>claude auth login --claudeai</code> })}
           {onReLogin ? (
             <Button variant="secondary" size="sm" onClick={onReLogin}>
-              다시 로그인
+              {t('acct.relogin')}
             </Button>
           ) : null}
         </div>

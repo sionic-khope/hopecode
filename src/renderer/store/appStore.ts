@@ -8,6 +8,7 @@ import { DEFAULT_SETTINGS } from '../../shared/constants';
 import { DEFAULT_AGENT } from '../../shared/agents';
 import { fillNewTaskTemplate } from '../../core/newTaskTemplate';
 import { toggleTurnBookmark } from '../../core/turnScrubber';
+import { resolveLanguage, setLanguage, t, type Language, type LanguageSetting } from '../../shared/i18n';
 import type {
   Account,
   AccountPatch,
@@ -191,10 +192,13 @@ export interface TurnPhase {
   startedAt: number;
 }
 
-/** Notice main logs when a Claude turn rotates to another account (threadRunner). */
-const ACCOUNT_SWITCH_PREFIX = '계정 전환:';
 
 /** An ACP session counts as open this long after its last sign of life when idle-close is off (0). */
+/** Start of the notice main logs when a Claude turn rotates to another account (threadRunner `runner.switched`). */
+function accountSwitchPrefix(): string {
+  return t('runner.switched').split('{')[0];
+}
+
 const ACP_LIVE_FALLBACK_MS = 6 * 60 * 60 * 1000;
 
 /** True when this renderer saw the thread's ACP session open (agent:controls / output) and it has not idled out. */
@@ -222,6 +226,24 @@ const EMPTY_POOL: PoolSnapshot = {
 };
 
 const EMPTY_SETTINGS: AppSettings = { ...DEFAULT_SETTINGS };
+
+/** Before bootstrap: the browser's locale list (main's `app.getLocale()` replaces it once bootstrap arrives). */
+function browserLocales(): readonly string[] {
+  return typeof navigator === 'undefined' ? [] : navigator.languages?.length ? navigator.languages : [navigator.language ?? ''];
+}
+
+/**
+ * Applies a language to this renderer: the shared `t()` first (helpers called during the next render read it), then
+ * `<html lang>` (font fallback and hyphenation pick the right CJK glyphs).
+ */
+function applyLanguage(setting: LanguageSetting, systemLocale: string | readonly string[]): Language {
+  const lang = resolveLanguage(setting, systemLocale);
+  setLanguage(lang);
+  if (typeof document !== 'undefined') document.documentElement.lang = lang;
+  return lang;
+}
+
+const INITIAL_LANGUAGE = applyLanguage('system', browserLocales());
 
 function upsertThread(threads: Thread[], thread: Thread): Thread[] {
   const idx = threads.findIndex((t) => t.id === thread.id);
@@ -297,7 +319,7 @@ function outputSeen(s: PhaseSlice, threadId: string): Partial<PhaseSlice> {
 function phaseAfterItem(s: PhaseSlice, threadId: string, item: ChatItem): Partial<PhaseSlice> {
   if (item.type === 'assistant-text' || item.type === 'tool' || item.type === 'image-gallery') return outputSeen(s, threadId);
   const phase = s.turnPhaseByThread[threadId];
-  if (phase && item.type === 'notice' && item.level === 'info' && item.text.startsWith(ACCOUNT_SWITCH_PREFIX)) {
+  if (phase && item.type === 'notice' && item.level === 'info' && item.text.startsWith(accountSwitchPrefix())) {
     return { turnPhaseByThread: { ...s.turnPhaseByThread, [threadId]: { ...phase, phase: 'switching' } } };
   }
   return {};
@@ -380,6 +402,10 @@ export interface AppStoreState {
   changesFocus: { threadId: string; path: string; nonce: number } | null;
   /** Fixture / e2e run (bootstrap): no system notifications. */
   testMode: boolean;
+  /** UI language in effect (`settings.language` resolved against `systemLocale`). */
+  language: Language;
+  /** OS locale main reported (bootstrap); 'system' resolves against it. */
+  systemLocale: string | null;
 
   // per-thread chat state
   chatItemsByThread: Record<string, ChatItem[]>;
@@ -539,6 +565,8 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
   gitRevision: {},
   changesFocus: null,
   testMode: false,
+  language: INITIAL_LANGUAGE,
+  systemLocale: null,
   draft: {
     projectId: null,
     agent: DEFAULT_AGENT,
@@ -955,6 +983,8 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
       // Permission prompts still waiting in main survive a renderer reload (M7).
       permissionRequests: payload.pendingPermissions ?? [],
       testMode: payload.testMode === true,
+      systemLocale: payload.systemLocale ?? null,
+      language: applyLanguage(payload.settings.language, payload.systemLocale ?? browserLocales()),
       localAuth: payload.localAuth ?? [],
       agentUsage: payload.agentUsage ?? {},
       // Launch opens a new chat (draft) in the last used folder; an explicit selection is kept on re-bootstrap.
@@ -1108,7 +1138,8 @@ export const useAppStore = create<AppStoreState>()((set, get) => ({
       accounts: account ? upsertAccount(s.accounts, account) : s.accounts,
     })),
 
-  applySettingsUpdated: (settings) => set({ settings }),
+  applySettingsUpdated: (settings) =>
+    set((s) => ({ settings, language: applyLanguage(settings.language, s.systemLocale ?? browserLocales()) })),
 
   applyModelsUpdated: (models) => set({ models }),
 

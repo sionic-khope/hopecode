@@ -1,3 +1,4 @@
+import { t } from '../../../shared/i18n';
 import './Chat.css';
 
 /**
@@ -16,7 +17,7 @@ export function MoreButton({ count, onClick, className }: { count: number | null
       <span className="hc-more__glyph" aria-hidden>
         {count === null ? '▴' : '▾'}
       </span>
-      {count === null ? '접기' : `${count}줄 더 보기`}
+      {count === null ? t('more.collapse') : t('more.lines', { count })}
     </button>
   );
 }

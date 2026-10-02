@@ -4,6 +4,7 @@
 import { CODEX_MODEL_LABELS } from '../shared/constants';
 import type { AcpConfigOptionLite, ModelOption } from '../shared/types';
 import { modelLabel } from './modelLabel';
+import { t } from '../shared/i18n';
 
 /** Versioned names of the CLI model aliases (used until the SDK reports something more specific). */
 export const MODEL_ALIAS_LABEL: Readonly<Record<string, string>> = {
@@ -62,9 +63,9 @@ export function concreteModelLabel(
   return option?.label ?? value;
 }
 
-/** Menu row label: `기본 (Fable 5.1)` for the default entry, the concrete name otherwise. */
+/** Menu row label: `기본 (Fable 5.1)` / `Default (Fable 5.1)` for the default entry, the concrete name otherwise. */
 export function modelMenuLabel(value: string, options: readonly ModelOption[], defaultLabel?: string): string {
-  if (value === 'default') return `기본 (${defaultLabel ?? defaultModelLabelFromOptions(options) ?? FALLBACK_DEFAULT_MODEL_LABEL})`;
+  if (value === 'default') return t('model.defaultWith', { model: defaultLabel ?? defaultModelLabelFromOptions(options) ?? FALLBACK_DEFAULT_MODEL_LABEL });
   return concreteModelLabel(value, options);
 }
 

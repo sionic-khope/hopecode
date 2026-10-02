@@ -15,6 +15,7 @@ import {
 import type { Schedule, ScheduleRun } from '../../shared/nav';
 import type { ThreadStartRequest, ThreadStartResult } from '../../shared/types';
 import { PRIVATE_FILE_MODE, mkdirPrivate } from '../persistence/jsonl';
+import { t, type MessageKey } from '../../shared/i18n';
 
 export const SCHEDULE_TICK_MS = 15_000;
 
@@ -43,10 +44,10 @@ export interface Scheduler {
   flush(): Promise<void>;
 }
 
-const REASON_TEXT: Record<string, string> = {
-  busy: '스레드가 실행 중입니다',
-  'no-accounts': '사용할 수 있는 계정이 없습니다',
-  auth: '모든 계정에 다시 로그인해야 합니다',
+const REASON_KEY: Record<string, MessageKey> = {
+  busy: 'schedule.reason.busy',
+  'no-accounts': 'schedule.reason.noAccounts',
+  auth: 'schedule.reason.auth',
 };
 
 function cloneAll(list: readonly Schedule[]): Schedule[] {
@@ -110,12 +111,12 @@ export function createScheduler(deps: SchedulerDeps): Scheduler {
   }
 
   function assertLoaded(): void {
-    if (!loaded) throw new Error('예약 파일을 읽지 못해 저장할 수 없습니다');
+    if (!loaded) throw new Error(t('schedule.err.fileUnreadable'));
   }
 
   function find(id: string): Schedule {
     const s = schedules.find((x) => x.id === id);
-    if (!s) throw new Error('예약을 찾을 수 없습니다');
+    if (!s) throw new Error(t('schedule.err.notFound'));
     return s;
   }
 
@@ -155,7 +156,7 @@ export function createScheduler(deps: SchedulerDeps): Scheduler {
       void persist();
     };
     if (!deps.projectIds().has(schedule.projectId)) {
-      setRun({ status: 'failed', error: '프로젝트가 더 이상 등록되어 있지 않습니다' });
+      setRun({ status: 'failed', error: t('schedule.err.projectGone') });
       return;
     }
     try {
@@ -167,7 +168,7 @@ export function createScheduler(deps: SchedulerDeps): Scheduler {
         effort: schedule.effort,
       });
       if (result.ok) setRun({ status: result.send.reason === 'waiting' ? 'waiting' : 'started', threadId: result.thread.id });
-      else setRun({ status: 'failed', error: REASON_TEXT[result.reason] ?? result.reason });
+      else setRun({ status: 'failed', error: result.reason in REASON_KEY ? t(REASON_KEY[result.reason]) : result.reason });
     } catch (err) {
       setRun({ status: 'failed', error: err instanceof Error ? err.message : String(err) });
     }
@@ -242,7 +243,7 @@ export function createScheduler(deps: SchedulerDeps): Scheduler {
       const now = deps.now();
       if (enabled) {
         const next = nextOccurrence(s.repeat, now);
-        if (next === null) throw new Error('이미 지난 1회 예약입니다. 시각을 바꿔 다시 저장하세요');
+        if (next === null) throw new Error(t('schedule.err.oncePast'));
         s.nextRunAt = next;
       } else {
         s.nextRunAt = null;

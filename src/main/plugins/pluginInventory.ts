@@ -5,6 +5,7 @@ import { open, readdir, stat } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import { isStrictlyInside } from '../containment';
 import type { PluginInventory, PluginItem, PluginProblem } from '../../shared/nav';
+import { t } from '../../shared/i18n';
 
 /** Only the head of a markdown file is read (frontmatter). */
 const HEAD_BYTES = 64 * 1024;
@@ -62,7 +63,7 @@ export interface InstalledPlugin {
 /** `plugins/installed_plugins.json` (v1: one record per key, v2: a list of installs per key). Throws on bad JSON. */
 export function parseInstalledPlugins(text: string): InstalledPlugin[] {
   const raw: unknown = JSON.parse(text);
-  if (!isObj(raw) || !isObj(raw.plugins)) throw new Error('plugins 항목이 없습니다');
+  if (!isObj(raw) || !isObj(raw.plugins)) throw new Error(t('plugins.err.noPlugins'));
   const out: InstalledPlugin[] = [];
   for (const [key, value] of Object.entries(raw.plugins)) {
     const record = Array.isArray(value) ? value.find(isObj) : isObj(value) ? value : undefined;
@@ -104,7 +105,7 @@ export function mcpItems(servers: unknown, source: string, enabled: boolean | nu
       return {
         kind: 'mcp' as const,
         name,
-        description: typeof s.type === 'string' ? `${s.type} 서버` : null,
+        description: typeof s.type === 'string' ? t('plugins.mcpServer', { type: s.type }) : null,
         source,
         enabled,
         ...(detail ? { detail } : {}),
@@ -115,7 +116,7 @@ export function mcpItems(servers: unknown, source: string, enabled: boolean | nu
 /** settings.json: `enabledPlugins`, `hooks` (event -> matchers -> commands), `mcpServers`. Throws on bad JSON. */
 export function parseSharedSettings(text: string): SharedSettings {
   const raw: unknown = JSON.parse(text);
-  if (!isObj(raw)) throw new Error('객체가 아닙니다');
+  if (!isObj(raw)) throw new Error(t('plugins.err.notObject'));
   const enabledPlugins: Record<string, boolean> = {};
   if (isObj(raw.enabledPlugins)) {
     for (const [key, value] of Object.entries(raw.enabledPlugins)) enabledPlugins[key] = value === true;
@@ -162,7 +163,7 @@ async function readHead(path: string, max: number): Promise<string> {
 async function readJsonText(path: string): Promise<string | null> {
   const st = await stat(path).catch(() => null);
   if (!st?.isFile()) return null;
-  if (st.size > JSON_MAX_BYTES) throw new Error('파일이 너무 큽니다');
+  if (st.size > JSON_MAX_BYTES) throw new Error(t('plugins.err.tooLarge'));
   return readHead(path, st.size);
 }
 
@@ -172,7 +173,7 @@ async function listDir(dir: string): Promise<string[]> {
 }
 
 function message(err: unknown): string {
-  if (err instanceof SyntaxError) return `JSON을 읽을 수 없습니다: ${err.message}`;
+  if (err instanceof SyntaxError) return t('plugins.err.badJson', { error: err.message });
   return err instanceof Error ? err.message : String(err);
 }
 
@@ -230,7 +231,7 @@ export async function readPluginInventory(sourceDir: string): Promise<PluginInve
         kind: 'plugin',
         name: plugin.name,
         description,
-        source: plugin.marketplace ?? '로컬',
+        source: plugin.marketplace ?? t('plugins.source.local'),
         enabled,
         ...(plugin.version ? { detail: `v${plugin.version}` } : {}),
       });
@@ -246,8 +247,8 @@ export async function readPluginInventory(sourceDir: string): Promise<PluginInve
     if (!st?.isFile()) continue;
     try {
       const fm = parseFrontmatter(await readHead(file, HEAD_BYTES));
-      if (!fm) throw new Error('frontmatter가 없습니다');
-      items.push({ kind: 'skill', name: fm.name || name, description: fm.description || null, source: '사용자', enabled: null });
+      if (!fm) throw new Error(t('plugins.err.noFrontmatter'));
+      items.push({ kind: 'skill', name: fm.name || name, description: fm.description || null, source: t('plugins.source.user'), enabled: null });
     } catch (err) {
       problem(file, err);
     }
@@ -263,8 +264,8 @@ export async function readPluginInventory(sourceDir: string): Promise<PluginInve
       const file = join(dir, name);
       try {
         const fm = parseFrontmatter(await readHead(file, HEAD_BYTES));
-        if (!fm) throw new Error('frontmatter가 없습니다');
-        items.push({ kind, name: fm.name || name.slice(0, -3), description: fm.description || null, source: '사용자', enabled: null });
+        if (!fm) throw new Error(t('plugins.err.noFrontmatter'));
+        items.push({ kind, name: fm.name || name.slice(0, -3), description: fm.description || null, source: t('plugins.source.user'), enabled: null });
       } catch (err) {
         problem(file, err);
       }
@@ -276,7 +277,7 @@ export async function readPluginInventory(sourceDir: string): Promise<PluginInve
   for (const name of await listDir(hooksDir)) {
     const st = await stat(join(hooksDir, name)).catch(() => null);
     if (!st?.isFile()) continue;
-    items.push({ kind: 'hook', name, description: 'settings.json의 hooks에서 참조할 때 실행됩니다', source: 'hooks/', enabled: null });
+    items.push({ kind: 'hook', name, description: t('plugins.hookDescription'), source: 'hooks/', enabled: null });
   }
 
   return { sourceDir: root, exists: true, items, problems };

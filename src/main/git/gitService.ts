@@ -9,6 +9,7 @@ import type { GitService } from '../contracts';
 import type { GitChangedFile, GitChanges, GitFileDiff, GitFileStatus, GitRemoteInfo, StructuredPatchHunk } from '../../shared/types';
 import { branchNameError } from '../../core/branchName';
 import { parseUnifiedDiff } from './unifiedDiff';
+import { t } from '../../shared/i18n';
 
 export interface GitServiceDeps {
   /** Child env for git / gh (shellEnv.childEnv({})). */
@@ -271,7 +272,7 @@ export function createGitService(deps: GitServiceDeps = {}): GitService {
   }
 
   async function revertResult(cwd: string, path: string): Promise<{ ok: true } | { ok: false; error: string }> {
-    const fail = (why: string) => ({ ok: false as const, error: `되돌리지 못했습니다: ${why}` });
+    const fail = (why: string) => ({ ok: false as const, error: t('git.revertFailed', { why }) });
     const target = resolve(cwd, path);
     const inHead = (await git(['cat-file', '-e', `HEAD:./${path}`], cwd)).ok;
     if (inHead) {
@@ -291,13 +292,13 @@ export function createGitService(deps: GitServiceDeps = {}): GitService {
       }
     }
     // Only ever delete a file git reports as untracked (never an ignored one such as .env).
-    if (!inIndex && !(await untrackedPaths(cwd, [path])).includes(path)) return fail('변경된 파일이 아닙니다');
+    if (!inIndex && !(await untrackedPaths(cwd, [path])).includes(path)) return fail(t('git.notChanged'));
     try {
       const info = await lstat(target);
-      if (info.isDirectory()) return fail('폴더는 되돌릴 수 없습니다');
+      if (info.isDirectory()) return fail(t('git.cannotRevertFolder'));
       await rm(target, { force: true });
     } catch (err) {
-      if (!inIndex) return fail(err instanceof Error && 'code' in err && err.code === 'ENOENT' ? '파일을 찾을 수 없습니다' : String(err));
+      if (!inIndex) return fail(err instanceof Error && 'code' in err && err.code === 'ENOENT' ? t('error.fileNotFound') : String(err));
     }
     return { ok: true };
   }
@@ -386,57 +387,57 @@ export function createGitService(deps: GitServiceDeps = {}): GitService {
 
     async commit(cwd, message) {
       const text = message.trim();
-      if (!text) return { ok: false, error: '커밋 메시지를 입력하세요' };
+      if (!text) return { ok: false, error: t('git.enterCommitMessage') };
       const add = await git(['add', '-A'], cwd);
-      if (!add.ok) return { ok: false, error: `커밋하지 못했습니다: ${shortError(add.stderr)}` };
+      if (!add.ok) return { ok: false, error: t('git.commitFailed', { error: shortError(add.stderr) }) };
       const staged = await git(['diff', '--cached', '--quiet'], cwd);
-      if (staged.ok) return { ok: false, error: '커밋할 변경 사항이 없습니다' };
+      if (staged.ok) return { ok: false, error: t('git.nothingToCommit') };
       const res = await git(['commit', '-q', '-m', text], cwd);
-      if (!res.ok) return { ok: false, error: `커밋하지 못했습니다: ${shortError(res.stderr || res.stdout)}` };
+      if (!res.ok) return { ok: false, error: t('git.commitFailed', { error: shortError(res.stderr || res.stdout) }) };
       const sha = await git(['rev-parse', 'HEAD'], cwd);
       return { ok: true, sha: sha.stdout.trim() };
     },
 
     async merge(cwd, projectPath) {
       const state = await repoState(cwd, projectPath);
-      if (!state.isRepo || !state.worktree) return { ok: false, error: 'worktree 스레드가 아닙니다' };
-      if (!state.branch) return { ok: false, error: '브랜치가 없는 상태(detached HEAD)에서는 병합할 수 없습니다' };
-      if (await isDirty(cwd)) return { ok: false, error: '먼저 변경 사항을 커밋하세요' };
+      if (!state.isRepo || !state.worktree) return { ok: false, error: t('git.notWorktreeThread') };
+      if (!state.branch) return { ok: false, error: t('git.mergeDetached') };
+      if (await isDirty(cwd)) return { ok: false, error: t('git.commitFirst') };
       // Untracked files in the project folder are left to git: it refuses by itself if the merge would overwrite one.
-      if (await isDirty(projectPath, true)) return { ok: false, error: '원래 브랜치 폴더에 커밋하지 않은 변경 사항이 있습니다' };
-      if (!state.baseBranch) return { ok: false, error: '원래 브랜치 폴더가 브랜치에 있지 않습니다(detached HEAD)' };
+      if (await isDirty(projectPath, true)) return { ok: false, error: t('git.baseDirty') };
+      if (!state.baseBranch) return { ok: false, error: t('git.baseDetached') };
 
       const res = await git(['merge', '--no-ff', '--no-edit', state.branch], projectPath);
       if (res.ok) return { ok: true, into: state.baseBranch };
       const conflicted = await git(['diff', '--name-only', '--diff-filter=U', '-z'], projectPath);
       const names = conflicted.ok ? splitZ(conflicted.stdout) : [];
       await git(['merge', '--abort'], projectPath);
-      if (names.length > 0) return { ok: false, error: `병합 충돌이 발생해 병합을 취소했습니다: ${names.join(', ')}` };
-      return { ok: false, error: `병합하지 못했습니다: ${shortError(res.stderr || res.stdout)}` };
+      if (names.length > 0) return { ok: false, error: t('git.mergeConflict', { names: names.join(', ') }) };
+      return { ok: false, error: t('git.mergeFailed', { error: shortError(res.stderr || res.stdout) }) };
     },
 
     remoteInfo,
 
     async pushAndOpenPr(cwd, projectPath, title, body) {
       const prTitle = title.trim();
-      if (!prTitle) return { ok: false, error: 'PR 제목을 입력하세요' };
+      if (!prTitle) return { ok: false, error: t('git.enterPrTitle') };
       const info = await remoteInfo(cwd, projectPath);
-      if (!info.remote) return { ok: false, error: '원격 저장소(remote)가 없습니다' };
-      if (!info.branch) return { ok: false, error: '현재 브랜치를 확인할 수 없습니다' };
-      if (!info.baseBranch) return { ok: false, error: 'PR 대상 브랜치를 확인할 수 없습니다' };
-      if (info.branch === info.baseBranch) return { ok: false, error: 'PR 대상 브랜치와 같은 브랜치입니다' };
-      if (!info.ghAvailable) return { ok: false, error: 'gh CLI를 찾을 수 없습니다' };
-      if (await isDirty(cwd)) return { ok: false, error: '먼저 변경 사항을 커밋하세요' };
+      if (!info.remote) return { ok: false, error: t('git.noRemote') };
+      if (!info.branch) return { ok: false, error: t('git.noBranch') };
+      if (!info.baseBranch) return { ok: false, error: t('git.noPrBase') };
+      if (info.branch === info.baseBranch) return { ok: false, error: t('git.sameAsBase') };
+      if (!info.ghAvailable) return { ok: false, error: t('git.noGh') };
+      if (await isDirty(cwd)) return { ok: false, error: t('git.commitFirst') };
       try {
         await publisher.push(cwd, info.remote, info.branch);
       } catch (err) {
-        return { ok: false, error: `푸시하지 못했습니다: ${err instanceof Error ? err.message : String(err)}` };
+        return { ok: false, error: t('git.pushFailed', { error: err instanceof Error ? err.message : String(err) }) };
       }
       try {
         const url = await publisher.createPr(cwd, { title: prTitle, body, base: info.baseBranch, head: info.branch });
         return { ok: true, url };
       } catch (err) {
-        return { ok: false, error: `PR을 만들지 못했습니다: ${err instanceof Error ? err.message : String(err)}` };
+        return { ok: false, error: t('git.prFailed', { error: err instanceof Error ? err.message : String(err) }) };
       }
     },
 
@@ -444,14 +445,14 @@ export function createGitService(deps: GitServiceDeps = {}): GitService {
       const invalid = branchNameError(name);
       if (invalid) return { ok: false, error: invalid };
       const inside = await git(['rev-parse', '--is-inside-work-tree'], cwd);
-      if (!inside.ok || inside.stdout.trim() !== 'true') return { ok: false, error: 'git 저장소가 아닙니다' };
+      if (!inside.ok || inside.stdout.trim() !== 'true') return { ok: false, error: t('git.notRepo') };
       const format = await git(['check-ref-format', '--branch', name], cwd);
-      if (!format.ok) return { ok: false, error: '브랜치 이름으로 쓸 수 없습니다' };
+      if (!format.ok) return { ok: false, error: t('git.badBranchName') };
       const exists = await git(['rev-parse', '--verify', '-q', `refs/heads/${name}`], cwd);
-      if (exists.ok) return { ok: false, error: `이미 있는 브랜치입니다: ${name}` };
+      if (exists.ok) return { ok: false, error: t('git.branchExists', { name }) };
       // A leading '-' is refused above, so git never reads the name as an option.
       const res = await git(['switch', '-c', name], cwd);
-      if (!res.ok) return { ok: false, error: `브랜치를 만들지 못했습니다: ${shortError(res.stderr || res.stdout)}` };
+      if (!res.ok) return { ok: false, error: t('git.branchFailed', { error: shortError(res.stderr || res.stdout) }) };
       return { ok: true, branch: name };
     },
   };

@@ -4,7 +4,8 @@
 import { randomUUID } from 'node:crypto';
 import { chmod, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ACCOUNT_COLORS, LOCAL_CLAUDE_ACCOUNT_ALIAS } from '../../shared/constants';
+import { ACCOUNT_COLORS } from '../../shared/constants';
+import { t } from '../../shared/i18n';
 import type { Account, AccountPatch } from '../../shared/types';
 import type { Broadcaster, ConfigDirLinks, Credentials, Store, Unsubscribe, UsageHistory } from '../contracts';
 import { removeConfigDir as defaultRemoveConfigDir } from './configDirLinks';
@@ -221,7 +222,8 @@ export function createAccountPool(deps: AccountPoolDeps): LocalDefaultAccountPoo
       const used = new Set(accounts.map((a) => a.color));
       const account: Account = {
         id: newId(),
-        alias: LOCAL_CLAUDE_ACCOUNT_ALIAS,
+        // Named in the language of the moment it joins the pool; the user may rename it like any alias.
+        alias: t('account.localAlias'),
         color: ACCOUNT_COLORS.find((c) => !used.has(c)) ?? ACCOUNT_COLORS[0]!,
         email,
         plan,

@@ -3,9 +3,12 @@ import type { ChatNode, SubagentState, SubagentSummary } from '../../../core/sub
 import { Collapse } from '../common';
 import { ChevronIcon } from '../Chat/icons';
 import { PixelSprite } from './PixelSprite';
+import { useLanguage } from '../../i18n';
+import { t, type MessageKey } from '../../../shared/i18n';
 import './Subagents.css';
 
-export const STATE_LABEL: Record<SubagentState, string> = { running: '실행 중', done: '완료', failed: '실패' };
+const STATE_KEY: Record<SubagentState, MessageKey> = { running: 'status.running', done: 'status.done', failed: 'tool.failed' };
+export const stateLabel = (state: SubagentState): string => t(STATE_KEY[state]);
 
 /** Opens a subagent's own transcript in the main area (MessageList provides it; absent = no detail view). */
 export const SubagentNavContext = createContext<((toolUseId: string) => void) | null>(null);
@@ -13,11 +16,11 @@ export const SubagentNavContext = createContext<((toolUseId: string) => void) | 
 /** "8초", "1분 5초", "1시간 2분". */
 export function formatElapsed(ms: number): string {
   const sec = Math.max(0, Math.floor(ms / 1000));
-  if (sec < 60) return `${sec}초`;
+  if (sec < 60) return t('elapsed.s', { s: sec });
   const min = Math.floor(sec / 60);
-  if (min < 60) return sec % 60 ? `${min}분 ${sec % 60}초` : `${min}분`;
+  if (min < 60) return sec % 60 ? t('elapsed.ms', { m: min, s: sec % 60 }) : t('elapsed.m', { m: min });
   const hours = Math.floor(min / 60);
-  return min % 60 ? `${hours}시간 ${min % 60}분` : `${hours}시간`;
+  return min % 60 ? t('elapsed.hm', { h: hours, m: min % 60 }) : t('elapsed.h', { h: hours });
 }
 
 /** Wall clock that ticks every second while `live`. */
@@ -43,6 +46,7 @@ export interface SubagentCardProps {
  * one line; expands to the subagent's own messages and tool calls, indented.
  */
 export const SubagentCard = memo(function SubagentCard({ node, renderChild }: SubagentCardProps) {
+  useLanguage();
   const { summary, children, item } = node;
   const [open, setOpen] = useState(false);
   const openDetail = useContext(SubagentNavContext);
@@ -65,10 +69,10 @@ export const SubagentCard = memo(function SubagentCard({ node, renderChild }: Su
           <span className="hc-subagent__type">{summary.subagentType}</span>
           {summary.description ? <span className="hc-subagent__desc">{summary.description}</span> : null}
           <span className="hc-subagent__spacer" />
-          <span className={`hc-subagent__state hc-subagent__state--${summary.state}`}>{STATE_LABEL[summary.state]}</span>
+          <span className={`hc-subagent__state hc-subagent__state--${summary.state}`}>{stateLabel(summary.state)}</span>
           <span className="hc-subagent__meta">{formatElapsed(elapsed)}</span>
           <span className="hc-subagent__meta" data-testid="subagent-tool-count">
-            도구 {summary.childToolCount}
+            {t('md.tool')} {summary.childToolCount}
           </span>
           <span className="hc-subagent__chevron">
             <ChevronIcon width={13} height={13} />
@@ -79,18 +83,18 @@ export const SubagentCard = memo(function SubagentCard({ node, renderChild }: Su
             type="button"
             className="hc-subagent__open"
             data-testid="subagent-open"
-            aria-label={`${summary.subagentType} 서브에이전트 대화 보기`}
-            title="서브에이전트 대화 보기"
+            aria-label={t('subagent.viewAria', { type: summary.subagentType })}
+            title={t('subagent.view')}
             onClick={() => openDetail(item.toolUseId)}
           >
-            보기
+            {t('subagent.viewShort')}
             <ChevronIcon width={11} height={11} className="hc-subagent__open-icon" />
           </button>
         ) : null}
       </div>
       <Collapse open={open}>
         <div className="hc-subagent__body">
-          {children.length === 0 && !report ? <div className="hc-subagent__empty">아직 하위 작업이 없습니다</div> : null}
+          {children.length === 0 && !report ? <div className="hc-subagent__empty">{t('subagent.noWorkYet')}</div> : null}
           {children.map((child) => (
             <div key={child.item.id} className="hc-subagent__child">
               {renderChild(child)}
@@ -98,7 +102,7 @@ export const SubagentCard = memo(function SubagentCard({ node, renderChild }: Su
           ))}
           {report ? (
             <div className="hc-subagent__report">
-              <span className="hc-subagent__report-label">결과</span>
+              <span className="hc-subagent__report-label">{t('subagent.result')}</span>
               <p className="hc-subagent__report-text">{report}</p>
             </div>
           ) : null}
@@ -110,14 +114,15 @@ export const SubagentCard = memo(function SubagentCard({ node, renderChild }: Su
 
 /** PARTY line over a turn's subagent cards: their characters in a row and "서브에이전트 N개 실행 중". */
 export function SubagentRouting({ subagents }: { subagents: SubagentSummary[] }) {
+  useLanguage();
   const openDetail = useContext(SubagentNavContext);
   if (subagents.length === 0) return null;
   const running = subagents.filter((s) => s.state === 'running').length;
   const failed = subagents.filter((s) => s.state === 'failed').length;
   const label =
     running > 0
-      ? `서브에이전트 ${running}개 실행 중${subagents.length > running ? ` · ${subagents.length - running}개 완료` : ''}`
-      : `서브에이전트 ${subagents.length}개 완료${failed > 0 ? ` · 실패 ${failed}` : ''}`;
+      ? `${t('subagent.running', { count: running })}${subagents.length > running ? ` · ${t('subagent.doneN', { count: subagents.length - running })}` : ''}`
+      : `${t('subagent.allDone', { count: subagents.length })}${failed > 0 ? ` · ${t('tool.failed')} ${failed}` : ''}`;
   return (
     <div className="hc-subagent-routing" data-testid="subagent-routing" role="status">
       <span className="hc-subagent-routing__party" aria-hidden>
@@ -131,7 +136,7 @@ export function SubagentRouting({ subagents }: { subagents: SubagentSummary[] })
               type="button"
               className="hc-subagent-routing__member"
               data-testid="subagent-party-member"
-              aria-label={`${s.subagentType}${s.description ? ` · ${s.description}` : ''} 대화 보기`}
+              aria-label={t('subagent.viewChat', { name: `${s.subagentType}${s.description ? ` · ${s.description}` : ''}` })}
               title={s.description || s.subagentType}
               onClick={() => openDetail(s.toolUseId)}
             >

@@ -1,5 +1,6 @@
 // Original 12x12 pixel characters for subagents (decorative). Each row is 12 palette keys; '.' is transparent.
 // A subagent type always maps to the same character (FNV-1a hash of the type string).
+import { t } from '../../../shared/i18n';
 
 export const SPRITE_GRID = 12;
 
@@ -23,7 +24,7 @@ export const SPRITE_PALETTE: Readonly<Record<string, string>> = {
 
 export interface SpriteDef {
   id: string;
-  /** Korean name (tooltip / accessible label). */
+  /** Display name in the current language (tooltip / accessible label). */
   name: string;
   rows: readonly string[];
 }
@@ -31,7 +32,9 @@ export interface SpriteDef {
 export const SPRITES: readonly SpriteDef[] = [
   {
     id: 'robot',
-    name: '로봇',
+    get name() {
+      return t('sprite.robot');
+    },
     rows: [
       '.....O......',
       '.....k......',
@@ -49,7 +52,9 @@ export const SPRITES: readonly SpriteDef[] = [
   },
   {
     id: 'cat',
-    name: '고양이',
+    get name() {
+      return t('sprite.cat');
+    },
     rows: [
       '.k.......k..',
       '.kk.....kk..',
@@ -67,7 +72,9 @@ export const SPRITES: readonly SpriteDef[] = [
   },
   {
     id: 'ghost',
-    name: '유령',
+    get name() {
+      return t('sprite.ghost');
+    },
     rows: [
       '....kkkk....',
       '..kkwwwwkk..',
@@ -85,7 +92,9 @@ export const SPRITES: readonly SpriteDef[] = [
   },
   {
     id: 'slime',
-    name: '슬라임',
+    get name() {
+      return t('sprite.slime');
+    },
     rows: [
       '............',
       '............',
@@ -103,7 +112,9 @@ export const SPRITES: readonly SpriteDef[] = [
   },
   {
     id: 'mushroom',
-    name: '버섯',
+    get name() {
+      return t('sprite.mushroom');
+    },
     rows: [
       '...kkkkkk...',
       '.kkTTcTTTkk.',
@@ -121,7 +132,9 @@ export const SPRITES: readonly SpriteDef[] = [
   },
   {
     id: 'star',
-    name: '별',
+    get name() {
+      return t('sprite.star');
+    },
     rows: [
       '.....kk.....',
       '....kOOk....',
@@ -139,7 +152,9 @@ export const SPRITES: readonly SpriteDef[] = [
   },
   {
     id: 'owl',
-    name: '부엉이',
+    get name() {
+      return t('sprite.owl');
+    },
     rows: [
       '.kk......kk.',
       '.kWk....kWk.',
@@ -157,7 +172,9 @@ export const SPRITES: readonly SpriteDef[] = [
   },
   {
     id: 'penguin',
-    name: '펭귄',
+    get name() {
+      return t('sprite.penguin');
+    },
     rows: [
       '....kkkk....',
       '...kNNNNk...',

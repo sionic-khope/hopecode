@@ -3,6 +3,7 @@ import { EditorState, Transaction } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { noteExtensions } from './editor/setup';
 import { aiChange } from './editor/stream';
+import { useLanguage } from '../../i18n';
 
 export interface NoteEditorHandle {
   view(): EditorView | null;
@@ -36,6 +37,7 @@ export interface NoteEditorProps {
 
 /** CodeMirror host of the notes page (always Live Preview). The view lives as long as the page; files swap its state. */
 export const NoteEditor = memo(function NoteEditor({ handleRef, onEdit, onSave, onInlinePrompt, onDragSelect, onPress, onDispose, hidden }: NoteEditorProps) {
+  useLanguage();
   const host = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const hooks = useRef({ onEdit, onSave, onDispose, onInlinePrompt, onDragSelect, onPress });

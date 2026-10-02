@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { describeAgentError, formatElapsed, splitAgentWarning } from '../../src/renderer/components/Chat/agentIssues';
+import { LANGUAGES, setLanguage, translate, type Language, type MessageKey } from '../../src/shared/i18n';
 
 describe('describeAgentError', () => {
   const kind = (raw: string) => describeAgentError(raw, 'Codex').kind;
@@ -57,5 +58,26 @@ describe('formatElapsed', () => {
     expect(formatElapsed(59_999)).toBe('59s');
     expect(formatElapsed(65_000)).toBe('1m 05s');
     expect(formatElapsed(-5)).toBe('0s');
+  });
+});
+
+describe('agent error classification reads every language main writes in', () => {
+  const kinds = (lang: Language, key: MessageKey, params: Record<string, string> = {}) =>
+    describeAgentError(translate(lang, key, { agent: 'Codex', error: 'x', code: 'ENOENT', method: 'session/prompt', failure: 'x', ...params }), 'Codex').kind;
+
+  it.each(LANGUAGES)('%s', (lang) => {
+    expect(kinds(lang, 'acp.auth.codex')).toBe('auth');
+    expect(kinds(lang, 'runner.allAuthFailed')).toBe('auth');
+    expect(kinds(lang, 'acp.timeout')).toBe('timeout');
+    expect(kinds(lang, 'acp.spawnFailed')).toBe('start');
+    expect(kinds(lang, 'acp.startFailed')).toBe('start');
+    expect(kinds(lang, 'acp.processExited')).toBe('crash');
+    expect(kinds(lang, 'runner.exitedUnexpectedly')).toBe('crash');
+  });
+
+  it('error card copy follows the language', () => {
+    setLanguage('en');
+    expect(describeAgentError('Codex error: Internal error', 'Codex').title).toBe('Codex request failed');
+    setLanguage('ko');
   });
 });

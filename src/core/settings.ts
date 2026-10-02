@@ -16,6 +16,7 @@ import {
   USAGE_POLL_MAX_SEC,
   USAGE_POLL_MIN_SEC,
 } from '../shared/constants';
+import { isLanguageSetting } from '../shared/i18n';
 import type { AppSettings, CodexEffortLevel, EditorId, EffortLevel, SettingsPatch, UiPermissionMode } from '../shared/types';
 
 export const EDITOR_IDS: readonly EditorId[] = ['vscode', 'cursor', 'zed', 'xcode', 'finder', 'terminal', 'iterm', 'ghostty'];
@@ -58,6 +59,10 @@ export function validateSettingsPatch(raw: unknown): SettingsPatchResult {
   const patch: SettingsPatch = {};
   for (const [key, value] of Object.entries(input)) {
     switch (key) {
+      case 'language':
+        if (!isLanguageSetting(value)) return { ok: false, error: 'language must be system, en, ko, ja or zh-Hans' };
+        patch.language = value;
+        break;
       case 'idleCloseMinutes':
         if (!isInt(value) || value < 0 || value > IDLE_CLOSE_MAX_MINUTES) return { ok: false, error: `idleCloseMinutes must be 0..${IDLE_CLOSE_MAX_MINUTES}` };
         patch.idleCloseMinutes = value;
@@ -158,6 +163,8 @@ export function sanitizeSettings(raw: unknown): AppSettings {
   }
   // Rev 3: the untouched old Codex default moves to the new one; another stored model is the user's pick.
   if (rev < 3 && out.codexDefaultModel === CODEX_PREVIOUS_DEFAULT_MODEL) out.codexDefaultModel = DEFAULT_SETTINGS.codexDefaultModel;
+  // Rev 4: language added. Files from before it never chose one, so they follow the system locale.
+  if (rev < 4) out.language = 'system';
   out.noteVaults = sanitizeNoteVaults(input.noteVaults);
   out.activeNoteVault = typeof input.activeNoteVault === 'string' && out.noteVaults.includes(input.activeNoteVault) ? input.activeNoteVault : (out.noteVaults[0] ?? '');
   out.noteGitVaults = sanitizeNoteVaults(input.noteGitVaults).filter((v) => out.noteVaults.includes(v));

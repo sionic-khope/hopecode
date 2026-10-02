@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import type { Account } from '../../../shared/types';
 import { ACCOUNT_COLORS } from '../../../shared/constants';
 import { Button } from '../common';
+import { t, type MessageKey } from '../../../shared/i18n';
 import './AccountsPage.css';
 
 export type LoginStatus = 'form' | 'starting' | 'running' | 'success' | 'error' | 'cancelled';
@@ -31,13 +32,13 @@ export interface AddAccountDialogProps {
   errorMessage?: string | null;
 }
 
-const STATUS_LABEL: Record<LoginStatus, string> = {
-  form: '새 계정',
-  starting: '로그인 시작 중…',
-  running: '로그인 대기 중…',
-  success: '로그인됨',
-  error: '로그인 실패',
-  cancelled: '취소됨',
+const STATUS_LABEL: Record<LoginStatus, MessageKey> = {
+  form: 'login.status.form',
+  starting: 'login.status.starting',
+  running: 'login.status.running',
+  success: 'localAuth.loggedIn',
+  error: 'login.status.error',
+  cancelled: 'login.status.cancelled',
 };
 
 /**
@@ -93,22 +94,22 @@ export function AddAccountDialog({
 
   return createPortal(
     <div className="hc-dialog-overlay" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && canDismiss && onClose()}>
-      <div className="hc-dialog" role="dialog" aria-modal="true" aria-label="계정 추가">
+      <div className="hc-dialog" role="dialog" aria-modal="true" aria-label={t('profile.addAccount')}>
         <div className="hc-dialog__header">
-          <h2 className="hc-dialog__title">계정 추가</h2>
-          <span className={`hc-dialog__status hc-dialog__status--${status}`}>{STATUS_LABEL[status]}</span>
+          <h2 className="hc-dialog__title">{t('profile.addAccount')}</h2>
+          <span className={`hc-dialog__status hc-dialog__status--${status}`}>{t(STATUS_LABEL[status])}</span>
         </div>
 
         {status === 'form' ? (
           <div className="hc-dialog__body">
             <label className="hc-field">
-              <span className="hc-field__label">별칭</span>
+              <span className="hc-field__label">{t('login.alias')}</span>
               <input
                 ref={aliasInputRef}
                 className="hc-field__input"
                 value={alias}
                 maxLength={40}
-                placeholder="예: 회사"
+                placeholder={t('login.alias.placeholder')}
                 onChange={(e) => onAliasChange(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && alias.trim()) onStart();
@@ -116,8 +117,8 @@ export function AddAccountDialog({
               />
             </label>
             <div className="hc-field">
-              <span className="hc-field__label">색상</span>
-              <div className="hc-dialog__palette" role="listbox" aria-label="계정 색상">
+              <span className="hc-field__label">{t('login.color')}</span>
+              <div className="hc-dialog__palette" role="listbox" aria-label={t('acct.colorList')}>
                 {ACCOUNT_COLORS.map((c) => (
                   <button
                     key={c}
@@ -137,25 +138,25 @@ export function AddAccountDialog({
         {inProgress ? (
           <div className="hc-dialog__body">
             <p className="hc-dialog__notice">
-              로그인용 브라우저 창이 열립니다. 로그인을 마친 뒤 deltax로 돌아오세요.
+              {t('login.browserNote')}
             </p>
-            <pre ref={outputRef} className="hc-dialog__output" aria-label="로그인 출력">
+            <pre ref={outputRef} className="hc-dialog__output" aria-label={t('login.output')}>
               {output || '…'}
             </pre>
             <label className="hc-field">
-              <span className="hc-field__label">코드 붙여넣기 (요청된 경우)</span>
+              <span className="hc-field__label">{t('login.paste')}</span>
               <div className="hc-dialog__paste-row">
                 <input
                   className="hc-field__input"
                   value={loginInputValue}
-                  placeholder="브라우저에 표시된 코드를 붙여넣으세요"
+                  placeholder={t('login.paste.placeholder')}
                   onChange={(e) => onLoginInputChange(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && loginInputValue.trim()) onSubmitInput();
                   }}
                 />
                 <Button variant="secondary" size="sm" disabled={!loginInputValue.trim()} onClick={onSubmitInput}>
-                  보내기
+                  {t('composer.send')}
                 </Button>
               </div>
             </label>
@@ -180,7 +181,7 @@ export function AddAccountDialog({
         {status === 'error' || status === 'cancelled' ? (
           <div className="hc-dialog__body">
             <div className="hc-dialog__result hc-dialog__result--error">
-              {status === 'cancelled' ? '로그인을 취소했습니다.' : (errorMessage ?? '로그인에 실패했습니다.')}
+              {status === 'cancelled' ? t('login.cancelled') : (errorMessage ?? t('login.failed'))}
             </div>
           </div>
         ) : null}
@@ -189,31 +190,31 @@ export function AddAccountDialog({
           {status === 'form' ? (
             <>
               <Button variant="plain" size="sm" onClick={onClose}>
-                취소
+                {t('common.cancel')}
               </Button>
               <Button variant="primary" size="sm" disabled={!alias.trim()} onClick={onStart}>
-                시작
+                {t('login.start')}
               </Button>
             </>
           ) : null}
           {inProgress ? (
             <Button variant="destructive" size="sm" onClick={onCancel}>
-              로그인 취소
+              {t('login.cancel')}
             </Button>
           ) : null}
           {status === 'success' ? (
             <Button variant="primary" size="sm" onClick={onClose}>
-              완료
+              {t('login.done')}
             </Button>
           ) : null}
           {(status === 'error' || status === 'cancelled') ? (
             <>
               <Button variant="plain" size="sm" onClick={onClose}>
-                닫기
+                {t('common.close')}
               </Button>
               {onRetry ? (
                 <Button variant="primary" size="sm" onClick={onRetry}>
-                  다시 시도
+                  {t('common.retry')}
                 </Button>
               ) : null}
             </>

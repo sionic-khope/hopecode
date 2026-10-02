@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { deriveThreadTitle } from '../../src/core/threadTitle';
-import { DEFAULT_THREAD_TITLE, THREAD_TITLE_MAX_CHARS } from '../../src/shared/constants';
+import { THREAD_TITLE_MAX_CHARS } from '../../src/shared/constants';
 
 describe('deriveThreadTitle', () => {
   it('uses the first non-blank line with whitespace collapsed', () => {
@@ -27,6 +27,6 @@ describe('deriveThreadTitle', () => {
   });
 
   it('falls back to the default title for blank text', () => {
-    expect(deriveThreadTitle('   \n\t ')).toBe(DEFAULT_THREAD_TITLE);
+    expect(deriveThreadTitle('   \n\t ')).toBe('새 채팅');
   });
 });

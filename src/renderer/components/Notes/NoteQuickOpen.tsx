@@ -4,6 +4,8 @@ import { baseName, parentOf } from '../../../core/notes/notePaths';
 import { invoke } from '../../api';
 import { IconNotePage } from './icons';
 import { noteError } from './NoteTree';
+import { useLanguage } from '../../i18n';
+import { t } from '../../../shared/i18n';
 
 export interface NoteQuickOpenProps {
   onOpen: (path: string) => void;
@@ -12,6 +14,7 @@ export interface NoteQuickOpenProps {
 
 /** ⌘P: notes by name, ↑↓ to pick, Enter to open, Esc to close. */
 export const NoteQuickOpen = memo(function NoteQuickOpen({ onOpen, onClose }: NoteQuickOpenProps) {
+  useLanguage();
   const [query, setQuery] = useState('');
   const [paths, setPaths] = useState<string[]>([]);
   /** The query `paths` answers (Enter before the debounced search lands searches right away). */
@@ -70,13 +73,13 @@ export const NoteQuickOpen = memo(function NoteQuickOpen({ onOpen, onClose }: No
 
   return createPortal(
     <div className="hc-notequick__backdrop hc-modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="hc-notequick" role="dialog" aria-label="노트 빠르게 열기" data-testid="note-quickopen">
+      <div className="hc-notequick" role="dialog" aria-label={t('noteQuick.aria')} data-testid="note-quickopen">
         <input
           ref={input}
           className="hc-notequick__input"
           value={query}
-          placeholder="노트 이름으로 열기"
-          aria-label="노트 이름으로 열기"
+          placeholder={t('noteQuick.placeholder')}
+          aria-label={t('noteQuick.placeholder')}
           role="combobox"
           aria-expanded={paths.length > 0}
           aria-controls="hc-notequick-list"
@@ -85,7 +88,7 @@ export const NoteQuickOpen = memo(function NoteQuickOpen({ onOpen, onClose }: No
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onKeyDown}
         />
-        <ul className="hc-notequick__list" id="hc-notequick-list" role="listbox" aria-label="노트">
+        <ul className="hc-notequick__list" id="hc-notequick-list" role="listbox" aria-label={t('noteQuick.list')}>
           {paths.map((p, i) => (
             <li
               key={p}
@@ -101,8 +104,8 @@ export const NoteQuickOpen = memo(function NoteQuickOpen({ onOpen, onClose }: No
               <span className="hc-notequick__dir">{parentOf(p)}</span>
             </li>
           ))}
-          {query.trim() && paths.length === 0 && !error ? <li className="hc-notequick__empty">일치하는 노트가 없습니다</li> : null}
-          {!query.trim() ? <li className="hc-notequick__empty">이름 일부를 입력하세요</li> : null}
+          {query.trim() && paths.length === 0 && !error ? <li className="hc-notequick__empty">{t('noteQuick.noMatch')}</li> : null}
+          {!query.trim() ? <li className="hc-notequick__empty">{t('noteQuick.typeName')}</li> : null}
           {error ? (
             <li className="hc-notequick__empty hc-notequick__empty--error" role="alert">
               {error}

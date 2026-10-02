@@ -13,11 +13,13 @@ import {
   ENV_FIXTURE_PROJECT,
   ENV_FIXTURES,
   ENV_SMOKE,
+  ENV_SYSTEM_LOCALE,
   LOGIN_URL_HOSTS,
   QUIT_DISPOSE_TIMEOUT_MS,
 } from '../shared/constants';
 import type { EventChannel, EventPayload } from '../shared/ipc';
 import type { AppInfo, ThreadStartRequest, ThreadStartResult } from '../shared/types';
+import { onLanguageChange, resolveLanguage, setLanguage, t, type LanguageSetting } from '../shared/i18n';
 import { isAppUrl } from './appUrl';
 import { isSafeExternalUrl, openExternalSafe } from './externalUrl';
 import { createAccountPool } from './accounts/accountPool';
@@ -189,7 +191,15 @@ interface Services {
   forceStop(): Promise<void>;
 }
 
-const INTERRUPTED_NOTICE = '중단됨: 이 턴이 실행 중일 때 deltax가 종료되었습니다.';
+/** OS locale `language: 'system'` resolves against; fixture / e2e runs may pin it (HOPECODE_SYSTEM_LOCALE). */
+function systemLocale(): string {
+  return devEnv(ENV_SYSTEM_LOCALE)?.trim() || app.getLocale();
+}
+
+/** Menus, native dialogs, notifications and agent errors from main follow `settings.language`. */
+function applyMainLanguage(setting: LanguageSetting): void {
+  setLanguage(resolveLanguage(setting, systemLocale()));
+}
 
 function focusedWindow(): BrowserWindow | undefined {
   return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
@@ -227,7 +237,7 @@ function resizeWithNativeImage(bytes: Buffer, mediaType: ImageMediaType, maxByte
 const nativeDialogs: Dialogs = {
   async pickProjectFolder() {
     const win = focusedWindow();
-    const opts: Electron.OpenDialogOptions = { title: '폴더 선택', buttonLabel: '선택', properties: ['openDirectory', 'createDirectory'] };
+    const opts: Electron.OpenDialogOptions = { title: t('main.dialog.pickFolder.title'), buttonLabel: t('main.dialog.pickFolder.button'), properties: ['openDirectory', 'createDirectory'] };
     const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
     return res.canceled ? null : (res.filePaths[0] ?? null);
   },
@@ -235,30 +245,30 @@ const nativeDialogs: Dialogs = {
     const choices: TrustChoice[] = ['trust', 'dont-trust', 'cancel'];
     const response = await showMessage({
       type: 'question',
-      buttons: ['신뢰', '신뢰하지 않음', '취소'],
+      buttons: [t('main.dialog.trust.trust'), t('main.dialog.trust.dontTrust'), t('common.cancel')],
       defaultId: 1,
       cancelId: 2,
-      message: '이 폴더를 신뢰하시겠습니까?',
-      detail: `${path}\n\n신뢰하면 이 저장소의 .claude 설정(hooks, 권한)이 이 프로젝트의 세션에 적용됩니다. hooks는 임의의 명령을 실행할 수 있습니다.`,
+      message: t('main.dialog.trust.message'),
+      detail: `${path}\n\n${t('main.dialog.trust.detail')}`,
     });
     return choices[response] ?? 'cancel';
   },
   async confirmBypassPermissions() {
     const response = await showMessage({
       type: 'warning',
-      buttons: ['취소', '전체 액세스 허용'],
+      buttons: [t('common.cancel'), t('main.dialog.bypass.allow')],
       defaultId: 0,
       cancelId: 0,
-      message: '모든 권한 확인을 건너뛸까요?',
-      detail: 'Claude가 셸 명령과 파일 편집을 포함한 모든 도구를 묻지 않고 실행합니다. 샌드박스나 버려도 되는 환경에서만 사용하세요.',
+      message: t('main.dialog.bypass.message'),
+      detail: t('main.dialog.bypass.detail'),
     });
     return response === 1;
   },
   async pickFiles(defaultPath) {
     const win = focusedWindow();
     const opts: Electron.OpenDialogOptions = {
-      title: '파일 첨부',
-      buttonLabel: '첨부',
+      title: t('main.dialog.attach.title'),
+      buttonLabel: t('main.dialog.attach.button'),
       defaultPath,
       properties: ['openFile', 'multiSelections'],
     };
@@ -268,8 +278,8 @@ const nativeDialogs: Dialogs = {
   async saveMarkdown(defaultName) {
     const win = focusedWindow();
     const opts: Electron.SaveDialogOptions = {
-      title: 'Markdown으로 내보내기',
-      buttonLabel: '저장',
+      title: t('main.dialog.exportMarkdown.title'),
+      buttonLabel: t('common.save'),
       defaultPath: join(app.getPath('documents'), defaultName),
       filters: [{ name: 'Markdown', extensions: ['md'] }],
       properties: ['createDirectory', 'showOverwriteConfirmation'],
@@ -301,14 +311,17 @@ async function startServices(): Promise<Services> {
   const store = createStore(join(dataDir, 'state.json'), {
     // Turns cut off by the last quit get a visible notice in their history (L3).
     onInterrupted: (threadIds) => {
+      // Called inside load(): the stored language is already readable and the notice is written in it.
+      applyMainLanguage(store.get().settings.language);
       for (const threadId of threadIds) {
         void threadLog
-          .append(threadId, { type: 'notice', id: `notice-${randomUUID()}`, level: 'warn', text: INTERRUPTED_NOTICE, createdAt: Date.now() })
+          .append(threadId, { type: 'notice', id: `notice-${randomUUID()}`, level: 'warn', text: t('main.interruptedNotice'), createdAt: Date.now() })
           .catch((err: unknown) => console.error('[deltax] interrupted notice failed', err));
       }
     },
   });
   await store.load();
+  applyMainLanguage(store.get().settings.language);
   const usageHistory = createUsageHistory(join(dataDir, 'usage'));
   void usageHistory.compact().catch((err: unknown) => console.error('[deltax] usage history compaction failed', err));
 
@@ -627,8 +640,8 @@ async function startServices(): Promise<Services> {
         } else {
           const win = focusedWindow();
           const opts: Electron.SaveDialogOptions = {
-            title: '이미지 저장',
-            buttonLabel: '저장',
+            title: t('main.dialog.saveImage.title'),
+            buttonLabel: t('common.save'),
             defaultPath: join(app.getPath('downloads'), basename(name)),
             properties: ['createDirectory', 'showOverwriteConfirmation'],
           };
@@ -643,6 +656,7 @@ async function startServices(): Promise<Services> {
     media,
     sharedConfig,
     testMode: fixtures || headless,
+    systemLocale,
     nav: {
       threadSearch: createThreadSearchIndex(threadLog),
       // Fixture / e2e runs never run gh or open a browser.
@@ -664,7 +678,7 @@ async function startServices(): Promise<Services> {
         // Test runs never open a dialog: the seam answers with an e2e-set folder or HOPECODE_FIXTURE_NOTES.
         if (fixtures || headless) return globalThis.__hopecodeFixtureNoteVault ?? devEnv('HOPECODE_FIXTURE_NOTES') ?? null;
         const win = focusedWindow();
-        const opts: Electron.OpenDialogOptions = { title: '노트 폴더 선택', buttonLabel: '선택', properties: ['openDirectory', 'createDirectory'] };
+        const opts: Electron.OpenDialogOptions = { title: t('main.dialog.pickNoteFolder.title'), buttonLabel: t('main.dialog.pickFolder.button'), properties: ['openDirectory', 'createDirectory'] };
         const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
         return res.canceled ? null : (res.filePaths[0] ?? null);
       },
@@ -718,6 +732,7 @@ async function startServices(): Promise<Services> {
       startThread = start;
     },
     onSettingsChanged: (next, prev) => {
+      if (next.language !== prev.language) applyMainLanguage(next.language);
       // A new interval applies now: poll every account once, which reschedules on the new interval.
       if (next.usagePollIntervalSec !== prev.usagePollIntervalSec) void poller.refresh().catch(() => {});
       // Automatic switching turned back on: threads waiting on their own account may move now.
@@ -779,73 +794,97 @@ function readSdkVersion(): string | null {
 }
 
 function buildMenu(broadcaster: Broadcaster): Menu {
+  // Role items get explicit labels: macOS would otherwise name them in the OS language, not the app's.
+  const name = app.name;
   return Menu.buildFromTemplate([
     {
-      label: app.name,
+      label: name,
       submenu: [
-        { role: 'about' },
+        { role: 'about', label: t('menu.about', { app: name }) },
         { type: 'separator' },
-        { label: '설정…', accelerator: 'CmdOrCtrl+,', click: () => broadcaster.emit('ui:openSettings', undefined) },
+        { label: t('menu.settings'), accelerator: 'CmdOrCtrl+,', click: () => broadcaster.emit('ui:openSettings', undefined) },
         { type: 'separator' },
-        { role: 'services' },
+        { role: 'services', label: t('menu.services') },
         { type: 'separator' },
-        { role: 'hide' },
-        { role: 'hideOthers' },
-        { role: 'unhide' },
+        { role: 'hide', label: t('menu.hide', { app: name }) },
+        { role: 'hideOthers', label: t('menu.hideOthers') },
+        { role: 'unhide', label: t('menu.showAll') },
         { type: 'separator' },
-        { role: 'quit' },
+        { role: 'quit', label: t('menu.quit', { app: name }) },
       ],
     },
     {
-      label: 'File',
+      label: t('menu.file'),
       submenu: [
-        { label: '새 채팅', accelerator: 'CmdOrCtrl+N', click: () => broadcaster.emit('ui:newThread', undefined) },
+        { label: t('menu.newChat'), accelerator: 'CmdOrCtrl+N', click: () => broadcaster.emit('ui:newThread', undefined) },
         {
-          label: 'New Task Start',
+          label: t('menu.newTaskStart'),
           accelerator: 'CmdOrCtrl+Shift+N',
           click: () => broadcaster.emit('ui:newTaskStart', undefined),
         },
         { type: 'separator' },
-        { role: 'close' },
+        { role: 'close', label: t('menu.closeWindow') },
       ],
     },
-    { role: 'editMenu' },
     {
-      label: 'View',
+      label: t('menu.edit'),
+      submenu: [
+        { role: 'undo', label: t('menu.undo') },
+        { role: 'redo', label: t('menu.redo') },
+        { type: 'separator' },
+        { role: 'cut', label: t('menu.cut') },
+        { role: 'copy', label: t('menu.copy') },
+        { role: 'paste', label: t('menu.paste') },
+        { role: 'pasteAndMatchStyle', label: t('menu.pasteAndMatchStyle') },
+        { role: 'delete', label: t('menu.delete') },
+        { role: 'selectAll', label: t('menu.selectAll') },
+      ],
+    },
+    {
+      label: t('menu.view'),
       submenu: [
         {
-          label: '사이드바 보기/숨기기',
+          label: t('menu.toggleSidebar'),
           accelerator: 'CmdOrCtrl+B',
           click: () => broadcaster.emit('ui:toggleSidebar', undefined),
         },
         {
-          label: '하단 터미널 열기/닫기',
+          label: t('menu.toggleTerminal'),
           accelerator: 'CmdOrCtrl+J',
           click: () => broadcaster.emit('ui:toggleTerminal', undefined),
         },
         {
-          label: '변경사항 패널 열기/닫기',
+          label: t('menu.toggleChanges'),
           accelerator: 'CmdOrCtrl+Shift+D',
           click: () => broadcaster.emit('ui:toggleChanges', undefined),
         },
         {
-          label: '명령 팔레트',
+          label: t('menu.commandPalette'),
           accelerator: 'CmdOrCtrl+K',
           click: () => broadcaster.emit('ui:commandPalette', undefined),
         },
         { type: 'separator' },
-        { role: 'reload' },
+        { role: 'reload', label: t('menu.reload') },
         // DevTools only in development builds (L3).
-        ...(app.isPackaged ? [] : [{ role: 'toggleDevTools' } as const]),
+        ...(app.isPackaged ? [] : [{ role: 'toggleDevTools', label: t('menu.toggleDevTools') } as const]),
         { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
+        { role: 'resetZoom', label: t('menu.resetZoom') },
+        { role: 'zoomIn', label: t('menu.zoomIn') },
+        { role: 'zoomOut', label: t('menu.zoomOut') },
         { type: 'separator' },
-        { role: 'togglefullscreen' },
+        { role: 'togglefullscreen', label: t('menu.toggleFullScreen') },
       ],
     },
-    { role: 'windowMenu' },
+    {
+      role: 'windowMenu',
+      label: t('menu.window'),
+      submenu: [
+        { role: 'minimize', label: t('menu.minimize') },
+        { role: 'zoom', label: t('menu.zoom') },
+        { type: 'separator' },
+        { role: 'front', label: t('menu.bringAllToFront') },
+      ],
+    },
   ]);
 }
 
@@ -878,16 +917,21 @@ if (smoke) {
   });
 
   void app.whenReady().then(async () => {
+    // Until settings load, main speaks the system language (the start failure dialog included).
+    applyMainLanguage('system');
     try {
       services = await startServices();
     } catch (err) {
       console.error('[deltax] failed to start services', err);
-      if (!headless) dialog.showErrorBox('deltax를 시작하지 못했습니다', String(err));
+      if (!headless) dialog.showErrorBox(t('main.startFailed'), String(err));
       app.exit(1);
       return;
     }
     if (headless) hideFromDock();
-    Menu.setApplicationMenu(buildMenu(services.broadcaster));
+    const broadcaster = services.broadcaster;
+    Menu.setApplicationMenu(buildMenu(broadcaster));
+    // Labels are built in the current language: a switch in settings rebuilds the whole menu.
+    onLanguageChange(() => Menu.setApplicationMenu(buildMenu(broadcaster)));
     createMainWindow();
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createMainWindow();

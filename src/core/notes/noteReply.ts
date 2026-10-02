@@ -9,6 +9,7 @@
 // for it), so inside a card a fence line with an info string opens a nested block and a bare fence closes the
 // innermost open block: the nested one first, then the card. Streaming answers parse the same way; a card whose
 // closing fence has not arrived yet is `complete: false` and fills in as text comes.
+import { getLanguage, translate, type Language } from '../../shared/i18n';
 
 export type NoteCardKind = 'insert' | 'replace' | 'replace-all';
 
@@ -106,22 +107,25 @@ export function noteCards(text: string, streaming = false): NoteCard[] {
   return parseNoteReply(text, streaming).flatMap((s) => (s.type === 'card' ? [s.card] : []));
 }
 
-/** Card heading: the body's first heading, else "본문 초안". */
-export function cardTitle(card: NoteCard): string {
+/** Card heading: the body's first heading, else "본문 초안" (in `lang`). */
+export function cardTitle(card: NoteCard, lang: Language = getLanguage()): string {
   const m = /^ {0,3}#{1,6}[ \t]+(.+?)[ \t#]*$/m.exec(card.body);
-  return m ? m[1].trim() : '본문 초안';
+  return m ? m[1].trim() : translate(lang, 'noteCard.draft');
 }
 
 /** Where a card goes, as the card says it. */
-export function cardTargetLabel(card: NoteCard): string {
-  if (card.kind === 'insert') return '커서 위치에 삽입';
-  if (card.kind === 'replace-all') return '문서 전체 교체';
-  return card.section ? `섹션 '${card.section}' 교체` : '섹션 교체 (대상 없음)';
+export function cardTargetLabel(card: NoteCard, lang: Language = getLanguage()): string {
+  if (card.kind === 'insert') return translate(lang, 'noteCard.insert');
+  if (card.kind === 'replace-all') return translate(lang, 'noteCard.replaceAll');
+  return card.section ? translate(lang, 'noteCard.replaceSection', { section: card.section }) : translate(lang, 'noteCard.replaceSectionNone');
 }
 
-/** Plain text of an answer without its cards (history in the next prompt, summaries). */
+/**
+ * Plain text of an answer without its cards (history in the next prompt, summaries). Card markers stay Korean in
+ * any UI language: they go back into the Korean note prompt.
+ */
 export function replyProse(text: string): string {
   return parseNoteReply(text)
-    .map((s) => (s.type === 'text' ? s.text : `[카드: ${cardTargetLabel(s.card)} · ${cardTitle(s.card)}]`))
+    .map((s) => (s.type === 'text' ? s.text : `[카드: ${cardTargetLabel(s.card, 'ko')} · ${cardTitle(s.card, 'ko')}]`))
     .join('\n\n');
 }

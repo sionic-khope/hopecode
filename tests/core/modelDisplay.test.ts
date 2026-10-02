@@ -8,7 +8,9 @@ import {
   isModelSelected,
   modelMenuLabel,
 } from '../../src/core/modelDisplay';
-import { FALLBACK_MODELS } from '../../src/shared/constants';
+import { fallbackModels } from '../../src/shared/constants';
+
+const FALLBACK_MODELS = fallbackModels();
 import type { ModelOption } from '../../src/shared/types';
 
 /** Shape of a live supportedModels() answer (SDK labels, `default` resolving to Opus 5.5 on this account). */

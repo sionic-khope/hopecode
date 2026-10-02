@@ -4,6 +4,7 @@
 import { hermesModelLabel } from '../../../core/hermesModelLabel';
 import { AGENT_KINDS, AGENTS } from '../../../shared/agents';
 import type { AgentAvailability, AgentKind, LocalAuthInfo } from '../../../shared/types';
+import { t, type MessageKey } from '../../../shared/i18n';
 
 export interface AgentMenuRow {
   agent: AgentKind;
@@ -15,14 +16,14 @@ export interface AgentMenuRow {
 }
 
 /** Short (menu rows ellipsize): the command that logs in. */
-const LOGIN_HINT: Partial<Record<AgentKind, string>> = {
-  codex: 'codex login 또는 ChatGPT 앱',
-  hermes: '터미널에서 hermes auth',
+const LOGIN_HINT: Partial<Record<AgentKind, MessageKey>> = {
+  codex: 'agentMenu.login.codex',
+  hermes: 'agentMenu.login.hermes',
 };
 
-const INSTALL_HINT: Partial<Record<AgentKind, string>> = {
-  codex: 'ChatGPT 앱 또는 Codex CLI 설치 필요',
-  hermes: 'hermes CLI를 설치하세요',
+const INSTALL_HINT: Partial<Record<AgentKind, MessageKey>> = {
+  codex: 'agentMenu.install.codex',
+  hermes: 'agentMenu.install.hermes',
 };
 
 /** One agent's availability from the local login detection (`localAuth`). */
@@ -39,7 +40,7 @@ export function agentAvailability(agent: AgentKind, localAuth: readonly LocalAut
 export function agentMenuRow(agent: AgentKind, localAuth: readonly LocalAuthInfo[]): AgentMenuRow {
   const name = AGENTS[agent].name;
   const a = agentAvailability(agent, localAuth);
-  if (!a) return { agent, name, disabled: true, reason: 'checking', description: '설치·로그인 상태 확인 중' };
+  if (!a) return { agent, name, disabled: true, reason: 'checking', description: t('agentMenu.checking') };
   switch (a.reason) {
     case 'ok': {
       const defaultModel = agent === 'hermes' ? localAuth.find((i) => i.agent === agent)?.defaultModel : null;
@@ -47,11 +48,11 @@ export function agentMenuRow(agent: AgentKind, localAuth: readonly LocalAuthInfo
       return { agent, name, disabled: false, reason: 'ok', description };
     }
     case 'not-installed':
-      return { agent, name, disabled: true, reason: a.reason, description: `설치되지 않음 · ${INSTALL_HINT[agent] ?? '설치 후 다시 확인'}` };
+      return { agent, name, disabled: true, reason: a.reason, description: `${t('agentMenu.notInstalled')} · ${t(INSTALL_HINT[agent] ?? 'agentMenu.install.generic')}` };
     case 'not-logged-in':
-      return { agent, name, disabled: true, reason: a.reason, description: `로그인 필요 · ${LOGIN_HINT[agent] ?? '로그인 후 다시 확인'}` };
+      return { agent, name, disabled: true, reason: a.reason, description: `${t('agentMenu.loginRequired')} · ${t(LOGIN_HINT[agent] ?? 'agentMenu.login.generic')}` };
     default:
-      return { agent, name, disabled: true, reason: a.reason, description: '상태를 확인하지 못함 · 다시 확인' };
+      return { agent, name, disabled: true, reason: a.reason, description: t('agentMenu.error') };
   }
 }
 

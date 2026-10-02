@@ -4,6 +4,7 @@ import { AGENTS } from '../../../shared/agents';
 import type { TurnPhaseKind } from '../../store';
 import { AgentIcon } from '../Agent/AgentIcon';
 import { formatElapsed } from './agentIssues';
+import { t } from '../../../shared/i18n';
 import './Chat.css';
 
 /** Wall clock that ticks every `intervalMs` while `active` (elapsed labels). */
@@ -22,13 +23,13 @@ export function useTicker(active: boolean, intervalMs = 1000): number {
 export function turnPhaseLabel(phase: TurnPhaseKind, agent: AgentKind): string {
   switch (phase) {
     case 'preparing':
-      return `${AGENTS[agent].name} 세션 준비 중…`;
+      return t('phase.preparing', { agent: AGENTS[agent].name });
     case 'loading':
-      return '이전 대화 불러오는 중…';
+      return t('phase.loading');
     case 'switching':
-      return '다른 계정으로 전환하는 중…';
+      return t('phase.switching');
     default:
-      return '생각하는 중…';
+      return t('phase.thinking');
   }
 }
 

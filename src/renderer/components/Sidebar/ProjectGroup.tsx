@@ -3,8 +3,9 @@ import type { Account, Project, Thread } from '../../../shared/types';
 import { IconChevron, IconFolder, IconMore, IconPlusSmall, IconShieldAlert } from './icons';
 import { ActionMenu, ConfirmDeletePopover, type NEEDS_FORCE } from './ItemMenu';
 import { ThreadRow } from './ThreadRow';
+import { useLanguage } from '../../i18n';
+import { t } from '../../../shared/i18n';
 
-export const UNTRUSTED_PROJECT_HINT = '신뢰하지 않음: 저장소 .claude 설정 비활성';
 
 export interface ThreadRowHandlers {
   onSelectThread: (threadId: string) => void;
@@ -48,6 +49,7 @@ export const ProjectGroup = memo(function ProjectGroup({
   unseenDone,
   now,
 }: ProjectGroupProps) {
+  useLanguage();
   const [collapsed, setCollapsed] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -80,8 +82,8 @@ export const ProjectGroup = memo(function ProjectGroup({
           <button
             type="button"
             className="hc-project__untrusted"
-            aria-label={UNTRUSTED_PROJECT_HINT}
-            title={`${UNTRUSTED_PROJECT_HINT}. 눌러서 검토하세요.`}
+            aria-label={t('project.untrusted')}
+            title={`${t('project.untrusted')}. ${t('project.untrusted.review')}`}
             onClick={() => setMenuOpen(true)}
           >
             <IconShieldAlert width={13} height={13} />
@@ -90,10 +92,10 @@ export const ProjectGroup = memo(function ProjectGroup({
         <button
           type="button"
           className="hc-project__add"
-          aria-label={`${project.name} 작업`}
+          aria-label={t('project.actionsAria', { name: project.name })}
           aria-haspopup="menu"
           aria-expanded={menuOpen}
-          title="프로젝트 작업"
+          title={t('project.actions')}
           onClick={() => setMenuOpen((v) => !v)}
         >
           <IconMore />
@@ -101,8 +103,8 @@ export const ProjectGroup = memo(function ProjectGroup({
         <button
           type="button"
           className="hc-project__add"
-          aria-label={`${project.name}에서 새 채팅`}
-          title="이 폴더에서 새 채팅"
+          aria-label={t('project.newChatAria', { name: project.name })}
+          title={t('project.newChatHere')}
           onClick={() => onNewChatIn(project.id)}
         >
           <IconPlusSmall />
@@ -112,28 +114,28 @@ export const ProjectGroup = memo(function ProjectGroup({
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
         anchorRef={headerRef}
-        label="프로젝트 작업"
+        label={t('project.actions')}
         actions={[
-          { label: '이 폴더에서 새 채팅', onSelect: () => onNewChatIn(project.id) },
+          { label: t('project.newChatHere'), onSelect: () => onNewChatIn(project.id) },
           untrusted
-            ? { label: '프로젝트 신뢰', onSelect: () => onSetTrusted(project.id, true) }
-            : { label: '신뢰 해제', onSelect: () => onSetTrusted(project.id, false) },
-          { label: '프로젝트 제거…', destructive: true, onSelect: () => setConfirmOpen(true) },
+            ? { label: t('project.trust'), onSelect: () => onSetTrusted(project.id, true) }
+            : { label: t('project.untrust'), onSelect: () => onSetTrusted(project.id, false) },
+          { label: t('project.removeEllipsis'), destructive: true, onSelect: () => setConfirmOpen(true) },
         ]}
       />
       <ConfirmDeletePopover
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
         anchorRef={headerRef}
-        label="프로젝트 제거"
-        message={`“${project.name}”을(를) deltax에서 제거할까요? 스레드와 worktree는 삭제되고 폴더 자체는 남습니다.`}
-        confirmLabel="제거"
+        label={t('project.remove')}
+        message={t('project.remove.message', { name: project.name })}
+        confirmLabel={t('project.remove.confirm')}
         onConfirm={() => onRemoveProject(project.id)}
       />
       {expanded ? (
-        <ul className="hc-project__threads" aria-label={`${project.name} 스레드`}>
+        <ul className="hc-project__threads" aria-label={t('project.threadsAria', { name: project.name })}>
           {threads.length === 0 ? (
-            <li className="hc-project__empty">스레드 없음</li>
+            <li className="hc-project__empty">{t('project.noThreads')}</li>
           ) : (
             threads.map((thread) => (
               <ThreadRow

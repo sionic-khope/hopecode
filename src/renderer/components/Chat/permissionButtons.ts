@@ -1,6 +1,7 @@
 // PermissionCard buttons for an ACP request (plan 2.5): which ones the agent's options can back, and the caption
 // under each. Claude requests (no agentOptions) keep the plain three buttons.
 import type { PermissionRequest } from '../../../shared/types';
+import { t } from '../../../shared/i18n';
 
 export interface PermissionButtonState {
   allow: { enabled: boolean };
@@ -10,8 +11,6 @@ export interface PermissionButtonState {
   agentOptionNames: string[];
 }
 
-export const DENY_CANCELS_TURN = '거부 시 이번 턴 전체가 취소될 수 있음';
-export const MAY_PERSIST = '에이전트 설정에 따라 이후에도 자동 허용될 수 있음';
 
 export function permissionButtons(request: Pick<PermissionRequest, 'agentOptions' | 'hasSessionSuggestion' | 'sessionLabel'>): PermissionButtonState {
   const options = request.agentOptions;
@@ -29,10 +28,10 @@ export function permissionButtons(request: Pick<PermissionRequest, 'agentOptions
     allow: { enabled: options.some((o) => o.kind === 'allow_once') },
     allowSession: {
       shown: request.hasSessionSuggestion,
-      caption: label === null ? null : persistent ? `${label} · ${MAY_PERSIST}` : label,
+      caption: label === null ? null : persistent ? `${label} · ${t('perm.mayPersist')}` : label,
       warn: persistent,
     },
-    deny: { caption: options.some((o) => o.kind === 'reject_once') ? null : DENY_CANCELS_TURN },
+    deny: { caption: options.some((o) => o.kind === 'reject_once') ? null : t('perm.denyCancelsTurn') },
     agentOptionNames: options.map((o) => o.name),
   };
 }

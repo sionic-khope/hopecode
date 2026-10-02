@@ -5,6 +5,8 @@ import { Button, Menu, type MenuSection } from '../common';
 import { GlyphClose, GlyphFolderOpen } from '../common/glyphs';
 import { IconChevron } from '../Sidebar/icons';
 import { NoteTree } from './NoteTree';
+import { useLanguage } from '../../i18n';
+import { t } from '../../../shared/i18n';
 
 export interface NoteFileDrawerProps {
   open: boolean;
@@ -28,6 +30,7 @@ export interface NoteFileDrawerProps {
  * while closed.
  */
 export const NoteFileDrawer = memo(function NoteFileDrawer(props: NoteFileDrawerProps) {
+  useLanguage();
   const { open, vault, vaults, homeDir, openPath, onClose } = props;
   const [vaultMenu, setVaultMenu] = useState(false);
   const vaultRef = useRef<HTMLButtonElement>(null);
@@ -50,7 +53,7 @@ export const NoteFileDrawer = memo(function NoteFileDrawer(props: NoteFileDrawer
   const sections: MenuSection[] = [
     {
       key: 'vaults',
-      title: '노트 폴더',
+      title: t('noteDrawer.vault'),
       kind: 'radio',
       items: vaults.map((v) => ({
         key: v,
@@ -64,8 +67,8 @@ export const NoteFileDrawer = memo(function NoteFileDrawer(props: NoteFileDrawer
       key: 'actions',
       kind: 'action',
       items: [
-        { key: 'add', label: '다른 폴더 추가…', icon: <GlyphFolderOpen width={15} height={15} />, onSelect: props.onAddVault },
-        { key: 'remove', label: '이 폴더 목록에서 빼기', tone: 'danger', description: '파일은 지우지 않습니다', onSelect: props.onRemoveVault },
+        { key: 'add', label: t('noteDrawer.addVault'), icon: <GlyphFolderOpen width={15} height={15} />, onSelect: props.onAddVault },
+        { key: 'remove', label: t('noteDrawer.removeVault'), tone: 'danger', description: t('noteDrawer.removeVault.desc'), onSelect: props.onRemoveVault },
       ],
     },
   ];
@@ -78,7 +81,7 @@ export const NoteFileDrawer = memo(function NoteFileDrawer(props: NoteFileDrawer
         className={`hc-notedrawer${open ? ' hc-notedrawer--open' : ''}`}
         data-testid="note-drawer"
         role={open ? 'dialog' : undefined}
-        aria-label="노트 파일"
+        aria-label={t('noteDrawer.aria')}
         aria-hidden={!open}
         inert={!open}
         onKeyDown={(e) => {
@@ -105,12 +108,12 @@ export const NoteFileDrawer = memo(function NoteFileDrawer(props: NoteFileDrawer
             <span className="hc-notedrawer__vault-name">{vaultName}</span>
             <IconChevron className="hc-notedrawer__vault-chevron" />
           </button>
-          <Menu open={vaultMenu} onClose={() => setVaultMenu(false)} anchorRef={vaultRef} sections={sections} label="노트 폴더" placement="bottom-start" width={300} />
+          <Menu open={vaultMenu} onClose={() => setVaultMenu(false)} anchorRef={vaultRef} sections={sections} label={t('noteDrawer.vault')} placement="bottom-start" width={300} />
           <span className="hc-notedrawer__spacer" />
-          <span className="hc-notedrawer__kbd" title="노트 빠르게 열기">
+          <span className="hc-notedrawer__kbd" title={t('noteQuick.aria')}>
             ⌘P
           </span>
-          <Button variant="plain" size="sm" icon aria-label="파일 목록 닫기" data-sfx="back" onClick={onClose}>
+          <Button variant="plain" size="sm" icon aria-label={t('noteDrawer.close')} data-sfx="back" onClick={onClose}>
             <GlyphClose width={14} height={14} />
           </Button>
         </div>

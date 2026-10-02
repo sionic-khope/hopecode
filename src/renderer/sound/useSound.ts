@@ -9,6 +9,7 @@ import { on } from '../api';
 import { useAppStore } from '../store';
 import { applySoundEnabled, playSfx, playVoice, stopVoice, windowFocused } from './engine';
 import { createVoiceState, feedVoice, type VoiceState } from './voicePlanner';
+import { t } from '../../shared/i18n';
 
 /** What a click lands on that counts as "clickable" (gets select / back). */
 const CLICKABLE =
@@ -17,7 +18,6 @@ const CLICKABLE =
 const SILENT_AREA = 'textarea, input, select, [contenteditable="true"], .xterm, .hc-diff, [data-sfx="none"]';
 /** Open overlays an Escape closes (menus, popovers, modals, the palette). */
 const OVERLAY = '.hc-popover, .hc-modal, .hc-palette, [role="menu"], [role="dialog"]';
-const BACK_LABELS = new Set(['뒤로', '닫기']);
 
 /** select or back for a click on `el` (a CLICKABLE match), or null when it plays nothing of its own. */
 export function clickSfx(el: Element): 'select' | 'back' | null {
@@ -27,7 +27,9 @@ export function clickSfx(el: Element): 'select' | 'back' | null {
   if (el.classList.contains('hc-send')) return null;
   const label = (el.getAttribute('aria-label') ?? '').trim();
   const text = (el.textContent ?? '').trim();
-  if (BACK_LABELS.has(label) || /취소$/.test(text) || /^취소/.test(label)) return 'back';
+  // Back / close / cancel by their label in the current language.
+  const cancel = t('common.cancel');
+  if (label === t('common.back') || label === t('common.close') || text.endsWith(cancel) || label.startsWith(cancel)) return 'back';
   return 'select';
 }
 

@@ -7,6 +7,7 @@
 // The caps below keep a full message (10 attachments, 20 MB raw ≈ 27 MB base64) under the request limit.
 import type { ContentBlock } from '@agentclientprotocol/sdk';
 import type { AcpPromptCaps, AgentKind, AttachmentKind, ChatImage, PromptFile } from '../shared/types';
+import { t } from '../shared/i18n';
 
 const MIB = 1024 * 1024;
 
@@ -203,8 +204,8 @@ export function imageDimensions(b: Uint8Array): { width: number; height: number 
 /** Why an image may not be decoded / shown (unreadable header, more than MAX_IMAGE_PIXELS), or null. */
 export function imagePixelProblem(b: Uint8Array): string | null {
   const dims = imageDimensions(b);
-  if (!dims) return '이미지 크기를 읽을 수 없습니다';
-  if (dims.width * dims.height > MAX_IMAGE_PIXELS) return `이미지 해상도가 너무 큽니다 (${dims.width}×${dims.height})`;
+  if (!dims) return t('attach.unreadableDims');
+  if (dims.width * dims.height > MAX_IMAGE_PIXELS) return t('attach.tooManyPixels', { width: dims.width, height: dims.height });
   return null;
 }
 
@@ -242,26 +243,26 @@ export function classifyAttachment(name: string, bytes: Uint8Array): Classified 
   const magic = sniffMagic(bytes);
   const image = IMAGE_EXT[ext];
   if (image) {
-    return magic === image ? { ok: true, kind: 'image', mediaType: image } : { ok: false, reason: `내용이 .${ext} 이미지가 아닙니다` };
+    return magic === image ? { ok: true, kind: 'image', mediaType: image } : { ok: false, reason: t('attach.notImage', { ext }) };
   }
   if (ext === 'pdf') {
-    return magic === 'application/pdf' ? { ok: true, kind: 'pdf', mediaType: 'application/pdf' } : { ok: false, reason: '내용이 PDF가 아닙니다' };
+    return magic === 'application/pdf' ? { ok: true, kind: 'pdf', mediaType: 'application/pdf' } : { ok: false, reason: t('attach.notPdf') };
   }
   const textType = TEXT_EXT[ext] ?? (ext === '' && TEXT_NAMES.has(name.split('/').pop()!.toLowerCase()) ? 'text/plain' : undefined);
   if (textType) {
-    if (magic !== null || decodeText(bytes) === null) return { ok: false, reason: 'UTF-8 텍스트 파일이 아닙니다' };
+    if (magic !== null || decodeText(bytes) === null) return { ok: false, reason: t('attach.notUtf8') };
     return { ok: true, kind: 'text', mediaType: textType };
   }
-  return { ok: false, reason: ext ? `.${ext} 파일은 첨부할 수 없습니다` : '형식을 알 수 없는 파일입니다' };
+  return { ok: false, reason: ext ? t('attach.badExt', { ext }) : t('attach.unknownType') };
 }
 
 /** Why an attachment of `kind` and `size` is too large, or null. */
 export function sizeProblem(kind: AttachmentKind, size: number): string | null {
-  if (size === 0) return '빈 파일입니다';
+  if (size === 0) return t('attach.empty');
   const limit = kindLimit(kind);
   if (size <= limit) return null;
-  const what = kind === 'image' ? '이미지는' : kind === 'pdf' ? 'PDF는' : '텍스트 파일은';
-  return `${what} ${formatBytes(limit)}까지 첨부할 수 있습니다`;
+  const max = formatBytes(limit);
+  return kind === 'image' ? t('attach.limit.image', { size: max }) : kind === 'pdf' ? t('attach.limit.pdf', { size: max }) : t('attach.limit.text', { size: max });
 }
 
 /**
@@ -278,9 +279,9 @@ export function admitAttachments<T extends { size: number; name: string }>(
   const rejected: { name: string; reason: string }[] = [];
   for (const item of incoming) {
     if (count >= MAX_ATTACHMENTS) {
-      rejected.push({ name: item.name, reason: `한 메시지에 ${MAX_ATTACHMENTS}개까지 첨부할 수 있습니다` });
+      rejected.push({ name: item.name, reason: t('attach.maxCount', { max: MAX_ATTACHMENTS }) });
     } else if (total + item.size > MAX_ATTACH_TOTAL_BYTES) {
-      rejected.push({ name: item.name, reason: `첨부는 합계 ${formatBytes(MAX_ATTACH_TOTAL_BYTES)}까지입니다` });
+      rejected.push({ name: item.name, reason: t('attach.maxTotal', { size: formatBytes(MAX_ATTACH_TOTAL_BYTES) }) });
     } else {
       accepted.push(item);
       count += 1;
@@ -320,9 +321,9 @@ export function unsupportedReason(
 ): string | null {
   if (agent === 'claude-code') return null;
   const c = caps ?? defaultPromptCaps(agent) ?? { image: false, audio: false, embeddedContext: false };
-  if (a.kind === 'image') return c.image ? null : `${agentName}은(는) 이미지 첨부를 지원하지 않습니다`;
-  if (a.kind === 'pdf') return `${agentName}은(는) PDF 첨부를 지원하지 않습니다`;
-  return c.embeddedContext || a.linkable ? null : `${agentName}은(는) 붙여넣은 텍스트 파일을 받을 수 없습니다`;
+  if (a.kind === 'image') return c.image ? null : t('attach.agentNoImage', { agent: agentName });
+  if (a.kind === 'pdf') return t('attach.agentNoPdf', { agent: agentName });
+  return c.embeddedContext || a.linkable ? null : t('attach.agentNoText', { agent: agentName });
 }
 
 /** Claude Messages API user content blocks (the subset the composer sends). */
@@ -371,7 +372,7 @@ export function acpPromptBlocks(
   const dropped: string[] = [];
   images.forEach((img, i) => {
     if (caps.image) blocks.push({ type: 'image', mimeType: img.mediaType, data: img.data });
-    else dropped.push(`이미지 ${i + 1}`);
+    else dropped.push(t('attach.imageN', { n: i + 1 }));
   });
   for (const f of files) {
     if (f.kind !== 'text') {

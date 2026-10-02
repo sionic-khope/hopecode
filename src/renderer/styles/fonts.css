@@ -40,3 +40,30 @@
   font-style: normal;
   font-display: block;
 }
+/* The same Galmuri files without their Han ideographs (Korean hanja shapes, and only the KS X 1001 / JIS sets): the
+   zh-Hans stacks use these so every Chinese character comes from one system face (PingFang SC) instead of a mix of
+   pixel hanja and fallback glyphs inside one word. Latin, kana, Hangul and punctuation stay pixel. */
+@font-face {
+  font-family: 'Galmuri11 NoHan';
+  src: url('../assets/fonts/Galmuri11.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+  unicode-range: U+0000-2E7F, U+3000-33FF, U+AC00-D7AF, U+FE30-FE4F, U+FF00-FFEF;
+}
+@font-face {
+  font-family: 'Galmuri11 NoHan';
+  src: url('../assets/fonts/Galmuri11-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+  unicode-range: U+0000-2E7F, U+3000-33FF, U+AC00-D7AF, U+FE30-FE4F, U+FF00-FFEF;
+}
+@font-face {
+  font-family: 'Galmuri14 NoHan';
+  src: url('../assets/fonts/Galmuri14.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+  unicode-range: U+0000-2E7F, U+3000-33FF, U+AC00-D7AF, U+FE30-FE4F, U+FF00-FFEF;
+}

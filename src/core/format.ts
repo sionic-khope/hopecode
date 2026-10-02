@@ -1,4 +1,5 @@
 import { DAY_MS, HOUR_MS, MINUTE_MS } from '../shared/constants';
+import { formatDate, formatRelative, t } from '../shared/i18n';
 
 /** `3d4h` / `1h12m` (floor); past or invalid -> null. */
 export function formatResetCountdown(resetsAtMs: number | null | undefined, now: number): string | null {
@@ -42,20 +43,21 @@ export function tildePath(path: string, home: string | null | undefined): string
 }
 
 /**
- * Sidebar-style relative time in Korean: `방금`, `3분 전`, `2시간 전`, `어제`, `3일 전`, then `9월 3일`
- * (`2025년 9월 3일` in another year). Future times (clock skew) read as `방금`.
+ * Sidebar-style relative time in the current language: `방금` / `just now`, `3분 전` / `3 minutes ago`, `어제`,
+ * `3일 전`, then `9월 3일` / `Sep 3` (with the year in another year). Future times (clock skew) read as just now.
  */
 export function formatRelativeTime(at: number, now: number): string {
   const diff = now - at;
-  if (!Number.isFinite(diff) || diff < MINUTE_MS) return '방금';
-  if (diff < HOUR_MS) return `${Math.floor(diff / MINUTE_MS)}분 전`;
-  if (diff < DAY_MS) return `${Math.floor(diff / HOUR_MS)}시간 전`;
+  if (!Number.isFinite(diff) || diff < MINUTE_MS) return t('time.justNow');
+  if (diff < HOUR_MS) return formatRelative(-Math.floor(diff / MINUTE_MS), 'minute');
+  if (diff < DAY_MS) return formatRelative(-Math.floor(diff / HOUR_MS), 'hour');
   const then = new Date(at);
   const today = new Date(now);
   const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
   const days = Math.ceil((startOfToday - at) / DAY_MS);
-  if (days <= 1) return '어제';
-  if (days < 7) return `${days}일 전`;
-  const md = `${then.getMonth() + 1}월 ${then.getDate()}일`;
-  return then.getFullYear() === today.getFullYear() ? md : `${then.getFullYear()}년 ${md}`;
+  if (days <= 1) return formatRelative(-1, 'day', 'auto');
+  if (days < 7) return formatRelative(-days, 'day');
+  return then.getFullYear() === today.getFullYear()
+    ? formatDate(then, { month: 'short', day: 'numeric' })
+    : formatDate(then, { year: 'numeric', month: 'short', day: 'numeric' });
 }

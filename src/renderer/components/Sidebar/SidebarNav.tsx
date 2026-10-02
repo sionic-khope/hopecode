@@ -3,6 +3,8 @@ import type { Account } from '../../../shared/types';
 import { Menu, type MenuSection } from '../common';
 import { GlyphChart, GlyphInfo, GlyphKeyboard, GlyphPeople, GlyphSettings } from '../common/glyphs';
 import { IconArchive, IconClock, IconCompose, IconDots, IconNote, IconPlug, IconPlusCircle, IconPullRequest, IconSearch } from './icons';
+import { useLanguage } from '../../i18n';
+import { t } from '../../../shared/i18n';
 import './SidebarNav.css';
 
 /** Main-area page the nav highlights. */
@@ -47,6 +49,7 @@ export const SidebarNav = memo(function SidebarNav({
   onShowAbout,
   onShowArchived,
 }: SidebarNavProps) {
+  useLanguage();
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLButtonElement>(null);
   const enabled = accounts.filter((a) => a.enabled).length;
@@ -68,17 +71,17 @@ export const SidebarNav = memo(function SidebarNav({
       key: 'pages',
       kind: 'action',
       items: [
-        { key: 'accounts', label: '계정', icon: <GlyphPeople />, meta: `${enabled}/${accounts.length}`, onSelect: onOpenAccounts },
-        { key: 'usage', label: '사용량', icon: <GlyphChart />, onSelect: onOpenUsage },
-        { key: 'settings', label: '설정', icon: <GlyphSettings />, meta: '⌘,', onSelect: onOpenSettings },
+        { key: 'accounts', label: t('settings.accounts'), icon: <GlyphPeople />, meta: `${enabled}/${accounts.length}`, onSelect: onOpenAccounts },
+        { key: 'usage', label: t('nav.usage'), icon: <GlyphChart />, onSelect: onOpenUsage },
+        { key: 'settings', label: t('settings.title'), icon: <GlyphSettings />, meta: '⌘,', onSelect: onOpenSettings },
       ],
     },
     {
       key: 'help',
       kind: 'action',
       items: [
-        { key: 'shortcuts', label: '키보드 단축키', icon: <GlyphKeyboard />, onSelect: onShowShortcuts },
-        { key: 'about', label: '앱 정보', icon: <GlyphInfo />, onSelect: onShowAbout },
+        { key: 'shortcuts', label: t('nav.shortcuts'), icon: <GlyphKeyboard />, onSelect: onShowShortcuts },
+        { key: 'about', label: t('nav.about'), icon: <GlyphInfo />, onSelect: onShowAbout },
       ],
     },
     ...(archivedCount > 0
@@ -86,14 +89,14 @@ export const SidebarNav = memo(function SidebarNav({
           {
             key: 'archive',
             kind: 'action' as const,
-            items: [{ key: 'archived', label: '보관된 스레드', icon: <IconArchive width={15} height={15} />, meta: String(archivedCount), onSelect: onShowArchived }],
+            items: [{ key: 'archived', label: t('settings.archived'), icon: <IconArchive width={15} height={15} />, meta: String(archivedCount), onSelect: onShowArchived }],
           },
         ]
       : []),
   ];
 
   return (
-    <nav className="hc-sidebar__nav" aria-label="탐색" data-testid="sidebar-nav">
+    <nav className="hc-sidebar__nav" aria-label={t('nav.aria')} data-testid="sidebar-nav">
       <button
         type="button"
         className={`hc-nav hc-nav--compose${active === 'draft' ? ' hc-nav--active' : ''}`}
@@ -102,7 +105,7 @@ export const SidebarNav = memo(function SidebarNav({
         onClick={onNewChat}
       >
         <IconCompose />
-        <span className="hc-nav__label">새 채팅</span>
+        <span className="hc-nav__label">{t('menu.newChat')}</span>
         <kbd className="hc-nav__kbd">⌘N</kbd>
         <span className="hc-nav__plus" aria-hidden>
           <IconPlusCircle />
@@ -110,13 +113,13 @@ export const SidebarNav = memo(function SidebarNav({
       </button>
       <button type="button" className="hc-nav" aria-keyshortcuts="Meta+K" onClick={onSearch}>
         <IconSearch />
-        <span className="hc-nav__label">검색</span>
+        <span className="hc-nav__label">{t('nav.search')}</span>
         <kbd className="hc-nav__kbd hc-nav__kbd--always">⌘K</kbd>
       </button>
-      {page('prs', '풀 리퀘스트', <IconPullRequest />, onOpenPrs)}
-      {page('schedule', '예약', <IconClock />, onOpenSchedule)}
-      {page('plugins', '플러그인', <IconPlug />, onOpenPlugins)}
-      {page('notes', '노트', <IconNote />, onOpenNotes)}
+      {page('prs', t('nav.prs'), <IconPullRequest />, onOpenPrs)}
+      {page('schedule', t('nav.schedule'), <IconClock />, onOpenSchedule)}
+      {page('plugins', t('nav.plugins'), <IconPlug />, onOpenPlugins)}
+      {page('notes', t('nav.notes'), <IconNote />, onOpenNotes)}
       <button
         ref={moreRef}
         type="button"
@@ -126,14 +129,14 @@ export const SidebarNav = memo(function SidebarNav({
         onClick={() => setMoreOpen((v) => !v)}
       >
         <IconDots />
-        <span className="hc-nav__label">더보기</span>
+        <span className="hc-nav__label">{t('common.more')}</span>
       </button>
       <Menu
         open={moreOpen}
         onClose={() => setMoreOpen(false)}
         anchorRef={moreRef}
         sections={sections}
-        label="탐색 더보기"
+        label={t('nav.moreAria')}
         placement="bottom-start"
         width={248}
       />

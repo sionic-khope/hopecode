@@ -11,6 +11,7 @@ import {
   yTickPositions,
   type ChartRange,
 } from './usageChartScale';
+import { t } from '../../../shared/i18n';
 import './AccountsPage.css';
 
 export interface UsageChartProps {
@@ -84,7 +85,7 @@ export function UsageChart({ samples, range, onRangeChange, now }: UsageChartPro
             );
           })}
         </div>
-        <Segmented aria-label="사용량 차트 범위" size="sm" options={RANGE_OPTIONS} value={range} onChange={onRangeChange} />
+        <Segmented aria-label={t('usageChart.range')} size="sm" options={RANGE_OPTIONS} value={range} onChange={onRangeChange} />
       </div>
 
       {collecting ? (
@@ -103,7 +104,7 @@ export function UsageChart({ samples, range, onRangeChange, now }: UsageChartPro
               </div>
             );
           })}
-          <div className="hc-chart__collecting-note">데이터 수집 중… 샘플이 몇 개 쌓이면 추이가 표시됩니다.</div>
+          <div className="hc-chart__collecting-note">{t('usageChart.collecting')}</div>
         </div>
       ) : hasAnyData ? (
         <svg
@@ -111,7 +112,7 @@ export function UsageChart({ samples, range, onRangeChange, now }: UsageChartPro
           viewBox={`0 0 ${DEFAULT_CHART_GEOMETRY.width} ${DEFAULT_CHART_GEOMETRY.height}`}
           preserveAspectRatio="none"
           role="img"
-          aria-label={`최근 ${rangeMs / 3_600_000}시간 사용량 추이`}
+          aria-label={t('usageChart.aria', { hours: rangeMs / 3_600_000 })}
         >
           {ticks.map((tick) => (
             <line
@@ -149,7 +150,7 @@ export function UsageChart({ samples, range, onRangeChange, now }: UsageChartPro
           })}
         </svg>
       ) : (
-        <div className="hc-chart__empty">아직 사용량 데이터가 없습니다</div>
+        <div className="hc-chart__empty">{t('usageChart.empty')}</div>
       )}
     </div>
   );

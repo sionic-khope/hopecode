@@ -8,9 +8,12 @@ import type { AttachmentInfo } from '../../../shared/types';
 import { ComposerAttachmentTray, useComposerAttachments, type AttachTarget } from '../Images/ComposerAttachments';
 import { SlashMenu, slashOptionId, useSlashItems, type SlashSource } from './SlashMenu';
 import { applySlashChoice, expandSlashLabel, filterSlashCommands, sendsOnEnter, slashTokenAt } from './slashCommands';
+import { useLanguage } from '../../i18n';
+import { t } from '../../../shared/i18n';
 import './Chat.css';
 
-export const COMPOSER_PLACEHOLDER = '무엇이든 요청하세요';
+/** Default composer placeholder in the current language. */
+export const composerPlaceholder = (): string => t('composer.placeholder');
 
 /** Imperative handle: the draft screen focuses the composer, attachments insert mentions. */
 export interface ComposerHandle {
@@ -78,7 +81,7 @@ export const Composer = memo(function Composer({
   running,
   disabled = false,
   busy = false,
-  placeholder = COMPOSER_PLACEHOLDER,
+  placeholder,
   leading,
   trailing,
   onAttachFiles,
@@ -93,6 +96,7 @@ export const Composer = memo(function Composer({
   slash,
   homeDir = null,
 }: ComposerProps) {
+  useLanguage();
   const [text, setText] = useState('');
   const [caret, setCaret] = useState(0);
   const [plusOpen, setPlusOpen] = useState(false);
@@ -254,16 +258,16 @@ export const Composer = memo(function Composer({
       items: [
         {
           key: 'attach',
-          label: '파일 첨부',
-          description: '사진·PDF·텍스트 파일을 메시지에 첨부',
+          label: t('main.dialog.attach.title'),
+          description: t('composer.attach.desc'),
           icon: <PaperclipIcon />,
           disabled: !attach,
           onSelect: attachments.pick,
         },
         {
           key: 'mention',
-          label: '파일 경로 멘션',
-          description: '@경로로 입력창에 추가',
+          label: t('composer.mention'),
+          description: t('composer.mention.desc'),
           icon: <AtIcon />,
           disabled: !onAttachFiles,
           onSelect: () => {
@@ -274,8 +278,8 @@ export const Composer = memo(function Composer({
         },
         {
           key: 'folder',
-          label: '폴더 변경',
-          description: canChangeFolder ? '이 채팅을 시작할 폴더' : '시작된 채팅은 폴더를 바꿀 수 없어요',
+          label: t('composer.changeFolder'),
+          description: canChangeFolder ? t('composer.changeFolder.desc') : t('composer.changeFolder.locked'),
           icon: <FolderOpenIcon />,
           disabled: !canChangeFolder || !onChangeFolder,
           onSelect: () => onChangeFolder?.(),
@@ -296,7 +300,7 @@ export const Composer = memo(function Composer({
       >
         {attachments.dragging ? (
           <div className="hc-composer__dropzone" data-testid="composer-dropzone" aria-hidden>
-            여기에 놓으면 첨부됩니다
+            {t('composer.dropHere')}
           </div>
         ) : null}
         <ComposerAttachmentTray items={attachments.items} error={attachments.error} onRemove={attachments.remove} />
@@ -318,8 +322,8 @@ export const Composer = memo(function Composer({
           className="hc-composer__textarea"
           rows={size === 'lg' ? 2 : 1}
           value={text}
-          placeholder={placeholder}
-          aria-label="메시지"
+          placeholder={placeholder ?? composerPlaceholder()}
+          aria-label={t('composer.message')}
           disabled={disabled}
           onChange={(e) => {
             setText(e.target.value);
@@ -337,10 +341,10 @@ export const Composer = memo(function Composer({
             ref={plusRef}
             type="button"
             className="hc-composer__plus"
-            aria-label="추가"
+            aria-label={t('composer.add')}
             aria-haspopup="menu"
             aria-expanded={plusOpen}
-            title="파일 첨부 · 경로 멘션 · 폴더 변경"
+            title={t('composer.add.title')}
             onClick={() => setPlusOpen((v) => !v)}
           >
             <PlusIcon width={16} height={16} />
@@ -350,7 +354,7 @@ export const Composer = memo(function Composer({
             onClose={() => setPlusOpen(false)}
             anchorRef={plusRef}
             sections={plusSections}
-            label="추가"
+            label={t('composer.add')}
             placement="top-start"
             width={COMPOSER_MENU_WIDTH}
           />
@@ -358,15 +362,15 @@ export const Composer = memo(function Composer({
           <div className="hc-composer__spacer" />
           {trailing}
           {running && onInterrupt ? (
-            <button type="button" className="hc-send hc-send--stop" aria-label="정지" title="정지" onClick={onInterrupt}>
+            <button type="button" className="hc-send hc-send--stop" aria-label={t('composer.stop')} title={t('composer.stop')} onClick={onInterrupt}>
               <StopIcon width={12} height={12} />
             </button>
           ) : (
             <button
               type="button"
               className={`hc-send${hasText ? ' hc-send--ready' : ''}`}
-              aria-label="보내기"
-              title="보내기 (⏎)"
+              aria-label={t('composer.send')}
+              title={`${t('composer.send')} (⏎)`}
               disabled={!canSend}
               onClick={() => submit()}
             >

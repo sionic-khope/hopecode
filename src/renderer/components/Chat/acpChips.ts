@@ -5,6 +5,7 @@ import { hermesModelLabel } from '../../../core/hermesModelLabel';
 import { codexModelLabel } from '../../../core/modelDisplay';
 import { CODEX_EFFORT_LEVELS, CODEX_MODEL_LABELS } from '../../../shared/constants';
 import type { AcpConfigOptionLite, AcpControls, CodexEffortLevel, LocalAuthInfo, Thread } from '../../../shared/types';
+import { t } from '../../../shared/i18n';
 
 /** Labels of Claude's levels plus Codex's `ultra` (CodexEffortLevel is the superset). */
 export const EFFORT_LABEL: Record<CodexEffortLevel, string> = {
@@ -16,7 +17,10 @@ export const EFFORT_LABEL: Record<CodexEffortLevel, string> = {
   ultra: 'Ultra',
 };
 
-export const SYSTEM_DEFAULT_LABEL = '시스템 기본값';
+/** Hermes' read-only model label ("시스템 기본값" / "System default"). */
+export function systemDefaultLabel(): string {
+  return t('hermes.systemDefaultLabel');
+}
 
 type SelectOption = Extract<AcpConfigOptionLite, { type: 'select' }>;
 
@@ -99,7 +103,7 @@ export function codexThreadChip(thread: Pick<Thread, 'model' | 'effort' | 'acp'>
   return {
     model,
     effort,
-    modelLabel: model ? codexModelLabel(model, controls?.configOptions ?? []) : SYSTEM_DEFAULT_LABEL,
+    modelLabel: model ? codexModelLabel(model, controls?.configOptions ?? []) : systemDefaultLabel(),
     effortLabel: effort ? effortValueLabel(effort, effortOption) : null,
     modelConfigId: modelOption?.id ?? null,
     effortConfigId: effortOption?.id ?? null,
@@ -118,12 +122,12 @@ export function hermesModelChip(
 ): { label: string; title: string } {
   const reported = reportedModel?.trim();
   const model = reported || info?.defaultModel?.trim() || null;
-  if (!model) return { label: SYSTEM_DEFAULT_LABEL, title: '' };
+  if (!model) return { label: systemDefaultLabel(), title: '' };
   const provider = info?.defaultProvider;
   // The chip shows the model itself (it would truncate behind a prefix); the tooltip says where it comes from.
   return {
     label: hermesModelLabel(model),
-    title: `${SYSTEM_DEFAULT_LABEL} · ${provider ? `${provider} · ${model}` : model}`,
+    title: `${systemDefaultLabel()} · ${provider ? `${provider} · ${model}` : model}`,
   };
 }
 
@@ -140,7 +144,7 @@ export function agentModeChip(acp: Thread['acp']): ModeChipState | null {
   const currentModeId = acp?.pendingModeId ?? controls.currentModeId;
   const current = controls.modes.find((m) => m.id === currentModeId);
   return {
-    label: current?.name ?? currentModeId ?? '모드',
+    label: current?.name ?? currentModeId ?? t('agentMode.fallback'),
     currentModeId,
     modes: controls.modes.map((m) => ({ value: m.id, label: m.name, description: m.description })),
   };

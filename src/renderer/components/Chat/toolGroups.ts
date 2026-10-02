@@ -7,6 +7,7 @@ import type { ChatNode } from '../../../core/subagents';
 import { SUBAGENT_TOOL_NAMES } from '../../../core/subagents';
 import { displayPath } from '../../../core/displayPath';
 import { splitAgentWarning } from './agentIssues';
+import { t, type MessageKey } from '../../../shared/i18n';
 
 /** Tools that render a diff of their own. */
 const DIFF_TOOL_NAMES: ReadonlySet<string> = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
@@ -92,20 +93,20 @@ const KIND_OF: Readonly<Record<string, ToolKind>> = {
 };
 const KIND_ORDER: readonly ToolKind[] = ['command', 'read', 'search', 'web', 'other'];
 /** Mixed groups: "명령 5 · 파일 읽기 2 · 검색 1". */
-const KIND_LABEL: Readonly<Record<ToolKind, string>> = {
-  command: '명령',
-  read: '파일 읽기',
-  search: '검색',
-  web: '웹',
-  other: '도구',
+const KIND_LABEL: Readonly<Record<ToolKind, MessageKey>> = {
+  command: 'toolGroup.command',
+  read: 'toolGroup.read',
+  search: 'toolGroup.search',
+  web: 'toolGroup.web',
+  other: 'toolGroup.other',
 };
-/** Single-kind groups: "명령 8개 실행". */
+/** Single-kind groups: "명령 8개 실행" (plural messages, by count). */
 const KIND_SENTENCE: Readonly<Record<ToolKind, (n: number) => string>> = {
-  command: (n) => `명령 ${n}개 실행`,
-  read: (n) => `파일 ${n}개 읽기`,
-  search: (n) => `검색 ${n}회`,
-  web: (n) => `웹 요청 ${n}개`,
-  other: (n) => `도구 ${n}개 사용`,
+  command: (count) => t('toolGroup.command.n', { count }),
+  read: (count) => t('toolGroup.read.n', { count }),
+  search: (count) => t('toolGroup.search.n', { count }),
+  web: (count) => t('toolGroup.web.n', { count }),
+  other: (count) => t('toolGroup.other.n', { count }),
 };
 
 export function toolKind(name: string): ToolKind {
@@ -166,7 +167,7 @@ export function toolGroupLabel(summary: Pick<ToolGroupSummary, 'counts'>): strin
   const [first, ...rest] = summary.counts;
   if (!first) return '';
   if (rest.length === 0) return KIND_SENTENCE[first.kind](first.count);
-  return summary.counts.map((c) => `${KIND_LABEL[c.kind]} ${c.count}`).join(' · ');
+  return summary.counts.map((c) => `${t(KIND_LABEL[c.kind])} ${c.count}`).join(' · ');
 }
 
 /** A group with a failed call starts expanded (the user sees what broke without a click). */

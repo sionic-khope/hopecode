@@ -9,6 +9,8 @@ import { useShallow } from 'zustand/react/shallow';
 import { selectChatThreads, useAppStore } from '../../store';
 import { chatSectionThreads } from './chatSection';
 import { ThreadRow } from './ThreadRow';
+import { useLanguage } from '../../i18n';
+import { t } from '../../../shared/i18n';
 import './Sidebar.css';
 
 export interface SidebarProps extends ThreadRowHandlers {
@@ -72,6 +74,7 @@ export const Sidebar = memo(function Sidebar({
   onSetProjectTrusted,
   ...rowHandlers
 }: SidebarProps) {
+  useLanguage();
   const [projectsCollapsed, setProjectsCollapsed] = useState(false);
   const [chatsCollapsed, setChatsCollapsed] = useState(false);
   const scratchThreads = useAppStore(useShallow(selectChatThreads));
@@ -142,9 +145,9 @@ export const Sidebar = memo(function Sidebar({
       <div className="hc-sidebar__scroll">
 
         {pinned.length > 0 ? (
-          <section className="hc-section" aria-label="고정된 스레드">
+          <section className="hc-section" aria-label={t('sidebar.pinned')}>
             <div className="hc-section__header">
-              <span className="hc-section__title">고정된 스레드</span>
+              <span className="hc-section__title">{t('sidebar.pinned')}</span>
             </div>
             <ul className="hc-section__list">
               {pinned.map((t) => (
@@ -166,7 +169,7 @@ export const Sidebar = memo(function Sidebar({
           </section>
         ) : null}
 
-        <section className="hc-section" aria-label="채팅" data-testid="sidebar-chats">
+        <section className="hc-section" aria-label={t('sidebar.chats')} data-testid="sidebar-chats">
           <div className="hc-section__header">
             <button
               type="button"
@@ -174,7 +177,7 @@ export const Sidebar = memo(function Sidebar({
               aria-expanded={!chatsCollapsed}
               onClick={() => setChatsCollapsed((v) => !v)}
             >
-              <span className="hc-section__title">채팅</span>
+              <span className="hc-section__title">{t('sidebar.chats')}</span>
               {chats.length > 0 ? <span className="hc-section__count">{chats.length}</span> : null}
               <IconChevron
                 width={11}
@@ -185,8 +188,8 @@ export const Sidebar = memo(function Sidebar({
             <button
               type="button"
               className="hc-section__action"
-              aria-label="프로젝트 없이 새 채팅"
-              title="프로젝트 없이 새 채팅"
+              aria-label={t('sidebar.newScratch')}
+              title={t('sidebar.newScratch')}
               onClick={onNewChatWithoutProject}
             >
               <IconCompose />
@@ -194,7 +197,7 @@ export const Sidebar = memo(function Sidebar({
           </div>
           {chatsCollapsed ? null : chats.length === 0 ? (
             <div className="hc-sidebar__empty">
-              <p className="hc-sidebar__empty-sub">새 채팅을 시작하면 여기에 추가됩니다.</p>
+              <p className="hc-sidebar__empty-sub">{t('sidebar.chats.emptySub')}</p>
             </div>
           ) : (
             <ul className="hc-section__list">
@@ -217,7 +220,7 @@ export const Sidebar = memo(function Sidebar({
           )}
         </section>
 
-        <section className="hc-section" aria-label="프로젝트">
+        <section className="hc-section" aria-label={t('sidebar.projects')}>
           <div className="hc-section__header">
             <button
               type="button"
@@ -225,7 +228,7 @@ export const Sidebar = memo(function Sidebar({
               aria-expanded={!projectsCollapsed}
               onClick={() => setProjectsCollapsed((v) => !v)}
             >
-              <span className="hc-section__title">프로젝트</span>
+              <span className="hc-section__title">{t('sidebar.projects')}</span>
               <IconChevron
                 width={11}
                 height={11}
@@ -235,8 +238,8 @@ export const Sidebar = memo(function Sidebar({
             <button
               type="button"
               className="hc-section__action"
-              aria-label="프로젝트 추가"
-              title="폴더를 프로젝트로 추가"
+              aria-label={t('sidebar.addProject')}
+              title={t('sidebar.addProject.title')}
               onClick={onAddProject}
             >
               <IconFolderPlus />
@@ -244,8 +247,8 @@ export const Sidebar = memo(function Sidebar({
           </div>
           {projectsCollapsed ? null : projects.length === 0 ? (
             <div className="hc-sidebar__empty">
-              <p>아직 프로젝트가 없어요</p>
-              <p className="hc-sidebar__empty-sub">새 채팅에서 폴더를 고르면 여기에 추가됩니다.</p>
+              <p>{t('sidebar.projects.empty')}</p>
+              <p className="hc-sidebar__empty-sub">{t('sidebar.projects.emptySub')}</p>
             </div>
           ) : (
             projects.map((project) => (
@@ -267,7 +270,7 @@ export const Sidebar = memo(function Sidebar({
         </section>
 
         {archived.length > 0 ? (
-          <section ref={archivedRef} className="hc-section hc-section--archived" aria-label="보관된 스레드">
+          <section ref={archivedRef} className="hc-section hc-section--archived" aria-label={t('settings.archived')}>
             <div className="hc-section__header">
               <button
                 type="button"
@@ -275,7 +278,7 @@ export const Sidebar = memo(function Sidebar({
                 aria-expanded={archivedOpen}
                 onClick={() => setArchivedOpen((v) => !v)}
               >
-                <span className="hc-section__title">보관됨</span>
+                <span className="hc-section__title">{t('sidebar.archived')}</span>
                 <span className="hc-section__count">{archived.length}</span>
                 <IconChevron
                   width={11}

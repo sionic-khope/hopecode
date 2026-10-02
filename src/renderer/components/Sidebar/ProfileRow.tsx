@@ -3,6 +3,8 @@ import type { Account, PoolSummary } from '../../../shared/types';
 import { Menu, type MenuSection } from '../common';
 import { GlyphFolderOpen, GlyphPower, GlyphSettings } from '../common/glyphs';
 import { IconPlusSmall } from './icons';
+import { useLanguage } from '../../i18n';
+import { t } from '../../../shared/i18n';
 
 export interface ProfileRowProps {
   /** Account shown in the row: the open thread's account, else the first enabled one by priority. */
@@ -78,6 +80,7 @@ export const ProfileRow = memo(function ProfileRow({
   profileName = '',
   onRenameProfile,
 }: ProfileRowProps) {
+  useLanguage();
   const [open, setOpen] = useState(false);
   const rowRef = useRef<HTMLButtonElement>(null);
 
@@ -89,8 +92,8 @@ export const ProfileRow = memo(function ProfileRow({
             <IconPlusSmall width={14} height={14} />
           </span>
           <span className="hc-profile__text">
-            <span className="hc-profile__name">계정 추가</span>
-            <span className="hc-profile__sub">Claude 구독 계정으로 시작하세요</span>
+            <span className="hc-profile__name">{t('profile.addAccount')}</span>
+            <span className="hc-profile__sub">{t('profile.addAccount.sub')}</span>
           </span>
         </button>
       </div>
@@ -98,29 +101,29 @@ export const ProfileRow = memo(function ProfileRow({
   }
 
   const plan = planLabel(account.plan);
-  const name = profileName.trim() || account.alias || account.email || '계정';
-  const poolText = `계정 ${pool.total}개 · ${pool.available}개 사용 가능`;
+  const name = profileName.trim() || account.alias || account.email || t('settings.accounts');
+  const poolText = t('profile.pool', { total: pool.total, available: pool.available });
 
   const sections: MenuSection[] = [
     {
       key: 'account',
       kind: 'action',
-      items: [{ key: 'add', label: '계정 추가', icon: <IconPlusSmall width={16} height={16} />, onSelect: onAddAccount }],
+      items: [{ key: 'add', label: t('profile.addAccount'), icon: <IconPlusSmall width={16} height={16} />, onSelect: onAddAccount }],
     },
     {
       key: 'rename',
       kind: 'action',
-      items: [{ key: 'rename', label: '표시 이름 변경…', icon: <GlyphSettings />, onSelect: onRenameProfile }],
+      items: [{ key: 'rename', label: t('profile.rename'), icon: <GlyphSettings />, onSelect: onRenameProfile }],
     },
     {
       key: 'app',
       kind: 'action',
-      items: [{ key: 'logs', label: '로그 폴더 열기', icon: <GlyphFolderOpen />, onSelect: onOpenDataFolder }],
+      items: [{ key: 'logs', label: t('profile.openLogs'), icon: <GlyphFolderOpen />, onSelect: onOpenDataFolder }],
     },
     {
       key: 'quit',
       kind: 'action',
-      items: [{ key: 'quit', label: 'deltax 종료', icon: <GlyphPower />, meta: '⌘Q', onSelect: onQuit }],
+      items: [{ key: 'quit', label: t('profile.quit'), icon: <GlyphPower />, meta: '⌘Q', onSelect: onQuit }],
     },
   ];
 
@@ -132,7 +135,7 @@ export const ProfileRow = memo(function ProfileRow({
         className={`hc-profile__row${open ? ' hc-profile__row--open' : ''}`}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`프로필: ${name}${plan ? ` (${plan})` : ''}`}
+        aria-label={t('profile.aria', { name: plan ? `${name} (${plan})` : name })}
         data-testid="profile-row"
         onClick={() => setOpen((v) => !v)}
       >
@@ -148,7 +151,7 @@ export const ProfileRow = memo(function ProfileRow({
         onClose={() => setOpen(false)}
         anchorRef={rowRef}
         sections={sections}
-        label="프로필"
+        label={t('profile.label')}
         placement="top-start"
         width={268}
         className="hc-profile-menu"

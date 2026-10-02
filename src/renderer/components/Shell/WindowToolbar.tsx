@@ -22,6 +22,8 @@ import {
   GlyphSoundOn,
   GlyphTerminal as GlyphTerminalToggle,
 } from './toolbarGlyphs';
+import { useLanguage } from '../../i18n';
+import { t } from '../../../shared/i18n';
 import './WindowToolbar.css';
 
 export interface WindowToolbarProps {
@@ -84,6 +86,7 @@ export function WindowToolbar({
   onSetArchived,
   onDeleteThread,
 }: WindowToolbarProps) {
+  const language = useLanguage();
   const moreRef = useRef<HTMLButtonElement>(null);
   const shareRef = useRef<HTMLButtonElement>(null);
   const envRef = useRef<HTMLButtonElement>(null);
@@ -124,18 +127,18 @@ export function WindowToolbar({
       sections.push({
         key: 'editors',
         kind: 'action',
-        items: [{ key: 'finder', label: '폴더 열기', icon: <GlyphFolderOpen />, onSelect: () => onOpenEditor('finder') }],
+        items: [{ key: 'finder', label: t('plugins.openFolder'), icon: <GlyphFolderOpen />, onSelect: () => onOpenEditor('finder') }],
       });
     } else if (thread && editors.length > 0) {
       sections.push({
         key: 'editors',
-        title: '에디터에서 열기',
+        title: t('toolbar.openInEditor'),
         kind: 'action',
         items: editors.map((e) => ({
           key: e.id,
-          label: `${e.name}에서 열기`,
+          label: t('env.openIn', { editor: e.name }),
           icon: editorGlyph(e.id),
-          meta: e.id === primaryEditor?.id ? '기본' : undefined,
+          meta: e.id === primaryEditor?.id ? t('mode.default') : undefined,
           onSelect: () => onOpenEditor(e.id),
         })),
       });
@@ -151,38 +154,38 @@ export function WindowToolbar({
     if (thread) {
       sections.push({
         key: 'thread',
-        title: '스레드',
+        title: t('md.thread'),
         kind: 'action',
         items: [
-          { key: 'rename', label: '스레드 이름 변경', disabled: !onStartRename, onSelect: () => onStartRename?.() },
+          { key: 'rename', label: t('toolbar.renameThread'), disabled: !onStartRename, onSelect: () => onStartRename?.() },
           ...(thread.archived
             ? []
-            : [{ key: 'pin', label: thread.pinned ? '고정 해제' : '고정', onSelect: () => onSetPinned(thread.id, !thread.pinned) }]),
-          { key: 'archive', label: thread.archived ? '보관 해제' : '보관', onSelect: () => onSetArchived(thread.id, !thread.archived) },
-          { key: 'delete', label: '삭제…', tone: 'danger' as const, onSelect: () => setConfirmDelete(true) },
+            : [{ key: 'pin', label: thread.pinned ? t('thread.unpin') : t('thread.pin'), onSelect: () => onSetPinned(thread.id, !thread.pinned) }]),
+          { key: 'archive', label: thread.archived ? t('thread.unarchive') : t('thread.archive'), onSelect: () => onSetArchived(thread.id, !thread.archived) },
+          { key: 'delete', label: t('thread.deleteEllipsis'), tone: 'danger' as const, onSelect: () => setConfirmDelete(true) },
         ],
       });
     }
     return sections;
-  }, [thread, editors, primaryEditor, accounts, draftPinnedAccountId, onPinAccount, onOpenEditor, onStartRename, onSetPinned, onSetArchived]);
+  }, [thread, editors, primaryEditor, accounts, draftPinnedAccountId, onPinAccount, onOpenEditor, onStartRename, onSetPinned, onSetArchived, language]);
 
   const exportFile = () => {
     if (!thread) return;
     invoke('thread:exportMarkdown', { threadId: thread.id })
       .then((res) => {
-        if (res.ok) setFlash({ kind: 'ok', text: 'Markdown 파일로 저장했습니다' });
+        if (res.ok) setFlash({ kind: 'ok', text: t('toolbar.exported') });
         else if (res.error) setFlash({ kind: 'error', text: res.error });
       })
-      .catch((err: unknown) => setFlash({ kind: 'error', text: `내보내지 못했습니다: ${ipcErrorMessage(err)}` }));
+      .catch((err: unknown) => setFlash({ kind: 'error', text: t('toolbar.exportFailed', { error: ipcErrorMessage(err) }) }));
   };
 
   const copyMarkdown = () => {
     if (!thread) return;
     const items = useAppStore.getState().chatItemsByThread[thread.id] ?? [];
-    const projectName = project?.name ?? (thread.projectId === null ? '프로젝트 없음' : null);
+    const projectName = project?.name ?? (thread.projectId === null ? t('folder.noProject') : null);
     const markdown = threadToMarkdown({ title: thread.title, project: projectName, agentName: AGENTS[thread.agent].name }, items);
     void copyText(markdown).then((ok) =>
-      setFlash(ok ? { kind: 'ok', text: 'Markdown을 클립보드에 복사했습니다' } : { kind: 'error', text: '클립보드에 복사하지 못했습니다' }),
+      setFlash(ok ? { kind: 'ok', text: t('toolbar.copiedMd') } : { kind: 'error', text: t('toolbar.copyFailed') }),
     );
   };
 
@@ -193,15 +196,15 @@ export function WindowToolbar({
       items: [
         {
           key: 'file',
-          label: 'Markdown으로 내보내기…',
-          description: '대화를 .md 파일로 저장합니다',
+          label: t('toolbar.exportMd'),
+          description: t('toolbar.exportMd.desc'),
           icon: <GlyphMarkdown />,
           onSelect: exportFile,
         },
         {
           key: 'copy',
-          label: 'Markdown 복사',
-          description: '대화를 클립보드에 복사합니다',
+          label: t('toolbar.copyMd'),
+          description: t('toolbar.copyMd.desc'),
           icon: <GlyphCopy />,
           onSelect: copyMarkdown,
         },
@@ -210,7 +213,7 @@ export function WindowToolbar({
   ];
 
   return (
-    <div className="hc-toolbar hc-wtb no-drag" role="toolbar" aria-label="스레드 도구">
+    <div className="hc-toolbar hc-wtb no-drag" role="toolbar" aria-label={t('toolbar.aria')}>
       {flash ? (
         <span className={`hc-wtb__flash hc-wtb__flash--${flash.kind}`} role={flash.kind === 'error' ? 'alert' : 'status'}>
           {flash.text}
@@ -220,28 +223,28 @@ export function WindowToolbar({
         ref={moreRef}
         type="button"
         className="hc-toolbar-btn hc-toolbar-btn--icon"
-        aria-label="더보기"
+        aria-label={t('common.more')}
         aria-haspopup="menu"
         aria-expanded={moreOpen}
-        title="더보기"
+        title={t('common.more')}
         onClick={() => setMoreOpen((v) => !v)}
       >
         <GlyphMore />
       </button>
-      <Menu open={moreOpen} onClose={() => setMoreOpen(false)} anchorRef={moreRef} sections={moreSections} label="더보기" placement="bottom-end" width={280} />
+      <Menu open={moreOpen} onClose={() => setMoreOpen(false)} anchorRef={moreRef} sections={moreSections} label={t('common.more')} placement="bottom-end" width={280} />
       {thread ? (
         <ConfirmDeletePopover
           open={confirmDelete}
           onClose={() => setConfirmDelete(false)}
           anchorRef={moreRef}
-          label="스레드 삭제"
+          label={t('thread.delete')}
           message={
             thread.worktree
-              ? `“${thread.title}”을(를) 삭제할까요? 대화 기록과 worktree(${thread.worktree.branch})가 삭제됩니다.`
-              : `“${thread.title}”을(를) 삭제할까요? 대화 기록이 삭제됩니다.`
+              ? t('thread.delete.withWorktree', { title: thread.title, branch: thread.worktree.branch })
+              : t('thread.delete.message', { title: thread.title })
           }
-          forceMessage="이 worktree에 커밋하지 않은 변경 사항이 있습니다. 그래도 삭제할까요?"
-          confirmLabel="삭제"
+          forceMessage={t('thread.delete.force')}
+          confirmLabel={t('common.delete')}
           onConfirm={(force) => onDeleteThread(thread.id, force)}
         />
       ) : null}
@@ -250,25 +253,25 @@ export function WindowToolbar({
         ref={shareRef}
         type="button"
         className="hc-toolbar-btn hc-toolbar-btn--icon"
-        aria-label="공유"
+        aria-label={t('toolbar.share')}
         aria-haspopup="menu"
         aria-expanded={shareOpen}
-        title={thread ? '공유 (Markdown)' : '대화를 시작하면 공유할 수 있습니다'}
+        title={thread ? `${t('toolbar.share')} (Markdown)` : t('toolbar.share.disabled')}
         disabled={!thread}
         onClick={() => setShareOpen((v) => !v)}
       >
         <GlyphShare />
       </button>
-      <Menu open={shareOpen} onClose={() => setShareOpen(false)} anchorRef={shareRef} sections={shareSections} label="공유" placement="bottom-end" width={260} />
+      <Menu open={shareOpen} onClose={() => setShareOpen(false)} anchorRef={shareRef} sections={shareSections} label={t('toolbar.share')} placement="bottom-end" width={260} />
 
       <button
         ref={envRef}
         type="button"
         className={`hc-toolbar-btn hc-toolbar-btn--icon${envOpen ? ' hc-toolbar-btn--on' : ''}`}
-        aria-label="환경"
+        aria-label={t('env.title')}
         aria-haspopup="dialog"
         aria-expanded={envOpen}
-        title={thread ? '환경' : '대화를 시작하면 작업 환경을 볼 수 있습니다'}
+        title={thread ? t('env.title') : t('toolbar.env.disabled')}
         disabled={!thread}
         onClick={() => setEnvOpen((v) => !v)}
       >
@@ -296,9 +299,9 @@ export function WindowToolbar({
       <button
         type="button"
         className={`hc-toolbar-btn hc-toolbar-btn--icon${terminalOpen ? ' hc-toolbar-btn--on' : ''}`}
-        aria-label="하단 터미널"
+        aria-label={t('terminal.panel')}
         aria-pressed={terminalOpen}
-        title={terminalOpen ? '하단 터미널 닫기 (⌘J)' : '하단 터미널 열기 (⌘J)'}
+        title={`${terminalOpen ? t('toolbar.terminal.close') : t('toolbar.terminal.open')} (⌘J)`}
         onClick={onToggleTerminal}
       >
         <GlyphTerminalToggle data-glyph="terminal" />
@@ -306,9 +309,9 @@ export function WindowToolbar({
       <button
         type="button"
         className={`hc-toolbar-btn hc-toolbar-btn--icon${panel === 'changes' ? ' hc-toolbar-btn--on' : ''}`}
-        aria-label="변경사항 패널"
+        aria-label={t('toolbar.changesPanel')}
         aria-pressed={panel === 'changes'}
-        title="변경사항 패널 (⌘⇧D)"
+        title={`${t('toolbar.changesPanel')} (⌘⇧D)`}
         onClick={() => onTogglePanel('changes')}
       >
         <GlyphChangesToggle data-glyph="changes" />
@@ -316,16 +319,16 @@ export function WindowToolbar({
       <button
         type="button"
         className="hc-toolbar-btn hc-toolbar-btn--icon"
-        aria-label={soundOn ? '사운드 끄기' : '사운드 켜기'}
+        aria-label={soundOn ? t('toolbar.soundOff') : t('toolbar.soundOn')}
         aria-pressed={soundOn}
-        title={soundOn ? '사운드 끄기' : '사운드 켜기'}
+        title={soundOn ? t('toolbar.soundOff') : t('toolbar.soundOn')}
         data-testid="sound-toggle"
         data-sfx="none"
         onClick={() =>
           void useAppStore
             .getState()
             .updateSettings({ soundEnabled: !soundOn })
-            .catch((err: unknown) => setFlash({ kind: 'error', text: `사운드 설정을 저장하지 못했습니다: ${ipcErrorMessage(err)}` }))
+            .catch((err: unknown) => setFlash({ kind: 'error', text: t('toolbar.soundFailed', { error: ipcErrorMessage(err) }) }))
         }
       >
         {soundOn ? <GlyphSoundOn data-glyph="sound-on" /> : <GlyphSoundOff data-glyph="sound-off" />}

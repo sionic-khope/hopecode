@@ -9,6 +9,8 @@ import { AgentSection } from './AgentSection';
 import { LocalAuthCard } from './LocalAuthCard';
 import { CLI_LOGIN_HINT } from './localAuthView';
 import { AccountRow } from './AccountRow';
+import { t } from '../../../shared/i18n';
+import { tNodes } from '../../i18n';
 import './AccountsPage.css';
 
 export interface AccountsPageProps {
@@ -118,13 +120,13 @@ export function AccountsPage({
       <div className="hc-accounts-page__header">
         <div className="hc-accounts-page__title-row">
           {onBack ? (
-            <Button variant="plain" size="sm" icon aria-label="뒤로" onClick={onBack}>
+            <Button variant="plain" size="sm" icon aria-label={t('common.back')} onClick={onBack}>
               <BackIcon />
             </Button>
           ) : null}
-          <h1 className="hc-accounts-page__title">계정</h1>
+          <h1 className="hc-accounts-page__title">{t('settings.accounts')}</h1>
           <span className="hc-accounts-page__count">
-            {enabledCount}/{accounts.length} 활성
+            {t('acct.enabledOf', { enabled: enabledCount, total: accounts.length })}
           </span>
         </div>
       </div>
@@ -133,7 +135,7 @@ export function AccountsPage({
         agent="claude-code"
         actions={
           <Button variant="primary" size="sm" onClick={onAddAccount}>
-            + 계정 추가
+            + {t('profile.addAccount')}
           </Button>
         }
       >
@@ -141,14 +143,14 @@ export function AccountsPage({
         {showLocalToggle ? (
           <div className="hc-local-toggle">
             <div className="hc-local-toggle__text">
-              <span>계정 풀에 포함</span>
-              <span className="hc-local-toggle__sub">이 Mac의 Claude Code 로그인(~/.claude)을 계정 풀에서 함께 사용합니다.</span>
+              <span>{t('acct.inPool')}</span>
+              <span className="hc-local-toggle__sub">{t('acct.inPool.sub')}</span>
             </div>
             <Switch
               checked={localInPool}
               disabled={localBusy}
               onChange={setLocalInPool}
-              aria-label="로컬 Claude 계정을 계정 풀에 포함"
+              aria-label={t('acct.inPool.aria')}
               data-testid="local-claude-toggle"
             />
           </div>
@@ -160,8 +162,8 @@ export function AccountsPage({
         ) : null}
         {ordered.length === 0 ? (
           <div className="hc-accounts-page__empty">
-            <p>아직 계정이 없습니다</p>
-            <p className="hc-accounts-page__empty-sub">Claude 구독 계정을 추가해 세션 풀을 시작하세요.</p>
+            <p>{t('acct.empty')}</p>
+            <p className="hc-accounts-page__empty-sub">{t('acct.empty.sub')}</p>
           </div>
         ) : (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -209,14 +211,14 @@ function BackIcon() {
 function CliLoginNote({ commands }: { commands: string[] }) {
   return (
     <p className="hc-agent-section__note">
-      로그인은 터미널의 각 CLI에서 하세요:{' '}
-      {commands.map((c, i) => (
-        <span key={c}>
-          {i > 0 ? ' 또는 ' : ''}
-          <code>{c}</code>
-        </span>
-      ))}
-      . 끝나면 위의 재확인을 눌러 주세요.
+      {tNodes('acct.cliLogin', {
+        commands: commands.map((c, i) => (
+          <span key={c}>
+            {i > 0 ? ` ${t('acct.cliLogin.or')} ` : ''}
+            <code>{c}</code>
+          </span>
+        )),
+      })}
     </p>
   );
 }

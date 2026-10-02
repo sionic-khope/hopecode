@@ -6,6 +6,8 @@ import { StatusPill } from '../common';
 import { AgentIcon } from '../Agent/AgentIcon';
 import { IconArchive, IconPinThread, IconUnarchive } from './icons';
 import { ActionMenu, ConfirmDeletePopover, type NEEDS_FORCE } from './ItemMenu';
+import { useLanguage } from '../../i18n';
+import { formatDate, t } from '../../../shared/i18n';
 
 export interface ThreadRowProps {
   thread: Thread;
@@ -60,6 +62,7 @@ export const ThreadRow = memo(function ThreadRow({
   done = false,
   now: listNow,
 }: ThreadRowProps) {
+  useLanguage();
   const waitNow = useNow(thread.status === 'waiting');
   const now = Math.max(waitNow, listNow ?? 0);
   const wrapRef = useRef<HTMLLIElement>(null);
@@ -103,17 +106,17 @@ export const ThreadRow = memo(function ThreadRow({
   // Run state as a pastel pill; an idle thread shows how long ago it was active instead.
   const status =
     thread.status === 'running' ? (
-      <StatusPill state="running" className="hc-thread__pill" title="실행 중" />
+      <StatusPill state="running" className="hc-thread__pill" title={t('status.running')} />
     ) : thread.status === 'waiting' ? (
-      <StatusPill state="waiting" className="hc-thread__pill hc-thread__meta hc-thread__meta--waiting" title="한도 초기화까지 대기 중">
-        {countdown ?? '대기 중'}
+      <StatusPill state="waiting" className="hc-thread__pill hc-thread__meta hc-thread__meta--waiting" title={t('thread.waitingReset')}>
+        {countdown ?? t('status.waiting')}
       </StatusPill>
     ) : thread.status === 'error' ? (
-      <StatusPill state="error" className="hc-thread__pill" title="오류" />
+      <StatusPill state="error" className="hc-thread__pill" title={t('status.error')} />
     ) : done ? (
-      <StatusPill state="done" className="hc-thread__pill" title="새 응답이 있습니다" />
+      <StatusPill state="done" className="hc-thread__pill" title={t('thread.newReply')} />
     ) : (
-      <span className="hc-thread__time" title={new Date(thread.updatedAt).toLocaleString()}>
+      <span className="hc-thread__time" title={formatDate(thread.updatedAt, { dateStyle: 'medium', timeStyle: 'short' })}>
         {formatRelativeTime(thread.updatedAt, now)}
       </span>
     );
@@ -127,7 +130,7 @@ export const ThreadRow = memo(function ThreadRow({
       {renaming ? (
         <input
           className="hc-thread__rename"
-          aria-label="스레드 이름"
+          aria-label={t('header.threadName')}
           value={draft}
           maxLength={120}
           autoFocus
@@ -168,8 +171,8 @@ export const ThreadRow = memo(function ThreadRow({
               <span
                 className="hc-thread__account"
                 style={{ background: account.color }}
-                title={`${account.alias} 계정으로 고정됨`}
-                aria-label={`${account.alias} 계정으로 고정됨`}
+                title={t('thread.pinnedAccount', { alias: account.alias })}
+                aria-label={t('thread.pinnedAccount', { alias: account.alias })}
               />
             ) : null}
             {status}
@@ -182,9 +185,9 @@ export const ThreadRow = memo(function ThreadRow({
             <button
               type="button"
               className={`hc-thread__action${thread.pinned ? ' hc-thread__action--on' : ''}`}
-              aria-label={thread.pinned ? `${thread.title} 고정 해제` : `${thread.title} 고정`}
+              aria-label={`${thread.title} ${thread.pinned ? t('thread.unpin') : t('thread.pin')}`}
               aria-pressed={thread.pinned}
-              title={thread.pinned ? '고정 해제' : '고정'}
+              title={thread.pinned ? t('thread.unpin') : t('thread.pin')}
               onClick={() => onSetPinned(thread.id, !thread.pinned)}
             >
               <IconPinThread filled={thread.pinned} />
@@ -193,8 +196,8 @@ export const ThreadRow = memo(function ThreadRow({
           <button
             type="button"
             className="hc-thread__action"
-            aria-label={thread.archived ? `${thread.title} 보관 해제` : `${thread.title} 보관`}
-            title={thread.archived ? '보관 해제' : '보관'}
+            aria-label={`${thread.title} ${thread.archived ? t('thread.unarchive') : t('thread.archive')}`}
+            title={thread.archived ? t('thread.unarchive') : t('thread.archive')}
             onClick={() => onSetArchived(thread.id, !thread.archived)}
           >
             {thread.archived ? <IconUnarchive /> : <IconArchive />}
@@ -205,28 +208,28 @@ export const ThreadRow = memo(function ThreadRow({
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
         anchorRef={wrapRef}
-        label="스레드 작업"
+        label={t('thread.actions')}
         actions={[
-          { label: '이름 변경', onSelect: startRename },
+          { label: t('acct.rename'), onSelect: startRename },
           ...(thread.archived
             ? []
-            : [{ label: thread.pinned ? '고정 해제' : '고정', onSelect: () => onSetPinned(thread.id, !thread.pinned) }]),
-          { label: thread.archived ? '보관 해제' : '보관', onSelect: () => onSetArchived(thread.id, !thread.archived) },
-          { label: '삭제…', destructive: true, onSelect: () => setConfirmOpen(true) },
+            : [{ label: thread.pinned ? t('thread.unpin') : t('thread.pin'), onSelect: () => onSetPinned(thread.id, !thread.pinned) }]),
+          { label: thread.archived ? t('thread.unarchive') : t('thread.archive'), onSelect: () => onSetArchived(thread.id, !thread.archived) },
+          { label: t('thread.deleteEllipsis'), destructive: true, onSelect: () => setConfirmOpen(true) },
         ]}
       />
       <ConfirmDeletePopover
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
         anchorRef={wrapRef}
-        label="스레드 삭제"
+        label={t('thread.delete')}
         message={
           thread.worktree
-            ? `“${thread.title}”을(를) 삭제할까요? 대화 기록과 worktree(${thread.worktree.branch})가 삭제됩니다.`
-            : `“${thread.title}”을(를) 삭제할까요? 대화 기록이 삭제됩니다.`
+            ? t('thread.delete.withWorktree', { title: thread.title, branch: thread.worktree.branch })
+            : t('thread.delete.message', { title: thread.title })
         }
-        forceMessage="이 worktree에 커밋하지 않은 변경 사항이 있습니다. 그래도 삭제할까요?"
-        confirmLabel="삭제"
+        forceMessage={t('thread.delete.force')}
+        confirmLabel={t('common.delete')}
         onConfirm={(force) => onDelete(thread.id, force)}
       />
     </li>

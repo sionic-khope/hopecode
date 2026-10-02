@@ -8,10 +8,11 @@ import { selectChatItems, useAppStore } from '../../store';
 import { Popover } from '../common';
 import { GlyphBranch, GlyphChanges, GlyphCode, GlyphCommit, GlyphFolderOpen } from '../common/glyphs';
 import { summarizeCounts } from '../Changes/commitMessage';
-import { SCRATCH_NO_GIT_NOTE, isScratchThread } from '../Changes/scratchGit';
+import { isScratchThread, scratchNoGitNote } from '../Changes/scratchGit';
 import { PixelSprite } from '../Subagents/PixelSprite';
 import { GlyphBranchPlus, GlyphChevronRight, GlyphFile, GlyphPullRequest } from '../Shell/toolbarGlyphs';
 import { collectSources, collectSubagents, countSubagents, type SourceKind, type SubagentStatus } from './collectEnv';
+import { t, type MessageKey } from '../../../shared/i18n';
 import './Env.css';
 
 export interface EnvPopoverProps {
@@ -32,8 +33,8 @@ export interface EnvPopoverProps {
 /** Sources shown before "모두 보기". */
 const SOURCES_PREVIEW = 5;
 
-const STATUS_LABEL: Record<SubagentStatus, string> = { running: '실행 중', done: '완료', failed: '실패' };
-const SOURCE_KIND_LABEL: Record<SourceKind, string> = { mention: '첨부', read: '읽음', edit: '편집' };
+const STATUS_LABEL: Record<SubagentStatus, MessageKey> = { running: 'status.running', done: 'status.done', failed: 'tool.failed' };
+const SOURCE_KIND_LABEL: Record<SourceKind, MessageKey> = { mention: 'env.source.mention', read: 'env.source.read', edit: 'env.source.edit' };
 
 /** Editors that open a file (Finder / terminals only reveal folders). */
 const FILE_EDITOR_EXCLUDE: readonly EditorId[] = ['finder', 'terminal', 'iterm', 'ghostty'];
@@ -95,7 +96,7 @@ export function EnvPopover({ open, onClose, anchorRef, thread, project, homeDir,
   const openInFinder = () => {
     setActionError(null);
     invoke('editor:open', { threadId: thread.id, editor: 'finder' }).catch((err: unknown) =>
-      setActionError(`Finder에서 열지 못했습니다: ${ipcErrorMessage(err)}`),
+      setActionError(t('env.err.finder', { error: ipcErrorMessage(err) })),
     );
   };
 
@@ -105,7 +106,7 @@ export function EnvPopover({ open, onClose, anchorRef, thread, project, homeDir,
     setActionError(null);
     invoke('editor:open', { threadId: thread.id, editor: fileEditor.id, path })
       .then(onClose)
-      .catch((err: unknown) => setActionError(`${fileEditor.name}에서 열지 못했습니다: ${ipcErrorMessage(err)}`));
+      .catch((err: unknown) => setActionError(t('env.err.editor', { editor: fileEditor.name, error: ipcErrorMessage(err) })));
   };
 
   const openSource = (path: string) => {
@@ -131,25 +132,25 @@ export function EnvPopover({ open, onClose, anchorRef, thread, project, homeDir,
   };
 
   return (
-    <Popover open={open} onClose={onClose} anchorRef={anchorRef} placement="bottom-end" width={340} aria-label="환경" className="hc-env-pop">
+    <Popover open={open} onClose={onClose} anchorRef={anchorRef} placement="bottom-end" width={340} aria-label={t('env.title')} className="hc-env-pop">
       <div className="hc-env">
         <section className="hc-env__section" aria-labelledby="hc-env-title">
           <h3 className="hc-env__title" id="hc-env-title">
-            환경
+            {t('env.title')}
           </h3>
-          {scratch ? <p className="hc-env__note">{SCRATCH_NO_GIT_NOTE}</p> : null}
-          {changes && !isRepo ? <p className="hc-env__note">git 저장소가 아닙니다</p> : null}
+          {scratch ? <p className="hc-env__note">{scratchNoGitNote()}</p> : null}
+          {changes && !isRepo ? <p className="hc-env__note">{t('git.notRepo')}</p> : null}
           {changesError ? (
             <p className="hc-env__error" role="alert">
               {changesError}
             </p>
           ) : null}
           {isRepo ? (
-            <button type="button" className="hc-env__row" onClick={openChanges} aria-label={`변경 사항 +${counts.additions} -${counts.deletions}`}>
+            <button type="button" className="hc-env__row" onClick={openChanges} aria-label={`${t('env.changes')} +${counts.additions} -${counts.deletions}`}>
               <span className="hc-env__icon">
                 <GlyphChanges />
               </span>
-              <span className="hc-env__label">변경 사항</span>
+              <span className="hc-env__label">{t('env.changes')}</span>
               <span className="hc-env__stat" data-testid="env-changes-stat">
                 <span className="hc-env__add">+{counts.additions}</span>
                 <span className="hc-env__del">−{counts.deletions}</span>
@@ -167,37 +168,37 @@ export function EnvPopover({ open, onClose, anchorRef, thread, project, homeDir,
             <span className="hc-env__icon">
               <GlyphBranch />
             </span>
-            <span className="hc-env__label">{thread.worktree ? '작업 트리' : '작업 폴더'}</span>
+            <span className="hc-env__label">{thread.worktree ? t('env.worktree') : t('env.workFolder')}</span>
             {branch ? <span className="hc-env__meta">{branch}</span> : null}
             <GlyphChevronRight className={`hc-env__chev${treeOpen ? ' hc-env__chev--open' : ''}`} width={12} height={12} />
           </button>
           {treeOpen ? (
             <div className="hc-env__tree" data-testid="env-worktree">
               <dl className="hc-env__kv">
-                <dt>경로</dt>
+                <dt>{t('env.path')}</dt>
                 <dd title={thread.cwd}>{tildePath(thread.cwd, homeDir)}</dd>
                 {branch ? (
                   <>
-                    <dt>브랜치</dt>
+                    <dt>{t('env.branch')}</dt>
                     <dd>{branch}</dd>
                   </>
                 ) : null}
                 {baseBranch ? (
                   <>
-                    <dt>기준 브랜치</dt>
+                    <dt>{t('env.baseBranch')}</dt>
                     <dd>{baseBranch}</dd>
                   </>
                 ) : null}
                 {project ? (
                   <>
-                    <dt>프로젝트</dt>
+                    <dt>{t('sidebar.projects')}</dt>
                     <dd title={project.path}>{project.name}</dd>
                   </>
                 ) : null}
               </dl>
               <button type="button" className="hc-env__link" onClick={openInFinder}>
                 <GlyphFolderOpen width={14} height={14} />
-                Finder에서 열기
+                {t('env.revealFinder')}
               </button>
             </div>
           ) : null}
@@ -207,7 +208,7 @@ export function EnvPopover({ open, onClose, anchorRef, thread, project, homeDir,
               <span className="hc-env__icon">
                 <GlyphFolderOpen />
               </span>
-              <span className="hc-env__label">폴더 열기</span>
+              <span className="hc-env__label">{t('plugins.openFolder')}</span>
             </button>
           ) : null}
 
@@ -219,7 +220,7 @@ export function EnvPopover({ open, onClose, anchorRef, thread, project, homeDir,
                 <span className="hc-env__icon">
                   <GlyphBranchPlus />
                 </span>
-                <span className="hc-env__label">브랜치 생성</span>
+                <span className="hc-env__label">{t('env.createBranch')}</span>
               </button>
             )
           ) : null}
@@ -237,7 +238,7 @@ export function EnvPopover({ open, onClose, anchorRef, thread, project, homeDir,
                 <span className="hc-env__icon">
                   <GlyphCommit />
                 </span>
-                <span className="hc-env__label">커밋 또는 푸시</span>
+                <span className="hc-env__label">{t('env.commitPush')}</span>
               </button>
               <button
                 type="button"
@@ -250,7 +251,7 @@ export function EnvPopover({ open, onClose, anchorRef, thread, project, homeDir,
                 <span className="hc-env__icon">
                   <GlyphPullRequest />
                 </span>
-                <span className="hc-env__label">풀 리퀘스트 만들기</span>
+                <span className="hc-env__label">{t('env.createPr')}</span>
               </button>
             </>
           ) : null}
@@ -264,11 +265,11 @@ export function EnvPopover({ open, onClose, anchorRef, thread, project, homeDir,
         {subagents.length > 0 ? (
           <section className="hc-env__section" aria-labelledby="hc-env-agents">
             <h3 className="hc-env__title" id="hc-env-agents">
-              하위 에이전트
+              {t('env.subagents')}
               <span className="hc-env__summary" data-testid="env-subagents-summary">
                 {(['running', 'done', 'failed'] as const)
                   .filter((k) => subagentCounts[k] > 0)
-                  .map((k) => `${STATUS_LABEL[k]} ${subagentCounts[k]}`)
+                  .map((k) => `${t(STATUS_LABEL[k])} ${subagentCounts[k]}`)
                   .join(' · ')}
               </span>
             </h3>
@@ -285,10 +286,10 @@ export function EnvPopover({ open, onClose, anchorRef, thread, project, homeDir,
                       />
                     </span>
                     <span className="hc-env__text">
-                      <span className="hc-env__label">{a.description ?? a.agentType ?? '하위 에이전트'}</span>
+                      <span className="hc-env__label">{a.description ?? a.agentType ?? t('env.subagents')}</span>
                       {a.description && a.agentType ? <span className="hc-env__sub">{a.agentType}</span> : null}
                     </span>
-                    <span className={`hc-env__status hc-env__status--${a.status}`}>{STATUS_LABEL[a.status]}</span>
+                    <span className={`hc-env__status hc-env__status--${a.status}`}>{t(STATUS_LABEL[a.status])}</span>
                   </button>
                 </li>
               ))}
@@ -299,7 +300,7 @@ export function EnvPopover({ open, onClose, anchorRef, thread, project, homeDir,
         {sources.length > 0 ? (
           <section className="hc-env__section" aria-labelledby="hc-env-sources">
             <h3 className="hc-env__title" id="hc-env-sources">
-              소스
+              {t('env.sources')}
             </h3>
             <ul className="hc-env__list">
               {shownSources.map((src) => {
@@ -312,7 +313,7 @@ export function EnvPopover({ open, onClose, anchorRef, thread, project, homeDir,
                       className="hc-env__row"
                       data-path={src.path}
                       disabled={!changed && !fileEditor}
-                      title={changed ? '변경 사항 diff 보기' : fileEditor ? `${fileEditor.name}에서 열기` : '열 수 있는 에디터가 없습니다'}
+                      title={changed ? t('env.viewDiff') : fileEditor ? t('env.openIn', { editor: fileEditor.name }) : t('env.noEditor')}
                       onClick={() => openSource(src.path)}
                     >
                       <span className="hc-env__icon">
@@ -322,14 +323,14 @@ export function EnvPopover({ open, onClose, anchorRef, thread, project, homeDir,
                         <span className="hc-env__label">{src.path.slice(slash + 1)}</span>
                         {slash > 0 ? <span className="hc-env__sub">{src.path.slice(0, slash)}</span> : null}
                       </span>
-                      <span className="hc-env__meta">{src.kinds.map((k) => SOURCE_KIND_LABEL[k]).join(' · ')}</span>
+                      <span className="hc-env__meta">{src.kinds.map((k) => t(SOURCE_KIND_LABEL[k])).join(' · ')}</span>
                     </button>
                     {changed && fileEditor ? (
                       <button
                         type="button"
                         className="hc-env__mini"
-                        aria-label={`${src.path} ${fileEditor.name}에서 열기`}
-                        title={`${fileEditor.name}에서 열기`}
+                        aria-label={`${src.path} ${t('env.openIn', { editor: fileEditor.name })}`}
+                        title={t('env.openIn', { editor: fileEditor.name })}
                         onClick={() => openSourceInEditor(src.path)}
                       >
                         <GlyphCode width={14} height={14} />
@@ -341,7 +342,7 @@ export function EnvPopover({ open, onClose, anchorRef, thread, project, homeDir,
             </ul>
             {sources.length > SOURCES_PREVIEW ? (
               <button type="button" className="hc-env__link" onClick={() => setShowAllSources((v) => !v)}>
-                {showAllSources ? '접기' : `모두 보기 (${sources.length})`}
+                {showAllSources ? t('more.collapse') : t('env.showAll', { count: sources.length })}
               </button>
             ) : null}
           </section>
@@ -388,13 +389,13 @@ function BranchForm({ threadId }: { threadId: string }) {
   );
 
   return (
-    <form className="hc-env__form" onSubmit={submit} aria-label="브랜치 생성">
+    <form className="hc-env__form" onSubmit={submit} aria-label={t('env.createBranch')}>
       <div className="hc-env__form-row">
         <input
           ref={inputRef}
           className="hc-env__input"
-          aria-label="새 브랜치 이름"
-          placeholder="새 브랜치 이름"
+          aria-label={t('env.newBranchName')}
+          placeholder={t('env.newBranchName')}
           value={name}
           maxLength={200}
           disabled={busy}
@@ -405,7 +406,7 @@ function BranchForm({ threadId }: { threadId: string }) {
           }}
         />
         <button type="submit" className="hc-env__submit" disabled={!trimmed || invalid !== null || busy}>
-          {busy ? '만드는 중…' : '만들기'}
+          {busy ? t('env.creating') : t('env.create')}
         </button>
       </div>
       {invalid || error ? (
@@ -414,10 +415,10 @@ function BranchForm({ threadId }: { threadId: string }) {
         </p>
       ) : created ? (
         <p className="hc-env__ok" role="status">
-          {created} 브랜치로 전환했습니다
+          {t('env.switched', { branch: created })}
         </p>
       ) : (
-        <p className="hc-env__note">현재 작업 트리에서 새 브랜치로 전환합니다</p>
+        <p className="hc-env__note">{t('env.branchNote')}</p>
       )}
     </form>
   );

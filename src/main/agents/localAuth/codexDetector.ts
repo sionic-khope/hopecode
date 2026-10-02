@@ -5,6 +5,7 @@ import type { DecodeJwtClaimsFn } from '../../../core/acpTypes';
 import type { LocalAuthInfo } from '../../../shared/types';
 import { CODEX_MIN_VERSION, type CodexEngine } from '../agentBinaries';
 import { baseInfo, type DetectorDeps } from './detectorDeps';
+import { t } from '../../../shared/i18n';
 
 const MAX_AUTH_BYTES = 1024 * 1024;
 
@@ -32,8 +33,8 @@ export async function detectCodex(deps: CodexDetectorDeps): Promise<LocalAuthInf
   if (!engine) {
     const overrideError = deps.codexEngineError?.() ?? null;
     const detail = overrideError
-      ? `설정의 Codex 실행 파일 경로를 사용할 수 없습니다: ${overrideError}. 경로를 고치거나 비워 두면 자동으로 찾습니다`
-      : `ChatGPT 앱 또는 Codex CLI(${CODEX_MIN_VERSION} 이상) 설치가 필요합니다`;
+      ? t('codexDetect.badOverride', { error: overrideError })
+      : t('codexDetect.notInstalled', { min: CODEX_MIN_VERSION });
     return { ...info, state: 'not-installed', enginePath: null, detail };
   }
   info.version = engine.version;

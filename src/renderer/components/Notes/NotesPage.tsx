@@ -25,6 +25,7 @@ import { loadNoteDir, noteError, refreshNoteDirs } from './NoteTree';
 import { setTargetRange, targetOf } from './editor/noteTarget';
 import { EditorStream, aiChange } from './editor/stream';
 import { IconBack, IconNotePage } from './icons';
+import { t, type MessageKey } from '../../../shared/i18n';
 import './Notes.css';
 
 /** Autosave delay after the last keystroke. */
@@ -36,12 +37,11 @@ const OVERLAY = '.hc-popover, .hc-modal, .hc-palette, [role="menu"], [role="dial
 
 type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
 
-const SAVE_LABEL: Record<SaveState, string> = {
-  idle: '',
-  dirty: '수정됨',
-  saving: '저장 중…',
-  saved: '저장됨',
-  error: '저장 실패',
+const SAVE_LABEL: Record<Exclude<SaveState, 'idle'>, MessageKey> = {
+  dirty: 'notes.save.dirty',
+  saving: 'notes.save.saving',
+  saved: 'notes.save.saved',
+  error: 'notes.save.error',
 };
 
 function isUnder(path: string, dir: string): boolean {
@@ -257,7 +257,7 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir, onBack
         void loadChat(path);
         window.setTimeout(() => editor.current?.focus(), 0);
       } catch (err) {
-        setPageError(`노트를 열지 못했습니다: ${noteError(err)}`);
+        setPageError(t('notes.err.open', { error: noteError(err) }));
       }
     },
     [saveNow, loadChat],
@@ -502,7 +502,7 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir, onBack
 
   const cardProblem = useCallback(
     (card: NoteCardData): string | null => {
-      if (!openPath) return '노트를 먼저 여세요';
+      if (!openPath) return t('noteChat.placeholder.noNote');
       if (card.kind !== 'replace') return null;
       const match = findSection(editor.current?.text() ?? '', card.section ?? '');
       return match.ok ? null : match.error;
@@ -551,7 +551,7 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir, onBack
       if (!view || run.current || mark.at === undefined || mark.inserted === undefined || mark.original === undefined) return;
       const change = revertCard(view.state.doc.toString(), { at: mark.at, inserted: mark.inserted, original: mark.original });
       if (!change) {
-        setAiError('카드를 넣은 뒤 본문이 바뀌어 자동으로 되돌릴 수 없습니다. 에디터에서 ⌘Z로 되돌리세요.');
+        setAiError(t('notes.err.revert'));
         return;
       }
       dispatchAiChange(view, change, false);
@@ -593,7 +593,7 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir, onBack
       if (res.ok) {
         setCommitOpen(false);
         setCommitMsg('');
-        setCommitNote(`커밋했습니다 · ${res.files}개 파일 · ${res.sha.slice(0, 7)}`);
+        setCommitNote(t('notes.committed', { count: res.files, sha: res.sha.slice(0, 7) }));
         window.setTimeout(() => setCommitNote(null), 4000);
       } else setCommitNote(res.error);
     } catch (err) {
@@ -624,7 +624,7 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir, onBack
     () =>
       void saveNow()
         .then(() => invoke('notes:addVault'))
-        .catch((err: unknown) => setPageError(`노트 폴더를 등록하지 못했습니다: ${noteError(err)}`)),
+        .catch((err: unknown) => setPageError(t('notes.err.addVault', { error: noteError(err) }))),
     [saveNow],
   );
   const selectVault = useCallback(
@@ -702,9 +702,9 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir, onBack
   };
 
   const backButton = (
-    <button type="button" className="hc-notes__back" onClick={goBack} aria-label="돌아가기" title="돌아가기 (Esc)" data-testid="notes-back" data-sfx="back">
+    <button type="button" className="hc-notes__back" onClick={goBack} aria-label={t('notes.back')} title={`${t('notes.back')} (Esc)`} data-testid="notes-back" data-sfx="back">
       <IconBack />
-      <span>돌아가기</span>
+      <span>{t('notes.back')}</span>
     </button>
   );
 
@@ -715,13 +715,13 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir, onBack
         <div className="hc-notes__setup-wrap">
           <div className="hc-notes__setup">
             <p className="hc-notes__eyebrow">* NOTES</p>
-            <h1 className="hc-notes__setup-title">노트 폴더를 지정하세요.</h1>
+            <h1 className="hc-notes__setup-title">{t('notes.setup.title')}</h1>
             <p className="hc-notes__setup-lede">
-              폴더 안의 .md 파일을 열고, 쓰는 대로 자동 저장합니다. 왼쪽은 에디터, 오른쪽은 AI 대화입니다. git 저장소라면 여기서 바로 커밋할 수 있습니다.
+              {t('notes.setup.lede')}
             </p>
             <Button variant="primary" onClick={addVault} data-testid="notes-add-vault">
               <GlyphFolderOpen width={15} height={15} />
-              노트 폴더 지정
+              {t('notes.setup.pick')}
             </Button>
             {pageError ? (
               <p className="hc-notes__setup-error" role="alert">
@@ -746,7 +746,7 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir, onBack
         ref={panes}
         style={{ gridTemplateColumns: `minmax(0, ${split}fr) 0px minmax(0, ${1 - split}fr)` }}
       >
-        <section className="hc-notes__left" aria-label="노트 편집기" data-testid="notes-editor-pane">
+        <section className="hc-notes__left" aria-label={t('noteEditor.aria')} data-testid="notes-editor-pane">
           <header className="hc-notes__bar drag-region">
             {backButton}
             <button
@@ -754,8 +754,8 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir, onBack
               className="hc-notes__crumb"
               aria-haspopup="dialog"
               aria-expanded={drawerOpen}
-              aria-label={openPath ? `노트 파일: ${openPath}` : '노트 파일 열기'}
-              title="노트 파일 (⌘P로 이름 검색)"
+              aria-label={openPath ? t('notes.fileAria', { path: openPath }) : t('notes.openFile')}
+              title={t('notes.fileTitle')}
               data-testid="notes-breadcrumb"
               onClick={() => setDrawerOpen((v) => !v)}
             >
@@ -771,11 +771,11 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir, onBack
                   </>
                 ) : null}
               </span>
-              {!openPath ? <span className="hc-notes__crumb-none">노트 선택</span> : null}
+              {!openPath ? <span className="hc-notes__crumb-none">{t('notes.selectNote')}</span> : null}
               <IconChevron className={`hc-notes__crumb-chevron${drawerOpen ? ' hc-notes__crumb-chevron--open' : ''}`} />
             </button>
             <span className={`hc-notes__save hc-notes__save--${save}`} data-testid="notes-save-state" title={saveError ?? undefined} role="status">
-              {SAVE_LABEL[save]}
+              {save === 'idle' ? '' : t(SAVE_LABEL[save])}
             </span>
             <span className="hc-notes__spacer" />
             {commitNote ? (
@@ -789,10 +789,10 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir, onBack
                 disabled={git.enabled && changed === 0}
                 onClick={() => (git.enabled ? setCommitOpen(true) : setGitOptIn(true))}
                 data-testid="notes-commit"
-                title="변경된 .md 파일만 커밋합니다 (push 없음)"
+                title={t('notes.commit.title')}
               >
                 <GlyphCommit width={14} height={14} />
-                커밋
+                {t('notes.commit')}
                 {git.enabled ? (
                   <span className="hc-notes__count" data-testid="notes-changed-count">
                     {changed}
@@ -811,8 +811,8 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir, onBack
               <div className="hc-notes__blank">
                 <div className="hc-notes__blank-box">
                   <IconNotePage width={28} height={28} className="hc-notes__blank-icon" />
-                  <p className="hc-notes__blank-title">열린 노트가 없습니다.</p>
-                  <p className="hc-notes__blank-lede">위의 경로를 누르거나 ⌘P로 노트를 여세요.</p>
+                  <p className="hc-notes__blank-title">{t('notes.blank.title')}</p>
+                  <p className="hc-notes__blank-lede">{t('notes.blank.lede')}</p>
                   <div className="hc-notes__blank-actions">
                     <Button
                       variant="primary"
@@ -822,13 +822,13 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir, onBack
                         setDraftRequest((d) => ({ kind: 'file', nonce: (d?.nonce ?? 0) + 1 }));
                       }}
                     >
-                      새 노트
+                      {t('noteTree.newNote')}
                     </Button>
                     <Button size="sm" onClick={() => setQuickOpen(true)}>
-                      노트 열기 <kbd className="hc-notes__kbd">⌘P</kbd>
+                      {t('notes.open')} <kbd className="hc-notes__kbd">⌘P</kbd>
                     </Button>
                     <Button size="sm" variant="plain" onClick={() => void loadNoteDir('').catch(() => {})}>
-                      새로고침
+                      {t('prs.refresh')}
                     </Button>
                   </div>
                 </div>
@@ -880,19 +880,19 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir, onBack
           role="separator"
           tabIndex={0}
           aria-orientation="vertical"
-          aria-label="에디터와 대화 너비"
+          aria-label={t('notes.split')}
           aria-valuemin={NOTE_SPLIT.min * 100}
           aria-valuemax={NOTE_SPLIT.max * 100}
           aria-valuenow={Math.round(split * 100)}
-          title="드래그해서 너비 조절 · 더블클릭하면 반반"
+          title={t('notes.split.title')}
           data-testid="notes-split"
           onPointerDown={startSplit}
           onDoubleClick={() => useNotesStore.getState().patch({ split: NOTE_SPLIT.initial })}
           onKeyDown={onSplitKey}
         />
-        <section className="hc-notes__right" aria-label="노트 도우미" data-testid="notes-chat-pane">
+        <section className="hc-notes__right" aria-label={t('notes.assistant')} data-testid="notes-chat-pane">
           <header className="hc-notes__bar hc-notes__bar--chat drag-region">
-            <span className="hc-notes__chat-title">* 노트 도우미</span>
+            <span className="hc-notes__chat-title">* {t('notes.assistant')}</span>
             <span className="hc-notes__chat-sub">{file ? file.replace(/\.md$/i, '') : ''}</span>
           </header>
           <NoteChatPanel
@@ -916,39 +916,39 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir, onBack
       <Modal
         open={gitOptIn}
         onClose={() => setGitOptIn(false)}
-        title="이 노트 폴더에서 git 사용"
+        title={t('notes.git.title')}
         subtitle={tildePath(vault, homeDir)}
         width={460}
         dismissible={!commitBusy}
         actions={
           <>
             <Button onClick={() => setGitOptIn(false)} disabled={commitBusy}>
-              취소
+              {t('common.cancel')}
             </Button>
             <Button variant="primary" onClick={() => void enableGit()} disabled={commitBusy} data-testid="notes-git-optin-confirm">
-              git 켜기
+              {t('notes.git.enable')}
             </Button>
           </>
         }
       >
         <p className="hc-notes__optin" data-testid="notes-git-optin">
-          켜면 이 폴더에서 git을 실행해 바뀐 노트를 확인하고 커밋합니다. 커밋할 때는 저장소에 설정된 hook과 filter가 실행됩니다. 직접 만들었거나 믿을 수 있는 저장소에서만 켜세요. 이 설정은 폴더마다 한 번만 묻습니다.
+          {t('notes.git.body')}
         </p>
       </Modal>
       <Modal
         open={commitOpen}
         onClose={() => setCommitOpen(false)}
-        title="노트 커밋"
-        subtitle={`변경된 .md ${changed}개를 커밋합니다. push는 하지 않습니다.`}
+        title={t('notes.commitDialog')}
+        subtitle={t('notes.commitDialog.subtitle', { count: changed })}
         width={460}
         dismissible={!commitBusy}
         actions={
           <>
             <Button onClick={() => setCommitOpen(false)} disabled={commitBusy}>
-              취소
+              {t('common.cancel')}
             </Button>
             <Button variant="primary" onClick={() => void commit()} disabled={commitBusy || !commitMsg.trim()} data-testid="notes-commit-confirm">
-              커밋
+              {t('notes.commit')}
             </Button>
           </>
         }
@@ -957,14 +957,14 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir, onBack
           {(git?.changed ?? []).slice(0, 12).map((p) => (
             <li key={p}>{p}</li>
           ))}
-          {(git?.changed.length ?? 0) > 12 ? <li>외 {(git?.changed.length ?? 0) - 12}개</li> : null}
+          {(git?.changed.length ?? 0) > 12 ? <li>{t('notes.moreFiles', { count: (git?.changed.length ?? 0) - 12 })}</li> : null}
         </ul>
         <input
           className="hc-notes__commit-input"
           data-autofocus
           value={commitMsg}
-          placeholder="커밋 메시지"
-          aria-label="커밋 메시지"
+          placeholder={t('notes.commitMessage')}
+          aria-label={t('notes.commitMessage')}
           data-testid="notes-commit-message"
           onChange={(e) => setCommitMsg(e.target.value)}
           onKeyDown={(e) => {

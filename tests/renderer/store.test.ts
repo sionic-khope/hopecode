@@ -88,6 +88,7 @@ describe('bootstrap', () => {
       homeDir: '/Users/me',
       pendingPermissions: [],
       testMode: false,
+      systemLocale: 'ko-KR',
       localAuth: [],
       agentUsage: {},
     });
@@ -122,6 +123,35 @@ describe('bootstrap', () => {
     expect(useAppStore.getState().appVersion).toBe('0.1.0');
   });
 
+  it("resolves the UI language from settings and main's system locale, and switches on settings:updated", async () => {
+    const { getLanguage } = await import('../../src/shared/i18n');
+    const bootstrap = (language: typeof DEFAULT_SETTINGS.language, systemLocale: string) =>
+      useAppStore.getState().applyBootstrap({
+        projects: [],
+        threads: [],
+        accounts: [],
+        pool: EMPTY_POOL,
+        settings: { ...DEFAULT_SETTINGS, language },
+        appVersion: '0.1.0',
+        homeDir: '/Users/me',
+        pendingPermissions: [],
+        testMode: false,
+        systemLocale,
+        localAuth: [],
+        agentUsage: {},
+      });
+    bootstrap('system', 'ja-JP');
+    expect(useAppStore.getState().language).toBe('ja');
+    expect(getLanguage()).toBe('ja');
+    bootstrap('system', 'fr-FR');
+    expect(useAppStore.getState().language).toBe('en');
+    useAppStore.getState().applySettingsUpdated({ ...DEFAULT_SETTINGS, language: 'zh-Hans' });
+    expect(useAppStore.getState().language).toBe('zh-Hans');
+    expect(getLanguage()).toBe('zh-Hans');
+    bootstrap('ko', 'en-US');
+    expect(useAppStore.getState().language).toBe('ko');
+  });
+
   it('does not clobber an already-selected thread on re-bootstrap', () => {
     const t1 = makeThread({ id: 't1' });
     const t2 = makeThread({ id: 't2' });
@@ -136,6 +166,7 @@ describe('bootstrap', () => {
       homeDir: '/Users/me',
       pendingPermissions: [],
       testMode: false,
+      systemLocale: 'ko-KR',
       localAuth: [],
       agentUsage: {},
     });
@@ -456,6 +487,7 @@ describe('review fixes', () => {
       homeDir: '/Users/me',
       pendingPermissions: [req],
       testMode: false,
+      systemLocale: 'ko-KR',
       localAuth: [],
       agentUsage: {},
     });
@@ -609,6 +641,7 @@ describe('draft / new chat', () => {
       homeDir: '/Users/me',
       pendingPermissions: [],
       testMode: false,
+      systemLocale: 'ko-KR',
       localAuth: [],
       agentUsage: {},
     });

@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react';
 import { Button } from '../common';
+import { t } from '../../../shared/i18n';
 import './NavPages.css';
 
 /** Back button, display title, one-line lede and optional actions: the header of every nav page. */
 export function PageHeader({ title, lede, onBack, actions }: { title: string; lede: string; onBack: () => void; actions?: ReactNode }) {
   return (
     <header className="hc-page__header">
-      <Button variant="plain" size="sm" icon aria-label="뒤로" onClick={onBack}>
+      <Button variant="plain" size="sm" icon aria-label={t('common.back')} onClick={onBack}>
         <svg width={13} height={13} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <path d="M10 3.5 5 8l5 4.5" />
         </svg>

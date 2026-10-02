@@ -7,6 +7,8 @@ import { GlyphCheck, GlyphCopy, GlyphEditResend } from '../common/glyphs';
 import { ChevronIcon, PlusIcon } from './icons';
 import { describeAgentError, type AgentWarning } from './agentIssues';
 import { playSfx } from '../../sound/engine';
+import { useLanguage } from '../../i18n';
+import { t } from '../../../shared/i18n';
 import './Chat.css';
 
 /** What the card can do for the turn it ended (only the latest error of a thread gets these). */
@@ -56,7 +58,7 @@ function CopyTextButton({ text, label }: { text: string; label: string }) {
       }}
     >
       {copied ? <GlyphCheck width={13} height={13} /> : <GlyphCopy width={13} height={13} />}
-      {copied ? '복사됨' : label}
+      {copied ? t('common.copied') : label}
     </button>
   );
 }
@@ -70,6 +72,7 @@ const errorSfxPlayed = new Set<string>();
  * behind 자세히 보기, and the ways forward: 다시 시도, 새 세션으로 시도, 메시지 복사.
  */
 export const ErrorCard = memo(function ErrorCard({ item, agent, actions }: ErrorCardProps) {
+  useLanguage();
   const [open, setOpen] = useState(false);
   const copy = describeAgentError(item.text, AGENTS[agent].name);
   useEffect(() => {
@@ -92,21 +95,21 @@ export const ErrorCard = memo(function ErrorCard({ item, agent, actions }: Error
         <span className={`hc-error-card__chevron${open ? ' hc-error-card__chevron--open' : ''}`}>
           <ChevronIcon width={12} height={12} />
         </span>
-        {open ? '자세히 접기' : '자세히 보기'}
+        {open ? t('error.hideDetails') : t('error.showDetails')}
       </button>
       <Collapse open={open}>
         <div className="hc-error-card__detail">
           <pre className="hc-error-card__raw" data-testid="error-raw">
             {item.text}
           </pre>
-          <CopyTextButton text={item.text} label="오류 내용 복사" />
+          <CopyTextButton text={item.text} label={t('error.copy')} />
         </div>
       </Collapse>
       {actions ? (
         <div className="hc-error-card__actions">
           <button type="button" className="hc-btn hc-btn--secondary hc-btn--sm hc-error-card__btn" disabled={actions.disabled} onClick={actions.onRetry}>
             <GlyphEditResend width={13} height={13} />
-            다시 시도
+            {t('common.retry')}
           </button>
           <button
             type="button"
@@ -115,9 +118,9 @@ export const ErrorCard = memo(function ErrorCard({ item, agent, actions }: Error
             onClick={actions.onRetryInNewSession}
           >
             <PlusIcon width={13} height={13} />
-            새 세션으로 시도
+            {t('error.newSession')}
           </button>
-          <CopyTextButton text={actions.message} label="메시지 복사" />
+          <CopyTextButton text={actions.message} label={t('message.copy')} />
         </div>
       ) : null}
     </section>

@@ -4,6 +4,7 @@ import { execFile } from 'node:child_process';
 import { GH_PR_FIELDS, githubRepoFromRemote, isGhAuthError, parseGhPrList } from '../../core/ghPrs';
 import type { ProjectPullRequests, PullRequestList } from '../../shared/nav';
 import type { Project } from '../../shared/types';
+import { t } from '../../shared/i18n';
 
 const GH_TIMEOUT_MS = 20_000;
 const PR_LIMIT = 50;
@@ -38,7 +39,7 @@ function runner(env: () => Record<string, string>): Run {
 }
 
 function shortError(text: string): string {
-  return text.trim().split('\n').slice(-2).join(' ').trim() || 'gh 실행에 실패했습니다';
+  return text.trim().split('\n').slice(-2).join(' ').trim() || t('prs.ghFailed');
 }
 
 /** Remote URL of `origin` (or the first remote); null when the folder is not a repo or has no remote. */

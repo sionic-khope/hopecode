@@ -9,6 +9,7 @@ import type { AccountPool, Broadcaster, SessionManager, Store } from '../contrac
 import { isStrictlyInside } from '../containment';
 import { devEnv, localClaudeDir } from '../paths';
 import type { SyncTranscriptFn } from '../session/transcriptSync';
+import { t } from '../../shared/i18n';
 
 /** Dev env (ignored when packaged): fixture runs report and enroll a deterministic local account (accounts-local e2e). */
 export const ENV_FIXTURE_LOCAL_CLAUDE = 'HOPECODE_FIXTURE_LOCAL_CLAUDE';
@@ -129,7 +130,7 @@ export async function removeAccountWithHandoff(
   if (dependents.length > 0 && !heir) {
     return {
       ok: false,
-      error: `${account.alias} 계정에 스레드 ${dependents.length}개의 대화 기록이 있습니다. 다른 계정을 추가하거나 활성화한 뒤 제거하세요.`,
+      error: t('localAccount.err.hasThreads', { alias: account.alias, count: dependents.length }),
     };
   }
 
@@ -151,7 +152,7 @@ export async function removeAccountWithHandoff(
           if (wasEnabled) accountPool.update(accountId, { enabled: true });
           return {
             ok: false,
-            error: `"${thread.title}"의 대화 기록을 ${heir.alias}(으)로 옮기지 못했습니다: ${err instanceof Error ? err.message : String(err)}. ${account.alias} 계정은 제거되지 않았습니다.`,
+            error: t('localAccount.err.moveFailed', { title: thread.title, heir: heir.alias, error: err instanceof Error ? err.message : String(err), alias: account.alias }),
           };
         }
       }
@@ -166,7 +167,7 @@ export async function removeAccountWithHandoff(
   try {
     await accountPool.remove(accountId, deleteConfigDir);
   } catch (err) {
-    return { ok: false, error: `${account.alias} 계정을 제거하지 못했습니다: ${err instanceof Error ? err.message : String(err)}` };
+    return { ok: false, error: t('localAccount.err.removeFailed', { alias: account.alias, error: err instanceof Error ? err.message : String(err) }) };
   }
   return { ok: true };
 }

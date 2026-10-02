@@ -17,6 +17,8 @@ import { MarkdownCopyChip } from './MarkdownCopyChip';
 import { tableSource } from './markdownSource';
 import { MoreButton } from './MoreButton';
 import { useHighlightedCode } from './codeHighlight';
+import { useLanguage } from '../../i18n';
+import { t } from '../../../shared/i18n';
 import './Chat.css';
 
 export interface AssistantTextProps {
@@ -85,12 +87,12 @@ function CodeBlock({ node: _node, children, className: _className, ...props }: H
     <div className={`hc-code${long && !all ? ' hc-code--clipped' : ''}`}>
       <div className="hc-code__bar">
         <span className="hc-code__lang">{lang ?? 'text'}</span>
-        <span className="hc-code__count">{lines.length}줄</span>
+        <span className="hc-code__count">{t('code.lines', { count: lines.length })}</span>
         <span className="hc-code__spacer" />
-        <button type="button" className="hc-diff__tool hc-code__tool" aria-pressed={wrap} onClick={toggleWrap} title="긴 줄 줄바꿈">
-          줄바꿈
+        <button type="button" className="hc-diff__tool hc-code__tool" aria-pressed={wrap} onClick={toggleWrap} title={t('diff.wrap.title')}>
+          {t('diff.wrap')}
         </button>
-        <CopyButton text={code} label="코드 복사" className="hc-code__copy" />
+        <CopyButton text={code} label={t('code.copy')} className="hc-code__copy" />
       </div>
       <pre {...props} className={wrap ? 'hc-code__pre hc-code__pre--wrap' : 'hc-code__pre'}>
         <code className={lang ? `language-${lang}` : undefined}>
@@ -111,7 +113,7 @@ function TableBlock({ node, ...props }: HTMLAttributes<HTMLTableElement> & { nod
   return (
     <div className="hc-mdblock">
       <table {...props} />
-      <MarkdownCopyChip getText={() => tableSource(source, node)} label="표를 마크다운으로 복사" className="hc-mdblock__copy" />
+      <MarkdownCopyChip getText={() => tableSource(source, node)} label={t('code.copyTable')} className="hc-mdblock__copy" />
     </div>
   );
 }
@@ -123,6 +125,7 @@ const REMARK_PLUGINS = [remarkGfm];
 /** Assistant turn body: GFM markdown, no background. Memoized so only the streaming item re-parses while
  *  text-deltas arrive (M9). */
 export const AssistantText = memo(function AssistantText({ text, streaming = false }: AssistantTextProps) {
+  useLanguage();
   return (
     <div className={`hc-msg-assistant${streaming ? ' hc-msg-assistant--streaming' : ''}`}>
       <div className="hc-md">

@@ -1,7 +1,7 @@
 // Thread -> AgentRunner registry (plan 2.2 / 4.2 session/sessionManager.ts). Claude threads run a ThreadRunner (SDK
 // `query`, injected so unit tests and fixture mode pass src/main/fixtures/fakeQuery); Codex / Hermes threads run an
 // AcpRunner with the launcher of their agent (bundled codex-acp / `hermes acp`, or the fixture agent).
-import { FALLBACK_MODELS } from '../../shared/constants';
+import { fallbackModels } from '../../shared/constants';
 import type { Account, AgentKind, ModelOption } from '../../shared/types';
 import { toModelOption, type ModelCatalog } from '../models/modelCatalog';
 import type { AcpAgentKind } from '../../core/acpTypes';
@@ -179,7 +179,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManagerIm
       }
     }
     // Live session > persisted catalog (startup probe / an earlier session) > built-in fallback.
-    return cachedModels ?? deps.models?.get() ?? [...FALLBACK_MODELS];
+    return cachedModels ?? deps.models?.get() ?? fallbackModels();
   }
 
   return {

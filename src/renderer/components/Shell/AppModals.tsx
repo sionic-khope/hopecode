@@ -3,52 +3,55 @@ import type { AppInfo } from '../../../shared/types';
 import { tildePath } from '../../../core/format';
 import { BrandMark, Button, Modal } from '../common';
 import { GlyphKeyboard } from '../common/glyphs';
+import { t } from '../../../shared/i18n';
 import './Shell.css';
 
 /** Shortcut table: every entry is wired (app menu accelerators, the turn scrubber's or the composer's own keys). */
-export const SHORTCUTS: readonly { group: string; items: readonly { keys: string[]; label: string }[] }[] = [
-  {
-    group: '일반',
-    items: [
-      { keys: ['⌘', 'N'], label: '새 채팅' },
-      { keys: ['⌘', '⇧', 'N'], label: 'New Task Start' },
-      { keys: ['⌘', 'K'], label: '명령 팔레트' },
-      { keys: ['⌘', ','], label: '설정' },
-      { keys: ['⌘', 'B'], label: '사이드바 보기/숨기기' },
-      { keys: ['⌘', 'Q'], label: 'deltax 종료' },
-    ],
-  },
-  {
-    group: '패널',
-    items: [
-      { keys: ['⌘', 'J'], label: '하단 터미널 열기/닫기' },
-      { keys: ['⌘', '⇧', 'D'], label: '변경사항 패널 열기/닫기' },
-    ],
-  },
-  {
-    group: '대화',
-    items: [
-      { keys: ['⌥', '↑'], label: '이전 턴으로 이동' },
-      { keys: ['⌥', '↓'], label: '다음 턴으로 이동' },
-      { keys: ['B'], label: '턴 북마크 (턴 목록에서)' },
-    ],
-  },
-  {
-    group: '입력창',
-    items: [
-      { keys: ['⏎'], label: '보내기' },
-      { keys: ['⇧', '⏎'], label: '줄바꿈' },
-      { keys: ['⌘', '⏎'], label: '커밋 (커밋 창에서)' },
-      { keys: ['esc'], label: '메뉴·창 닫기' },
-    ],
-  },
-];
+export function shortcuts(): { group: string; items: { keys: string[]; label: string }[] }[] {
+  return [
+    {
+      group: t('settings.general'),
+      items: [
+        { keys: ['⌘', 'N'], label: t('menu.newChat') },
+        { keys: ['⌘', '⇧', 'N'], label: t('menu.newTaskStart') },
+        { keys: ['⌘', 'K'], label: t('menu.commandPalette') },
+        { keys: ['⌘', ','], label: t('settings.title') },
+        { keys: ['⌘', 'B'], label: t('menu.toggleSidebar') },
+        { keys: ['⌘', 'Q'], label: t('profile.quit') },
+      ],
+    },
+    {
+      group: t('shortcuts.panels'),
+      items: [
+        { keys: ['⌘', 'J'], label: t('menu.toggleTerminal') },
+        { keys: ['⌘', '⇧', 'D'], label: t('menu.toggleChanges') },
+      ],
+    },
+    {
+      group: t('shortcuts.conversation'),
+      items: [
+        { keys: ['⌥', '↑'], label: t('shortcuts.prevTurn') },
+        { keys: ['⌥', '↓'], label: t('shortcuts.nextTurn') },
+        { keys: ['B'], label: t('shortcuts.bookmark') },
+      ],
+    },
+    {
+      group: t('shortcuts.composer'),
+      items: [
+        { keys: ['⏎'], label: t('composer.send') },
+        { keys: ['⇧', '⏎'], label: t('shortcuts.newline') },
+        { keys: ['⌘', '⏎'], label: t('shortcuts.commit') },
+        { keys: ['esc'], label: t('shortcuts.closeMenus') },
+      ],
+    },
+  ];
+}
 
 export function ShortcutsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
-    <Modal open={open} onClose={onClose} title="키보드 단축키" icon={<GlyphKeyboard width={18} height={18} />} width={520}>
+    <Modal open={open} onClose={onClose} title={t('nav.shortcuts')} icon={<GlyphKeyboard width={18} height={18} />} width={520}>
       <div className="hc-shortcuts">
-        {SHORTCUTS.map((g) => (
+        {shortcuts().map((g) => (
           <section key={g.group} className="hc-shortcuts__group" aria-label={g.group}>
             <h3 className="hc-shortcuts__title">{g.group}</h3>
             <ul className="hc-shortcuts__list">
@@ -101,27 +104,27 @@ export function AboutModal({
       open={open}
       onClose={onClose}
       title="deltax"
-      subtitle="여러 Claude 계정으로 이어서 일하는 Claude Code 데스크탑"
+      subtitle={t('about.subtitle')}
       icon={<BrandMark size={32} />}
       className="hc-about"
       width={440}
       actions={
         <Button variant="primary" onClick={onClose} data-autofocus>
-          확인
+          {t('common.confirm')}
         </Button>
       }
     >
       {error ? <p className="hc-about__error">{error}</p> : null}
-      <dl className="hc-kv" aria-label="버전 정보">
-        <dt>앱 버전</dt>
+      <dl className="hc-kv" aria-label={t('about.versions')}>
+        <dt>{t('about.appVersion')}</dt>
         <dd>{info?.appVersion ?? '…'}</dd>
         <dt>Claude Code CLI</dt>
-        <dd>{info ? (info.cliVersion ?? '알 수 없음') : '…'}</dd>
+        <dd>{info ? (info.cliVersion ?? t('about.unknown')) : '…'}</dd>
         <dt>Agent SDK</dt>
-        <dd>{info ? (info.sdkVersion ?? '알 수 없음') : '…'}</dd>
+        <dd>{info ? (info.sdkVersion ?? t('about.unknown')) : '…'}</dd>
         <dt>Electron</dt>
         <dd>{info?.electronVersion || '…'}</dd>
-        <dt>데이터 폴더</dt>
+        <dt>{t('settings.dataFolder')}</dt>
         <dd>{info ? tildePath(info.dataDir, homeDir) : '…'}</dd>
       </dl>
     </Modal>

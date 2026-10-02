@@ -1,5 +1,6 @@
 // Shared domain types. Every type that crosses a lane / process boundary lives here.
 // Pure type module: no runtime imports, safe for main, preload, renderer and core.
+import type { LanguageSetting } from './i18n/types';
 
 // ---------------------------------------------------------------------------
 // Permissions / limits
@@ -230,6 +231,8 @@ export interface EditorInfo {
 }
 
 export interface AppSettings {
+  /** UI language; 'system' follows the OS locale (closest supported language, else English). */
+  language: LanguageSetting;
   /** Name shown in the sidebar profile row; '' = the active account's alias / email. Trimmed, at most 40 chars. */
   profileName: string;
   /** Close idle Query after N minutes (resume on next send); 0 = never. */
@@ -684,6 +687,8 @@ export interface BootstrapPayload {
   pendingPermissions: PermissionRequest[];
   /** Fixture / headless e2e run: the renderer shows no system notifications. */
   testMode: boolean;
+  /** OS locale main resolves `language: 'system'` against (`app.getLocale()`, or the e2e override). */
+  systemLocale: string;
   /** Local agent logins detected so far (cached; `agents:recheck` refreshes). */
   localAuth: LocalAuthInfo[];
   /** Latest usage per agent that has one (absent / null = hide the meters). */

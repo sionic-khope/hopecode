@@ -3,6 +3,7 @@ import type { AgentKind, LocalAuthInfo } from '../../../shared/types';
 import { Button, Pill } from '../common';
 import { ipcErrorMessage } from '../../errors';
 import { localAuthView } from './localAuthView';
+import { t } from '../../../shared/i18n';
 
 export interface LocalAuthCardProps {
   agent: AgentKind;
@@ -28,31 +29,31 @@ export function LocalAuthCard({ agent, info, onRecheck }: LocalAuthCardProps) {
   return (
     <div className="hc-local-auth" data-testid={`local-auth-${agent}`} data-state={info?.state ?? 'unknown'}>
       <div className="hc-local-auth__head">
-        <span className="hc-local-auth__title">이 Mac에서 감지됨</span>
+        <span className="hc-local-auth__title">{t('localAuth.detected')}</span>
         <Pill tone={view.tone} capsule data-testid={`local-auth-state-${agent}`}>
           {view.stateLabel}
         </Pill>
         <Button variant="plain" size="sm" disabled={busy} onClick={recheck} data-testid={`local-auth-recheck-${agent}`}>
-          {busy ? '확인 중…' : '재확인'}
+          {busy ? t('localAuth.checkingEllipsis') : t('localAuth.recheck')}
         </Button>
       </div>
       {view.identity || view.source || view.defaultModel || view.engine ? (
         <dl className="hc-local-auth__kv">
           {view.identity ? (
             <>
-              <dt>계정</dt>
+              <dt>{t('localAuth.account')}</dt>
               <dd>{view.identity}</dd>
             </>
           ) : null}
           {view.defaultModel ? (
             <>
-              <dt>기본 모델</dt>
+              <dt>{t('settings.defaultModel')}</dt>
               <dd data-testid={`local-auth-model-${agent}`}>{view.defaultModel}</dd>
             </>
           ) : null}
           {view.engine ? (
             <>
-              <dt>엔진</dt>
+              <dt>{t('localAuth.engine')}</dt>
               <dd data-testid={`local-auth-engine-${agent}`}>
                 <code>{view.engine}</code>
               </dd>
@@ -60,7 +61,7 @@ export function LocalAuthCard({ agent, info, onRecheck }: LocalAuthCardProps) {
           ) : null}
           {view.source ? (
             <>
-              <dt>출처</dt>
+              <dt>{t('localAuth.source')}</dt>
               <dd>
                 <code>{view.source}</code>
               </dd>

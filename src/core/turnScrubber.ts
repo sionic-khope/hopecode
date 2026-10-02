@@ -1,6 +1,7 @@
 // Turn scrubber (the conversation minimap on the chat's left edge): one tick per user message. Pure helpers for the
 // renderer (turn list, preview text, hover magnification, overflow window) and for main (bookmark validation).
 import type { ChatItem } from '../shared/types';
+import { t } from '../shared/i18n';
 
 /** One turn as the scrubber lists it: the user message that opens it and the agent text that answered. */
 export interface TurnSource {
@@ -99,7 +100,7 @@ export function collectTurns(items: readonly ChatItem[], replyChars: number = RE
   let collected = 0;
   for (const item of items) {
     if (item.type === 'user') {
-      const prompt = firstLine(item.text) || (item.images?.length ? '이미지' : item.files?.length ? '첨부 파일' : '');
+      const prompt = firstLine(item.text) || (item.images?.length ? t('scrubber.image') : item.files?.length ? t('scrubber.file') : '');
       turns.push({ id: item.id, index: turns.length, prompt, replyTexts: [] });
       collected = 0;
       continue;
@@ -131,7 +132,7 @@ export function extractTurns(items: readonly ChatItem[], replyChars: number = RE
 /** aria-label of a tick: "턴 N: 프롬프트 앞부분". */
 export function turnLabel(turn: Pick<TurnSource, 'index' | 'prompt'>): string {
   const head = clip(turn.prompt, LABEL_PROMPT_CHARS);
-  return head ? `턴 ${turn.index + 1}: ${head}` : `턴 ${turn.index + 1}`;
+  return head ? t('scrubber.turnWithPrompt', { n: turn.index + 1, prompt: head }) : t('scrubber.turn', { n: turn.index + 1 });
 }
 
 // ---------------------------------------------------------------------------------------------------------------

@@ -9,6 +9,7 @@ import { isStrictlyInside } from '../containment';
 import { parseFrontmatter, parseInstalledPlugins, parseSharedSettings } from '../plugins/pluginInventory';
 import type { SlashCommandInfo, SlashCommandList } from '../../shared/types';
 import type { SlashCommandLite } from '../contracts';
+import { t } from '../../shared/i18n';
 
 export const MAX_COMMAND_FILE_BYTES = 256 * 1024;
 export const MAX_COMMAND_FILES = 400;
@@ -42,10 +43,12 @@ export const GUI_BUILTINS: ReadonlySet<string> = new Set([
 ]);
 
 /** Before any session reported its list: the two built-ins the Agent SDK documents for headless sessions. */
-export const FALLBACK_BUILTINS: readonly SlashCommandInfo[] = [
-  { name: 'compact', description: '대화를 요약해 컨텍스트를 줄입니다', argumentHint: null, source: 'builtin', kind: 'builtin' },
-  { name: 'clear', description: '대화 기록을 지우고 컨텍스트를 비웁니다', argumentHint: null, source: 'builtin', kind: 'builtin' },
-];
+export function fallbackBuiltins(): SlashCommandInfo[] {
+  return [
+    { name: 'compact', description: t('slash.compact'), argumentHint: null, source: 'builtin', kind: 'builtin' },
+    { name: 'clear', description: t('slash.clear'), argumentHint: null, source: 'builtin', kind: 'builtin' },
+  ];
+}
 
 // ---------------------------------------------------------------------------
 // Pure parsing
@@ -107,7 +110,7 @@ export function commandFromFile(
 export function mergeSlashCommands(
   scanned: readonly SlashCommandInfo[],
   live: readonly SlashCommandLite[] | null,
-  fallback: readonly SlashCommandInfo[] = FALLBACK_BUILTINS,
+  fallback: readonly SlashCommandInfo[] = fallbackBuiltins(),
 ): SlashCommandList {
   const byName = new Map<string, SlashCommandInfo>();
   for (const c of scanned) if (!byName.has(c.name)) byName.set(c.name, { ...c });

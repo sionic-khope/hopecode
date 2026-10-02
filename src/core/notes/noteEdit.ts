@@ -2,6 +2,7 @@
 // inline answer into a range, how an answer is fitted into the document, and how a conversation card is put into the
 // note (and taken back out).
 import type { NoteCard } from './noteReply';
+import { t } from '../../shared/i18n';
 
 /** Where fitted text goes: at the caret, over a heading section, over the whole note. */
 export type FitMode = 'insert' | 'section' | 'all';
@@ -176,19 +177,19 @@ export type SectionMatch = { ok: true; range: SectionRange } | { ok: false; erro
  */
 export function findSection(doc: string, title: string): SectionMatch {
   const want = normalizeHeading(title);
-  if (!want) return { ok: false, error: '바꿀 섹션이 지정되지 않았습니다' };
+  if (!want) return { ok: false, error: t('noteEdit.noSection') };
   const heads = headingLines(doc);
   const pick = (pred: (t: string) => boolean): SectionMatch | null => {
     const hits = heads.filter((h) => pred(normalizeHeading(h.title)));
     if (hits.length === 1) return { ok: true, range: sectionRange(doc, hits[0].start) };
-    if (hits.length > 1) return { ok: false, error: `'${title}' 섹션이 ${hits.length}개 있어 고를 수 없습니다` };
+    if (hits.length > 1) return { ok: false, error: t('noteEdit.ambiguous', { title, count: hits.length }) };
     return null;
   };
   return (
     pick((t) => t === want) ??
     pick((t) => withoutNumber(t) === withoutNumber(want) && withoutNumber(want) !== '') ?? {
       ok: false,
-      error: `'${title}' 섹션을 노트에서 찾을 수 없습니다`,
+      error: t('noteEdit.notFound', { title }),
     }
   );
 }
@@ -205,7 +206,7 @@ export interface CardPlan {
  */
 export function planCard(doc: string, card: Pick<NoteCard, 'kind' | 'section' | 'body'>, caret: number): { ok: true; plan: CardPlan } | { ok: false; error: string } {
   const body = card.body.replace(/\s+$/, '');
-  if (!body.trim()) return { ok: false, error: '카드가 비어 있습니다' };
+  if (!body.trim()) return { ok: false, error: t('noteEdit.emptyCard') };
   let range: TextRange;
   let mode: FitMode;
   if (card.kind === 'replace-all' || doc.trim() === '') {

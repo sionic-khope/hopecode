@@ -287,6 +287,22 @@
   --account-8: #6d6fa8;
 }
 
+/* <html lang> follows the UI language. Glyphs the pixel faces lack fall back to that language's system face:
+   Japanese kanji outside Galmuri's JIS set to Hiragino (not Apple SD Gothic Neo's Korean forms), and Chinese to
+   PingFang SC for every Han character (the NoHan faces in fonts.css), so a word never mixes two Han designs. */
+:root:lang(ja) {
+  --font-ui: 'Galmuri11', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-chat: 'Galmuri14', 'Galmuri11', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', sans-serif;
+  --font-display: 'Galmuri11', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Galmuri11', 'Hiragino Sans', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+:root:lang(zh-Hans) {
+  --font-ui: 'Galmuri11 NoHan', 'PingFang SC', 'Hiragino Sans GB', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-chat: 'Galmuri14 NoHan', 'Galmuri11 NoHan', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
+  --font-display: 'Galmuri11 NoHan', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Galmuri11 NoHan', 'PingFang SC', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
 /* Reduced motion: every duration token collapses, so transitions and keyframes that use them become instant. */
 @media (prefers-reduced-motion: reduce) {
   :root {

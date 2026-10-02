@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  FALLBACK_BUILTINS,
+  fallbackBuiltins,
   bodyPreview,
   commandFromFile,
   createSlashCommandService,
@@ -166,7 +166,7 @@ describe('mergeSlashCommands', () => {
   it('without a live list: scanned rows + the fallback built-ins', () => {
     const list = mergeSlashCommands(scanned, null);
     expect(list.origin).toBe('scan');
-    expect(list.commands.map((c) => c.name)).toEqual(['demo', ...FALLBACK_BUILTINS.map((b) => b.name)]);
+    expect(list.commands.map((c) => c.name)).toEqual(['demo', ...fallbackBuiltins().map((b) => b.name)]);
   });
 
   it('live list: GUI built-ins only, enriches scanned rows, adds session-only rows', () => {

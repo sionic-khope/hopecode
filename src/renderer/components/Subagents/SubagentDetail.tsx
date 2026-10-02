@@ -2,7 +2,8 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import type { ChatNode } from '../../../core/subagents';
 import { playSfx } from '../../sound/engine';
 import { PixelSprite } from './PixelSprite';
-import { STATE_LABEL, formatElapsed, useNow } from './SubagentCard';
+import { formatElapsed, stateLabel, useNow } from './SubagentCard';
+import { t } from '../../../shared/i18n';
 import './Subagents.css';
 
 /** Overlays an Escape belongs to (they close first; the subagent view stays). */
@@ -51,7 +52,7 @@ export function SubagentDetail({ node, onBack, renderChild }: SubagentDetailProp
       data-testid="subagent-detail"
       data-state={summary.state}
       data-tool-id={item.toolUseId}
-      aria-label={`${summary.subagentType} 서브에이전트 대화`}
+      aria-label={t('subagent.aria', { type: summary.subagentType })}
     >
       <header className="hc-subview__bar">
         <button
@@ -60,10 +61,10 @@ export function SubagentDetail({ node, onBack, renderChild }: SubagentDetailProp
           className="hc-subview__back"
           data-testid="subagent-back"
           data-sfx="back"
-          aria-label="메인 대화로 돌아가기"
+          aria-label={t('subagent.back')}
           onClick={onBack}
         >
-          <span aria-hidden>←</span> 메인 대화
+          <span aria-hidden>←</span> {t('subagent.main')}
         </button>
         <span className="hc-subview__crumb" aria-hidden>
           /
@@ -73,17 +74,17 @@ export function SubagentDetail({ node, onBack, renderChild }: SubagentDetailProp
         {summary.description ? <span className="hc-subview__desc">{summary.description}</span> : null}
         <span className="hc-subagent__spacer" />
         <span className={`hc-subagent__state hc-subagent__state--${summary.state}`} data-testid="subagent-detail-state">
-          {STATE_LABEL[summary.state]}
+          {stateLabel(summary.state)}
         </span>
         <span className="hc-subagent__meta" data-testid="subagent-detail-elapsed">
           {formatElapsed(elapsed)}
         </span>
-        <span className="hc-subagent__meta">도구 {summary.childToolCount}</span>
+        <span className="hc-subagent__meta">{t('md.tool')} {summary.childToolCount}</span>
       </header>
 
       {prompt ? (
         <div className="hc-subview__prompt" data-testid="subagent-detail-prompt">
-          <span className="hc-subagent__report-label">프롬프트</span>
+          <span className="hc-subagent__report-label">{t('subagent.prompt')}</span>
           <p className="hc-subagent__report-text">{prompt}</p>
         </div>
       ) : null}
@@ -95,18 +96,18 @@ export function SubagentDetail({ node, onBack, renderChild }: SubagentDetailProp
           </div>
         ))}
         {children.length === 0 && !report ? (
-          <div className="hc-subagent__empty">{running ? '서브에이전트가 작업을 시작하는 중입니다' : '하위 작업 기록이 없습니다'}</div>
+          <div className="hc-subagent__empty">{running ? t('subagent.starting') : t('subagent.noWork')}</div>
         ) : null}
       </div>
 
       {report ? (
         <div className="hc-subagent__report hc-subview__report" data-testid="subagent-detail-report">
-          <span className="hc-subagent__report-label">결과</span>
+          <span className="hc-subagent__report-label">{t('subagent.result')}</span>
           <p className="hc-subagent__report-text">{report}</p>
         </div>
       ) : running ? (
         <div className="hc-subview__running" role="status">
-          실행 중 · {formatElapsed(elapsed)}
+          {t('status.running')} · {formatElapsed(elapsed)}
         </div>
       ) : null}
     </section>

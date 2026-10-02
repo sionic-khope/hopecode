@@ -3,6 +3,7 @@
 // SVG, at most MAX_AGENT_IMAGE_BYTES decoded. Pure: renderer-safe, no Buffer.
 import type { ChatImage, ChatItem, ToolItem } from '../shared/types';
 import { imageDimensions, imagePixelProblem, sniffMagic } from './attachments';
+import { t } from '../shared/i18n';
 
 export const AGENT_IMAGE_TYPES: ReadonlySet<string> = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 
@@ -16,7 +17,7 @@ export const MAX_IMAGES_PER_ITEM = 8;
 export const MAX_TURN_IMAGE_BYTES = 64 * 1024 * 1024;
 /** Images an agent may send as message content (not tool results) in one turn. */
 export const MAX_MESSAGE_IMAGES_PER_TURN = 32;
-export const IMAGE_BUDGET_NOTICE = '이번 턴의 에이전트 이미지가 한도(개수·64 MB)를 넘어 나머지는 표시하지 않습니다.';
+export const imageBudgetNotice = (): string => t('notice.imageBudget');
 
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 /** Base64 prefix decoded to find an image's pixel size. */

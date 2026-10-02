@@ -11,6 +11,7 @@ import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
 import { tags as t } from '@lezer/highlight';
 import { livePreview } from './livePreview';
 import { targetField } from './noteTarget';
+import { t as tr } from '../../../../shared/i18n';
 
 export const readOnlySlot = new Compartment();
 
@@ -93,11 +94,11 @@ export function noteExtensions(hooks: NoteEditorHooks): Extension[] {
     markdown({ base: markdownLanguage, codeLanguages: languages, addKeymap: false }),
     syntaxHighlighting(noteHighlight),
     keymap.of([saveKey, inlineKey, ...markdownKeymap, ...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
-    placeholder('# 제목부터 쓰거나, 오른쪽 대화에서 노트를 부탁하세요'),
+    placeholder(tr('noteEditor.placeholder')),
     noteTheme,
     targetField,
     livePreview(),
     readOnlySlot.of(readOnly(false)),
-    EditorView.contentAttributes.of({ 'aria-label': '노트 편집기', spellcheck: 'false' }),
+    EditorView.contentAttributes.of({ 'aria-label': tr('noteEditor.aria'), spellcheck: 'false' }),
   ];
 }

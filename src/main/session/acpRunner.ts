@@ -45,6 +45,7 @@ import {
 } from '../acp/acpConnection';
 import type { AcpLauncher, AcpLaunchSpec, AgentRunner, Broadcaster, ModelInfoLite, Store, ThreadLog } from '../contracts';
 import type { PermissionBroker } from './permissionBroker';
+import { t } from '../../shared/i18n';
 
 /** Consecutive failed session opens after which the thread shows `error` instead of `idle`. */
 const MAX_OPEN_FAILURES = 3;
@@ -345,7 +346,7 @@ export class AcpRunner implements AgentRunner {
           // the turn rather than respawn the old CODEX_PATH.
           const next = await this.resolveSpec(this.thread());
           if (!next) {
-            this.reportError(`${this.label()}을(를) 다시 시작할 수 없습니다. 설치·로그인 상태를 확인해 주세요.`);
+            this.reportError(t('acp.cannotRestart', { agent: this.label() }));
             this.endTurn('error');
             return;
           }
@@ -374,7 +375,7 @@ export class AcpRunner implements AgentRunner {
     }
     // Still not on the thread's permission after the retry: never prompt under the old sandbox / approval policy.
     if (this.respawnNeeded) {
-      this.reportError(`${this.label()}에 바뀐 권한 설정을 적용하지 못해 메시지를 보내지 않았습니다. 다시 보내 주세요.`);
+      this.reportError(t('acp.permissionNotApplied', { agent: this.label() }));
       this.endTurn('error');
       return;
     }
@@ -388,7 +389,7 @@ export class AcpRunner implements AgentRunner {
     // Checked again against what this session reported (the composer only knew the agent's defaults).
     const { blocks: prompt, dropped } = acpPromptBlocks(text, images, files, liteCaps(conn.init?.agentCapabilities?.promptCapabilities));
     if (dropped.length > 0) {
-      this.notice('warn', `${this.label()}은(는) 이 첨부를 받을 수 없어 제외하고 보냈습니다: ${dropped.join(', ')}`);
+      this.notice('warn', t('acp.attachmentsDropped', { agent: this.label(), names: dropped.join(', ') }));
     }
 
     this.state = 'prompting';
@@ -434,7 +435,7 @@ export class AcpRunner implements AgentRunner {
         this.endTurn('auth');
         return;
       }
-      this.reportError(`${this.label()} 오류: ${redact(errText(failure))}`);
+      this.reportError(t('acp.error', { agent: this.label(), error: redact(errText(failure)) }));
       this.endTurn('error');
       return;
     }
@@ -445,9 +446,9 @@ export class AcpRunner implements AgentRunner {
       return;
     }
     if (stopReason === 'max_tokens' || stopReason === 'max_turn_requests') {
-      this.notice('warn', `${this.label()}이(가) 한도(${stopReason})에 도달해 응답을 멈췄습니다.`);
+      this.notice('warn', t('acp.stopLimit', { agent: this.label(), reason: stopReason }));
     } else if (stopReason === 'refusal') {
-      this.notice('warn', '에이전트가 요청을 거절했습니다.');
+      this.notice('warn', t('acp.refused'));
     }
     this.endTurn(undefined);
   }
@@ -546,8 +547,8 @@ export class AcpRunner implements AgentRunner {
           this.notice(
             'info',
             skippedLoad
-              ? `이전 ${this.label()} 세션을 불러오는 데 시간이 초과되어 새 세션으로 시작했습니다. 화면의 이전 대화는 에이전트 컨텍스트에 포함되지 않습니다.`
-              : `이전 ${this.label()} 세션을 이어갈 수 없어 새 세션으로 시작했습니다. 화면의 이전 대화는 에이전트 컨텍스트에 포함되지 않습니다.`,
+              ? t('acp.loadTimedOut', { agent: this.label() })
+              : t('acp.cannotResume', { agent: this.label() }),
           );
         }
       }
@@ -620,8 +621,8 @@ export class AcpRunner implements AgentRunner {
       }
     }
     for (const miss of plan.missing) {
-      const what = miss.category === 'model' ? '모델' : 'reasoning effort';
-      this.notice('warn', `${this.label()}가 ${what} ${miss.wanted}을(를) 제공하지 않아 ${miss.current ?? '기본값'}(으)로 실행합니다.`);
+      const what = miss.category === 'model' ? t('acp.what.model') : 'reasoning effort';
+      this.notice('warn', t('acp.configMissing', { agent: this.label(), what, wanted: miss.wanted, current: miss.current ?? t('acp.defaultValue') }));
     }
     // Thread values follow what the session really runs with (also covers the `missing` adoption).
     this.syncThreadConfig(this.controls().configOptions);
@@ -640,7 +641,7 @@ export class AcpRunner implements AgentRunner {
     if (!target) throw new Error(`cannot leave the unconfirmed mode ${mode.id}`);
     await conn.request('session/set_mode', { sessionId: this.sessionId!, modeId: target }, this.timeouts.control, signal);
     this.updateControls({ currentModeId: target });
-    this.notice('warn', `${this.label()} 세션이 ${this.escalationLabel(mode)}(${mode.name})로 열려 앱 권한에 맞는 모드로 바꿨습니다.`);
+    this.notice('warn', t('acp.openedEscalated', { agent: this.label(), mode: `${this.escalationLabel(mode)}(${mode.name})` }));
   }
 
   /**
@@ -663,7 +664,7 @@ export class AcpRunner implements AgentRunner {
   }
 
   private escalationLabel(mode: AcpModeLite): string {
-    return this.agent === 'codex' && isCodexAutoReviewMode(mode) ? '자동 리뷰 모드' : '전체 액세스 모드';
+    return this.agent === 'codex' && isCodexAutoReviewMode(mode) ? t('acp.mode.autoReview') : t('acp.mode.fullAccess');
   }
 
   /** A mode to go back to: the previous allowed one, else the thread permission's (Codex) / the first safe one. */
@@ -776,7 +777,7 @@ export class AcpRunner implements AgentRunner {
     const mode = modes.find((m) => m.id === modeId);
     if (!mode || !this.isEscalatedMode(mode)) return false;
     if (this.isApprovedFullAccess(mode)) return false;
-    this.notice('warn', `${this.label()}가 스스로 ${this.escalationLabel(mode)}(${mode.name})로 바꿔 이전 모드로 되돌렸습니다.`);
+    this.notice('warn', t('acp.escalatedReverted', { agent: this.label(), mode: `${this.escalationLabel(mode)}(${mode.name})` }));
     const target = this.safeModeTarget(previous);
     const conn = this.conn;
     const sessionId = this.sessionId;
@@ -995,23 +996,23 @@ export class AcpRunner implements AgentRunner {
 
   private authMessage(): string {
     return this.agent === 'codex'
-      ? 'Codex 로그인이 필요합니다. ChatGPT 앱에서 로그인하거나 터미널에서 `codex login`을 실행한 뒤 다시 보내세요.'
-      : 'Hermes 로그인이 필요합니다. 터미널에서 `hermes acp --setup`을 실행한 뒤 다시 보내세요.';
+      ? t('acp.auth.codex')
+      : t('acp.auth.hermes');
   }
 
   private exitMessage(err: unknown, conn: AcpConnection): string {
     const tail = err instanceof AcpProcessExitedError ? err.stderrTail : conn.stderrTail();
-    return `${this.label()} 프로세스가 종료되었습니다.${tail ? `\n${tail}` : ''}`;
+    return `${t('acp.processExited', { agent: this.label() })}${tail ? `\n${tail}` : ''}`;
   }
 
   private openErrorMessage(err: unknown): string {
-    if (err instanceof AcpSpawnError) return `${this.label()} 실행 파일을 시작할 수 없습니다: ${err.code}`;
-    if (err instanceof AcpProtocolVersionError) return `지원하지 않는 ACP 버전입니다 (${this.label()}: ${String(err.version)}).`;
-    if (err instanceof AcpTimeoutError) return `${this.label()}가 응답하지 않습니다 (${err.method} 시간 초과).`;
+    if (err instanceof AcpSpawnError) return t('acp.spawnFailed', { agent: this.label(), code: err.code });
+    if (err instanceof AcpProtocolVersionError) return t('acp.badProtocol', { agent: this.label(), version: String(err.version) });
+    if (err instanceof AcpTimeoutError) return t('acp.timeout', { agent: this.label(), method: err.method });
     if (err instanceof AcpProcessExitedError) {
-      return `${this.label()}를 시작하지 못했습니다: 프로세스가 종료되었습니다.${err.stderrTail ? `\n${err.stderrTail}` : ''}`;
+      return `${t('acp.startExited', { agent: this.label() })}${err.stderrTail ? `\n${err.stderrTail}` : ''}`;
     }
-    return `${this.label()}를 시작하지 못했습니다: ${redact(errText(err))}`;
+    return t('acp.startFailed', { agent: this.label(), error: redact(errText(err)) });
   }
 }
 

@@ -9,7 +9,7 @@ import type {
   ToolItem,
   TurnEndReason,
 } from '../shared/types';
-import { IMAGE_BUDGET_NOTICE, MAX_AGENT_IMAGE_BASE64, MAX_IMAGES_PER_ITEM, admitTurnImages, toAgentImage } from './agentImages';
+import { imageBudgetNotice, MAX_AGENT_IMAGE_BASE64, MAX_IMAGES_PER_ITEM, admitTurnImages, toAgentImage } from './agentImages';
 
 /** SDK messages are consumed structurally; type-only import keeps core free of runtime SDK deps. */
 export type SdkMessageLike = SDKMessage;
@@ -210,7 +210,7 @@ export function reduceSdkMessage(state: ChatReducerState, msg: SdkMessageLike, n
             next = { ...next, imageBytes: admitted.used };
             if (admitted.dropped > 0 && !next.imageBudgetNoticed) {
               next = { ...next, imageBudgetNoticed: true };
-              events.push({ type: 'item-upsert', item: { type: 'notice', id: allocId('notice'), level: 'warn', text: IMAGE_BUDGET_NOTICE, createdAt: now } });
+              events.push({ type: 'item-upsert', item: { type: 'notice', id: allocId('notice'), level: 'warn', text: imageBudgetNotice(), createdAt: now } });
             }
             const background = !isError && isAsyncLaunch(m.tool_use_result);
             const updated: ToolItem = {

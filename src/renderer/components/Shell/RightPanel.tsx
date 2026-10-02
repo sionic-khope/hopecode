@@ -4,6 +4,7 @@ import { type PanelTab, PANEL_MAX_WIDTH, PANEL_MIN_WIDTH } from '../../store';
 import { Button } from '../common';
 import { GlyphChanges, GlyphClose } from '../common/glyphs';
 import { ChangesPanel } from '../Changes/ChangesPanel';
+import { t } from '../../../shared/i18n';
 import './Shell.css';
 
 export interface RightPanelProps {
@@ -46,7 +47,7 @@ export function RightPanel({ tab, thread, width, onClose, onResize, onResizing }
         className="hc-panel__handle"
         role="separator"
         aria-orientation="vertical"
-        aria-label="패널 너비 조절"
+        aria-label={t('panel.resize')}
         aria-valuemin={PANEL_MIN_WIDTH}
         aria-valuemax={PANEL_MAX_WIDTH}
         aria-valuenow={width}
@@ -64,9 +65,9 @@ export function RightPanel({ tab, thread, width, onClose, onResize, onResizing }
       <div className="hc-panel__header drag-region">
         <h2 className="hc-panel__title">
           <GlyphChanges width={14} height={14} aria-hidden />
-          변경사항
+          {t('panel.changes')}
         </h2>
-        <Button variant="plain" size="sm" icon className="no-drag" aria-label="변경사항 패널 닫기" title="변경사항 패널 닫기 (⌘⇧D)" onClick={onClose}>
+        <Button variant="plain" size="sm" icon className="no-drag" aria-label={t('panel.closeChanges')} title={`${t('panel.closeChanges')} (⌘⇧D)`} onClick={onClose}>
           <GlyphClose width={14} height={14} />
         </Button>
       </div>
@@ -74,7 +75,7 @@ export function RightPanel({ tab, thread, width, onClose, onResize, onResizing }
         {thread ? (
           <ChangesPanel key={thread.id} thread={thread} />
         ) : (
-          <PanelEmpty text="스레드를 열면 작업 폴더의 변경 사항이 여기에 표시됩니다" />
+          <PanelEmpty text={t('panel.empty')} />
         )}
       </div>
     </div>

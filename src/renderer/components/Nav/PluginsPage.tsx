@@ -7,21 +7,23 @@ import { tildePath } from '../../../core/format';
 import { Button, Pill } from '../common';
 import { GlyphCopy, GlyphFolderOpen, GlyphRefresh } from '../common/glyphs';
 import { PageHeader, PageSection } from './PageHeader';
+import { t, type MessageKey } from '../../../shared/i18n';
+import { tNodes } from '../../i18n';
 
-const SECTIONS: readonly { kind: PluginItemKind; title: string }[] = [
-  { kind: 'plugin', title: '플러그인' },
-  { kind: 'skill', title: '스킬' },
-  { kind: 'agent', title: '에이전트' },
-  { kind: 'output-style', title: '출력 스타일' },
-  { kind: 'mcp', title: 'MCP 서버' },
-  { kind: 'hook', title: 'Hooks' },
+const SECTIONS: readonly { kind: PluginItemKind; title: MessageKey }[] = [
+  { kind: 'plugin', title: 'nav.plugins' },
+  { kind: 'skill', title: 'plugins.skills' },
+  { kind: 'agent', title: 'agent.title' },
+  { kind: 'output-style', title: 'plugins.outputStyles' },
+  { kind: 'mcp', title: 'plugins.mcp' },
+  { kind: 'hook', title: 'plugins.hooks' },
 ];
 
 const PLUGIN_COMMAND = 'claude /plugin';
 
 function EnabledPill({ enabled }: { enabled: boolean | null }) {
   if (enabled === null) return null;
-  return enabled ? <Pill tone="ok">활성</Pill> : <Pill>비활성</Pill>;
+  return enabled ? <Pill tone="ok">{t('plugins.enabled')}</Pill> : <Pill>{t('accountPin.disabled')}</Pill>;
 }
 
 /**
@@ -37,11 +39,11 @@ export function PluginsPage({ homeDir, onBack }: { homeDir: string | null; onBac
     setError(null);
     invoke('plugins:list')
       .then(setInventory)
-      .catch((err: unknown) => setError(`목록을 읽지 못했습니다: ${ipcErrorMessage(err)}`));
+      .catch((err: unknown) => setError(t('plugins.err.list', { error: ipcErrorMessage(err) })));
   }, []);
   useEffect(load, [load]);
 
-  const openFolder = () => void invoke('plugins:openFolder').catch((err: unknown) => setError(`폴더를 열지 못했습니다: ${ipcErrorMessage(err)}`));
+  const openFolder = () => void invoke('plugins:openFolder').catch((err: unknown) => setError(t('plugins.err.folder', { error: ipcErrorMessage(err) })));
   const copyCommand = () =>
     void copyText(PLUGIN_COMMAND).then((ok) => {
       setCopied(ok);
@@ -53,19 +55,19 @@ export function PluginsPage({ homeDir, onBack }: { homeDir: string | null; onBac
   return (
     <div className="hc-page" data-testid="plugins-page">
       <PageHeader
-        title="플러그인"
-        lede="모든 계정이 함께 쓰는 Claude 설정 폴더의 확장 기능입니다. 여기서는 읽기만 합니다."
+        title={t('nav.plugins')}
+        lede={t('plugins.lede')}
         onBack={onBack}
         actions={
           <>
             <Button size="sm" onClick={load}>
               <GlyphRefresh width={14} height={14} />
-              새로고침
+              {t('prs.refresh')}
             </Button>
             {inventory?.exists ? (
               <Button size="sm" onClick={openFolder}>
                 <GlyphFolderOpen width={14} height={14} />
-                폴더 열기
+                {t('plugins.openFolder')}
               </Button>
             ) : null}
           </>
@@ -79,11 +81,11 @@ export function PluginsPage({ homeDir, onBack }: { homeDir: string | null; onBac
       ) : null}
 
       <div className="hc-page__notice">
-        설치, 제거, 활성화는 터미널에서 <code>{PLUGIN_COMMAND}</code>을 실행해 관리하세요. 바뀐 내용은 새로고침하면 보입니다.
+        {tNodes('plugins.manage', { command: <code>{PLUGIN_COMMAND}</code> })}
         <div className="hc-page__cmd">
           <Button size="sm" variant="plain" onClick={copyCommand}>
             <GlyphCopy width={14} height={14} />
-            {copied ? '복사됨' : '명령 복사'}
+            {copied ? t('common.copied') : t('plugins.copyCommand')}
           </Button>
           {inventory ? <span className="hc-page__mono">{tildePath(inventory.sourceDir, homeDir)}</span> : null}
         </div>
@@ -91,13 +93,13 @@ export function PluginsPage({ homeDir, onBack }: { homeDir: string | null; onBac
 
       {inventory && !inventory.exists ? (
         <div className="hc-page__notice" role="status">
-          공유 설정 폴더가 없습니다. Claude Code를 한 번 실행하면 만들어집니다.
+          {t('plugins.noSource')}
         </div>
       ) : null}
 
       {inventory?.exists && inventory.items.length === 0 && inventory.problems.length === 0 ? (
         <div className="hc-page__notice" role="status">
-          설치된 플러그인, 스킬, 에이전트가 없습니다.
+          {t('plugins.empty')}
         </div>
       ) : null}
 
@@ -105,8 +107,8 @@ export function PluginsPage({ homeDir, onBack }: { homeDir: string | null; onBac
         const items = byKind(kind);
         if (items.length === 0) return null;
         return (
-          <PageSection key={kind} title={title} meta={`${items.length}개`}>
-            <ul className="hc-page__card hc-page__list" aria-label={title}>
+          <PageSection key={kind} title={t(title)} meta={t('plugins.count', { count: items.length })}>
+            <ul className="hc-page__card hc-page__list" aria-label={t(title)}>
               {items.map((item, i) => (
                 <li key={`${item.source}:${item.name}:${i}`} className="hc-page__row" data-testid="plugin-item">
                   <div className="hc-page__row-main">
@@ -116,7 +118,7 @@ export function PluginsPage({ homeDir, onBack }: { homeDir: string | null; onBac
                     </div>
                     {item.description ? <p className="hc-page__row-desc">{item.description}</p> : null}
                     <div className="hc-page__row-sub">
-                      <span>출처 {item.source}</span>
+                      <span>{t('localAuth.source')} {item.source}</span>
                       {item.detail && kind !== 'plugin' ? <span className="hc-page__mono">{item.detail}</span> : null}
                     </div>
                   </div>
@@ -131,8 +133,8 @@ export function PluginsPage({ homeDir, onBack }: { homeDir: string | null; onBac
       })}
 
       {inventory && inventory.problems.length > 0 ? (
-        <PageSection title="읽지 못한 항목" meta={`${inventory.problems.length}개 건너뜀`}>
-          <ul className="hc-page__card hc-page__list" aria-label="읽지 못한 항목">
+        <PageSection title={t('plugins.problems')} meta={t('plugins.skipped', { count: inventory.problems.length })}>
+          <ul className="hc-page__card hc-page__list" aria-label={t('plugins.problems')}>
             {inventory.problems.map((p) => (
               <li key={p.path} className="hc-page__row">
                 <div className="hc-page__row-main">

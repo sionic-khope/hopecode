@@ -10,6 +10,7 @@ import { assertInside } from '../containment';
 import { worktreesDir } from '../paths';
 import type { WorktreeCreateResult, WorktreeManager } from '../contracts';
 import type { WorktreeInfo } from '../../shared/types';
+import { t } from '../../shared/i18n';
 
 interface GitResult {
   ok: boolean;
@@ -79,7 +80,7 @@ export function createWorktreeManager(deps: WorktreeManagerDeps = {}): WorktreeM
         if (sha) return sha;
       }
     }
-    throw new Error(`PR 브랜치 ${base.branch}을(를) 가져오지 못했습니다`);
+    throw new Error(t('worktree.prFetchFailed', { branch: base.branch }));
   }
 
   async function isDirty(worktreePath: string): Promise<boolean> {

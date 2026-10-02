@@ -1,5 +1,7 @@
 import { memo, useMemo } from 'react';
 import { SPRITE_GRID, spriteForType, spriteRects, type SpriteDef } from './sprites';
+import { t } from '../../../shared/i18n';
+import { useLanguage } from '../../i18n';
 import './Subagents.css';
 
 export interface PixelSpriteProps {
@@ -17,6 +19,7 @@ export interface PixelSpriteProps {
 
 /** Decorative pixel character of a subagent (SVG `<rect>` runs, crisp edges). */
 export const PixelSprite = memo(function PixelSprite({ type, size = 24, running = false, state, sprite }: PixelSpriteProps) {
+  useLanguage();
   const def = sprite ?? spriteForType(type);
   const rects = useMemo(() => spriteRects(def), [def]);
   const classes = ['hc-sprite', running ? 'hc-sprite--running' : '', state ? `hc-sprite--${state}` : ''].filter(Boolean).join(' ');
@@ -26,7 +29,7 @@ export const PixelSprite = memo(function PixelSprite({ type, size = 24, running 
       style={{ width: size, height: size, ['--hc-sprite-px' as string]: `${size / SPRITE_GRID}px` }}
       data-sprite={def.id}
       role="img"
-      aria-label={`${def.name} 캐릭터`}
+      aria-label={t('sprite.aria', { name: def.name })}
       title={type}
     >
       <svg

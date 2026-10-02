@@ -1,23 +1,24 @@
 // Branch-name check for "브랜치 생성" (renderer hint and main guard). Mirrors `git check-ref-format --branch`;
 // main still runs git's own check before `git switch -c`.
+import { t } from '../shared/i18n';
 
 export const BRANCH_NAME_MAX = 200;
 
 /** Why `name` cannot be a branch name, or null when it can. */
 export function branchNameError(name: string): string | null {
-  if (name.length === 0) return '브랜치 이름을 입력하세요';
-  if (name.length > BRANCH_NAME_MAX) return `브랜치 이름은 ${BRANCH_NAME_MAX}자 이하여야 합니다`;
-  if (/[\x00-\x20\x7f]/.test(name)) return '공백이나 제어 문자는 쓸 수 없습니다';
-  if (/[~^:?*[\\]/.test(name)) return '~ ^ : ? * [ \\ 문자는 쓸 수 없습니다';
-  if (name.startsWith('-')) return '-로 시작할 수 없습니다';
-  if (name === '@') return '@만으로는 이름을 만들 수 없습니다';
-  if (name.includes('..')) return '..을 포함할 수 없습니다';
-  if (name.includes('@{')) return '@{를 포함할 수 없습니다';
-  if (name.startsWith('/') || name.endsWith('/') || name.includes('//')) return '/로 시작·끝나거나 //를 포함할 수 없습니다';
-  if (name.endsWith('.')) return '.으로 끝날 수 없습니다';
+  if (name.length === 0) return t('branch.enterName');
+  if (name.length > BRANCH_NAME_MAX) return t('branch.tooLong', { max: BRANCH_NAME_MAX });
+  if (/[\x00-\x20\x7f]/.test(name)) return t('branch.noSpaces');
+  if (/[~^:?*[\\]/.test(name)) return t('branch.badChars');
+  if (name.startsWith('-')) return t('branch.noLeadingDash');
+  if (name === '@') return t('branch.notAt');
+  if (name.includes('..')) return t('branch.noDotDot');
+  if (name.includes('@{')) return t('branch.noAtBrace');
+  if (name.startsWith('/') || name.endsWith('/') || name.includes('//')) return t('branch.badSlash');
+  if (name.endsWith('.')) return t('branch.noTrailingDot');
   for (const part of name.split('/')) {
-    if (part.startsWith('.')) return '각 부분은 .으로 시작할 수 없습니다';
-    if (part.endsWith('.lock')) return '.lock으로 끝날 수 없습니다';
+    if (part.startsWith('.')) return t('branch.partLeadingDot');
+    if (part.endsWith('.lock')) return t('branch.noLock');
   }
   return null;
 }

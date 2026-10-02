@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { PermissionDecision, PermissionRequest } from '../../../shared/types';
 import { Button } from '../common';
 import { permissionButtons } from './permissionButtons';
+import { t } from '../../../shared/i18n';
 import './Chat.css';
 
 export interface PermissionCardProps {
@@ -40,7 +41,7 @@ export function PermissionCard({ request, onDecide }: PermissionCardProps) {
 
   return (
     <div className="hc-permission" role="alertdialog" aria-label={request.title ?? request.toolName}>
-      <div className="hc-permission__title">{`${request.displayName ?? request.toolName} 실행을 허용할까요?`}</div>
+      <div className="hc-permission__title" data-badge={t('perm.badge')}>{t('notify.permission.body', { tool: request.displayName ?? request.toolName })}</div>
       {request.description ? <div className="hc-permission__desc">{request.description}</div> : null}
       {inputPreview ? <pre className="hc-permission__input">{inputPreview}</pre> : null}
       <div className="hc-permission__actions">
@@ -49,18 +50,18 @@ export function PermissionCard({ request, onDecide }: PermissionCardProps) {
           variant="primary"
           size="sm"
           disabled={!buttons.allow.enabled}
-          title={buttons.allow.enabled ? undefined : '이 에이전트는 1회 허용 옵션을 주지 않았습니다'}
+          title={buttons.allow.enabled ? undefined : t('perm.allowOnceMissing')}
           onClick={() => onDecide(request.requestId, 'allow')}
         >
-          허용
+          {t('perm.allow')}
         </Button>
         {buttons.allowSession.shown ? (
           <Button variant="secondary" size="sm" onClick={() => onDecide(request.requestId, 'allow-session')}>
-            이 세션 동안 허용
+            {t('perm.allowSession')}
           </Button>
         ) : null}
         <Button ref={denyRef} variant="destructive" size="sm" onClick={() => onDecide(request.requestId, 'deny')}>
-          거부
+          {t('perm.deny')}
         </Button>
       </div>
       {captions ? (
@@ -70,13 +71,13 @@ export function PermissionCard({ request, onDecide }: PermissionCardProps) {
               className={`hc-permission__note${buttons.allowSession.warn ? ' hc-permission__note--warn' : ''}`}
               data-testid="permission-session-caption"
             >
-              <span className="hc-permission__note-key">이 세션 동안 허용</span>
+              <span className="hc-permission__note-key">{t('perm.allowSession')}</span>
               {buttons.allowSession.caption}
             </li>
           ) : null}
           {buttons.deny.caption ? (
             <li className="hc-permission__note hc-permission__note--warn" data-testid="permission-deny-caption">
-              <span className="hc-permission__note-key">거부</span>
+              <span className="hc-permission__note-key">{t('perm.deny')}</span>
               {buttons.deny.caption}
             </li>
           ) : null}
@@ -84,7 +85,7 @@ export function PermissionCard({ request, onDecide }: PermissionCardProps) {
       ) : null}
       {buttons.agentOptionNames.length > 0 ? (
         <div className="hc-permission__agent-options" data-testid="permission-agent-options">
-          에이전트 선택지 · {buttons.agentOptionNames.join(' · ')}
+          {t('perm.agentOptions')} · {buttons.agentOptionNames.join(' · ')}
         </div>
       ) : null}
     </div>

@@ -3,6 +3,8 @@ import type { Thread } from '../../../shared/types';
 import { formatResetCountdown } from '../../../core/format';
 import { StatusPill } from '../common';
 import { WindowToolbar, type WindowToolbarProps } from './WindowToolbar';
+import { useLanguage } from '../../i18n';
+import { t } from '../../../shared/i18n';
 import './Shell.css';
 
 export interface ChatHeaderProps extends Omit<WindowToolbarProps, 'thread' | 'onStartRename'> {
@@ -12,6 +14,7 @@ export interface ChatHeaderProps extends Omit<WindowToolbarProps, 'thread' | 'on
 
 /** Title (click or 더보기 > 이름 변경 to rename), project, run-state pill; the window toolbar on the right. */
 export const ChatHeader = memo(function ChatHeader({ thread, onRename, ...toolbar }: ChatHeaderProps) {
+  useLanguage();
   const project = toolbar.project;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(thread.title);
@@ -44,7 +47,7 @@ export const ChatHeader = memo(function ChatHeader({ thread, onRename, ...toolba
         {editing ? (
           <input
             className="hc-chat-header__rename no-drag"
-            aria-label="스레드 이름"
+            aria-label={t('header.threadName')}
             value={draft}
             maxLength={120}
             autoFocus
@@ -64,8 +67,8 @@ export const ChatHeader = memo(function ChatHeader({ thread, onRename, ...toolba
           <button
             type="button"
             className="app__thread-name no-drag"
-            title="클릭해서 이름 변경"
-            aria-label={`스레드 이름: ${thread.title} (이름 변경)`}
+            title={t('header.renameTitle')}
+            aria-label={t('header.renameAria', { title: thread.title })}
             onClick={startRename}
           >
             {thread.title}
@@ -74,13 +77,13 @@ export const ChatHeader = memo(function ChatHeader({ thread, onRename, ...toolba
         {project ? (
           <span className="app__thread-project">{project.name}</span>
         ) : thread.projectId === null ? (
-          <span className="app__thread-project app__thread-project--none" title="프로젝트 없는 채팅 (git 기능 없음)">
-            프로젝트 없음
+          <span className="app__thread-project app__thread-project--none" title={t('header.noProject.title')}>
+            {t('folder.noProject')}
           </span>
         ) : null}
         {state ? (
           <StatusPill state={state} className="hc-chat-header__status">
-            {state === 'waiting' && waitingText ? `대기 중 · ${waitingText}` : undefined}
+            {state === 'waiting' && waitingText ? `${t('status.waiting')} · ${waitingText}` : undefined}
           </StatusPill>
         ) : null}
       </div>

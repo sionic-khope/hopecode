@@ -49,6 +49,7 @@ import { claudePromptContent } from '../../core/attachments';
 import { toPublicPendingPrompt, toPublicThread } from '../persistence/publicThread';
 import type { PermissionBroker } from './permissionBroker';
 import type { SyncTranscriptFn } from './transcriptSync';
+import { t } from '../../shared/i18n';
 
 export interface ThreadRunnerDeps {
   query: QueryFn;
@@ -120,7 +121,6 @@ interface PendingContent {
   files: PromptFile[];
 }
 
-const ATTACHMENTS_LOST_TEXT = '대기 중이던 메시지의 첨부가 앱 재시작으로 사라져 보내지 않았습니다. 첨부를 다시 올려 주세요.';
 
 /** The Thread form of `prompt`: text, kind and attachment metadata. */
 function publicPrompt(prompt: TurnPrompt): PendingPrompt {
@@ -130,7 +130,7 @@ function publicPrompt(prompt: TurnPrompt): PendingPrompt {
     attachments: [
       ...(prompt.images ?? []).map((img, i) => ({
         kind: 'image' as const,
-        name: `이미지 ${i + 1}`,
+        name: t('attach.imageN', { n: i + 1 }),
         mediaType: img.mediaType,
         size: Math.floor((img.data.length * 3) / 4),
       })),
@@ -181,22 +181,21 @@ class InputQueue implements AsyncIterable<SDKUserMessage> {
   }
 }
 
-const ALL_AUTH_FAILED_TEXT = '모든 계정의 인증이 만료되었습니다. 계정 화면에서 다시 로그인하세요.';
 
 function switchReasonLabel(from: SwitchedFrom): string {
-  if (from.reason === 'auth') return '인증 실패';
+  if (from.reason === 'auth') return t('runner.switch.auth');
   switch (from.info?.rateLimitType) {
     case 'five_hour':
-      return '5시간 한도 도달';
+      return t('runner.switch.fiveHour');
     case 'seven_day':
     case 'seven_day_opus':
     case 'seven_day_sonnet':
     case 'seven_day_overage_included':
-      return '주간 한도 도달';
+      return t('runner.switch.weekly');
     case 'overage':
-      return '추가 사용량 차단';
+      return t('runner.switch.overage');
     default:
-      return '사용 한도 도달';
+      return t('runner.switch.limit');
   }
 }
 
@@ -282,7 +281,7 @@ export class ThreadRunner implements AgentRunner {
       this.deps.onWaiting(this.threadId, false);
       this.pendingContent = null;
       this.patch({ status: 'error', waitingUntil: null, pendingPrompt: null });
-      this.notice('error', ATTACHMENTS_LOST_TEXT);
+      this.notice('error', t('runner.attachmentsLost'));
       return;
     }
     const prompt: TurnPrompt | null = pending
@@ -301,8 +300,8 @@ export class ThreadRunner implements AgentRunner {
         this.notice(
           'error',
           decision.reason === 'auth'
-            ? `${ALL_AUTH_FAILED_TEXT} 대기를 취소했습니다.`
-            : '사용할 수 있는 계정이 없어 대기를 취소했습니다.',
+            ? `${t('runner.allAuthFailed')} ${t('runner.waitCancelled')}`
+            : t('runner.noAccountsWaitCancelled'),
         );
       }
       return;
@@ -368,7 +367,7 @@ export class ThreadRunner implements AgentRunner {
       this.clearIdleTimer();
       await this.closeQuery();
       if (cut) {
-        if (!this.closed) this.notice('warn', `중단됨: ${alias} 계정이 제거되었습니다.`);
+        if (!this.closed) this.notice('warn', t('runner.accountRemoved', { alias }));
         await work;
       }
     }
@@ -490,7 +489,7 @@ export class ThreadRunner implements AgentRunner {
       const auth = decision.reason === 'auth';
       if (switchedFrom) {
         this.patch({ status: 'idle', pendingPrompt: null });
-        this.notice('error', auth ? ALL_AUTH_FAILED_TEXT : `전환할 다른 계정이 없습니다 (${switchReasonLabel(switchedFrom)}).`);
+        this.notice('error', auth ? t('runner.allAuthFailed') : t('runner.noOtherAccount', { reason: switchReasonLabel(switchedFrom) }));
       }
       return { accepted: false, reason: auth ? 'auth' : 'no-accounts' };
     }
@@ -505,9 +504,14 @@ export class ThreadRunner implements AgentRunner {
       this.patch({ status: 'waiting', waitingUntil: decision.until, pendingPrompt: publicPrompt(prompt) });
       this.deps.onWaiting(this.threadId, true);
       const pinnedHome = this.deps.store.get().settings.autoSwitchAccounts === false && this.candidateAccounts(this.thread()).length === 1;
-      const who = pinnedHome ? `${this.candidateAccounts(this.thread())[0]?.alias ?? '이'} 계정이 한도에 도달했습니다` : '모든 계정이 한도에 도달했습니다';
-      const detail = [switchedFrom ? switchReasonLabel(switchedFrom) : null, pinnedHome ? '자동 전환 꺼짐' : null].filter(Boolean).join(' · ');
-      this.notice('warn', `${who}${detail ? ` (${detail})` : ''}. 초기화되면 자동으로 이어갑니다.`);
+      const pinnedAlias = this.candidateAccounts(this.thread())[0]?.alias;
+      const who = pinnedHome
+        ? pinnedAlias
+          ? t('runner.limit.account', { alias: pinnedAlias })
+          : t('runner.limit.thisAccount')
+        : t('runner.limit.all');
+      const detail = [switchedFrom ? switchReasonLabel(switchedFrom) : null, pinnedHome ? t('runner.autoSwitchOff') : null].filter(Boolean).join(' · ');
+      this.notice('warn', t('runner.limit.waiting', { who: detail ? `${who} (${detail})` : who }));
       return { accepted: true, reason: 'waiting' };
     }
 
@@ -517,7 +521,7 @@ export class ThreadRunner implements AgentRunner {
     if (switchedFrom) {
       const from = this.account(switchedFrom.accountId)?.alias ?? switchedFrom.accountId;
       const to = this.account(accountId)?.alias ?? accountId;
-      this.notice('info', `계정 전환: ${from} → ${to} (${switchReasonLabel(switchedFrom)})`);
+      this.notice('info', t('runner.switched', { from, to, reason: switchReasonLabel(switchedFrom) }));
     }
 
     let active: ActiveQuery | null;
@@ -530,7 +534,7 @@ export class ThreadRunner implements AgentRunner {
       if (this.closed) return { accepted: true };
       this.deps.log('[session] failed to open query', err);
       this.safePatch({ status: 'error', pendingPrompt: null });
-      this.reportError(`Claude Code를 시작하지 못했습니다: ${errorText(err)}`);
+      this.reportError(t('runner.startFailed', { error: errorText(err) }));
       return { accepted: true };
     } finally {
       if (this.preparing?.done === preparing) this.preparing = null;
@@ -542,7 +546,7 @@ export class ThreadRunner implements AgentRunner {
       const retried = await this.runTurn(prompt, new Set(tried).add(accountId), switchedFrom, null);
       if (!retried.accepted && !switchedFrom) {
         this.safePatch({ status: 'idle', activeAccountId: null, pendingPrompt: null });
-        this.notice('error', retried.reason === 'auth' ? ALL_AUTH_FAILED_TEXT : '사용할 수 있는 계정이 없습니다.');
+        this.notice('error', retried.reason === 'auth' ? t('runner.allAuthFailed') : t('runner.noAccounts'));
       }
       return retried;
     }
@@ -679,10 +683,10 @@ export class ThreadRunner implements AgentRunner {
           if (!this.usable(accountId)) return null;
         }
         if (found) resume = sessionId;
-        else this.notice('warn', '이전 대화 기록을 찾지 못해 새 세션으로 시작합니다.');
+        else this.notice('warn', t('runner.transcriptMissing'));
       }
     } else if (thread.sdkSessionId && !sessionId) {
-      this.notice('warn', '이전 세션 ID가 올바르지 않아 새 세션으로 시작합니다.');
+      this.notice('warn', t('runner.badSessionId'));
     }
 
     return this.openQuery(account, resume, trusted);
@@ -788,7 +792,7 @@ export class ThreadRunner implements AgentRunner {
       const turn = this.turn;
       if (turn && turn.active === active && !turn.ended) {
         if (unexpected && !turn.reason) {
-          this.reportError(failure ? `Claude Code가 중지되었습니다: ${failure}` : 'Claude Code가 예기치 않게 종료되었습니다.');
+          this.reportError(failure ? t('runner.stopped', { failure }) : t('runner.exitedUnexpectedly'));
         }
         this.endTurn(turn, turn.reason ?? 'error');
       }
@@ -1036,7 +1040,7 @@ function resultErrorText(msg: Extract<SDKMessage, { type: 'result' }>): string {
     const text = m.errors.filter((e): e is string => typeof e === 'string' && e.trim() !== '').join('\n');
     if (text) return text;
   }
-  return `Claude Code 오류 (${m.subtype ?? 'unknown'}).`;
+  return t('runner.resultError', { subtype: m.subtype ?? 'unknown' });
 }
 
 function isClaudeEffort(value: string): value is EffortLevel {

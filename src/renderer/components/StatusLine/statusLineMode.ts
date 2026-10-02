@@ -1,5 +1,6 @@
 import { agentDescriptor } from '../../../shared/agents';
 import type { AgentKind, AgentUsageSnapshot, Thread } from '../../../shared/types';
+import { t } from '../../../shared/i18n';
 
 /**
  * What the statusline shows for the selected thread's agent.
@@ -30,5 +31,5 @@ export function usageWindowsFor(agent: AgentKind, snapshot: AgentUsageSnapshot |
 /** Tooltip naming where the numbers come from (provider / plan), never a credential. */
 export function usageSourceTitle(snapshot: AgentUsageSnapshot): string {
   const parts = [snapshot.title ?? snapshot.provider ?? 'Hermes', snapshot.plan].filter(Boolean);
-  return `출처: hermes usage · ${parts.join(' · ')}`;
+  return t('statusline.hermesSource', { parts: parts.join(' · ') });
 }

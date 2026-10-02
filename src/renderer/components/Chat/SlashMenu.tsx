@@ -6,6 +6,8 @@ import { displayPath } from '../../../core/displayPath';
 import { invoke } from '../../api';
 import type { AcpCommandLite } from '../../../shared/types';
 import { fromAcp, fromClaude, type SlashItem } from './slashCommands';
+import { t } from '../../../shared/i18n';
+import { useLanguage } from '../../i18n';
 
 export interface SlashMenuProps {
   open: boolean;
@@ -58,14 +60,14 @@ export function SlashMenu({
   }, [open, activeIndex, listId]);
 
   return (
-    <Popover open={open} onClose={onClose} anchorRef={anchorRef} placement="top-start" width={width} offset={10} className="hc-slash" aria-label="명령">
+    <Popover open={open} onClose={onClose} anchorRef={anchorRef} placement="top-start" width={width} offset={10} className="hc-slash" aria-label={t('slash.aria')}>
       {items.length === 0 ? (
         <div className="hc-slash__empty" role="status" data-testid="slash-empty">
           {emptyHint}
         </div>
       ) : (
         <div className="hc-slash__body" data-testid="slash-menu">
-          <div ref={listRef} id={listId} className="hc-slash__list" role="listbox" aria-label="명령">
+          <div ref={listRef} id={listId} className="hc-slash__list" role="listbox" aria-label={t('slash.aria')}>
             {items.map((item, i) => (
               <div
                 key={item.name}
@@ -93,17 +95,17 @@ export function SlashMenu({
               </div>
               {active.description ? <p className="hc-slash__pdesc">{active.description}</p> : null}
               <dl className="hc-slash__meta">
-                <dt>출처</dt>
+                <dt>{t('localAuth.source')}</dt>
                 <dd>{active.badge}</dd>
                 {active.argumentHint ? (
                   <>
-                    <dt>인자</dt>
+                    <dt>{t('slash.args')}</dt>
                     <dd>{active.argumentHint}</dd>
                   </>
                 ) : null}
                 {active.path ? (
                   <>
-                    <dt>파일</dt>
+                    <dt>{t('slash.file')}</dt>
                     <dd className="hc-slash__path" title={active.path}>
                       {displayPath(active.path, null, homeDir)}
                     </dd>
@@ -123,7 +125,7 @@ export function SlashMenu({
                 </div>
               ) : (
                 <p className="hc-slash__note">
-                  {active.argumentHint ? '⇥ / ⏎로 고른 뒤 인자를 이어서 입력하세요.' : '⏎로 바로 보냅니다.'}
+                  {active.argumentHint ? t('slash.hint.args') : t('slash.hint.send')}
                 </p>
               )}
             </div>
@@ -141,14 +143,13 @@ export type SlashSource =
   /** Codex / Hermes: the session's `available_commands_update` (undefined until the session sent one). */
   | { kind: 'acp'; agentName: string; commands: readonly AcpCommandLite[] | undefined };
 
-export const ACP_COMMANDS_PENDING_HINT = '세션이 시작되면 명령이 표시됩니다';
-const LOADING_HINT = '명령을 불러오는 중…';
 
 /**
  * Rows for the picker. Claude lists are fetched each time the picker opens (`active` turns true), so a skill added
  * on disk shows up without a restart.
  */
 export function useSlashItems(source: SlashSource | undefined, active: boolean): { items: SlashItem[]; emptyHint: string | null } {
+  const language = useLanguage();
   const [claude, setClaude] = useState<{ key: string; items: SlashItem[] } | null>(null);
   const key = source?.kind === 'claude' ? `${source.threadId ?? ''}|${source.projectId ?? ''}` : null;
 
@@ -174,10 +175,10 @@ export function useSlashItems(source: SlashSource | undefined, active: boolean):
     if (!source) return { items: [], emptyHint: null };
     if (source.kind === 'acp') {
       return source.commands === undefined
-        ? { items: [], emptyHint: ACP_COMMANDS_PENDING_HINT }
+        ? { items: [], emptyHint: t('slash.pending') }
         : { items: fromAcp(source.commands, source.agentName), emptyHint: null };
     }
-    if (!claude || claude.key !== key) return { items: [], emptyHint: LOADING_HINT };
+    if (!claude || claude.key !== key) return { items: [], emptyHint: t('slash.loading') };
     return { items: claude.items, emptyHint: null };
-  }, [source, claude, key]);
+  }, [source, claude, key, language]);
 }

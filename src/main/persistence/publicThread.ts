@@ -1,6 +1,7 @@
 // What of a Thread may leave the runner: state.json and `thread:updated` carry a pending prompt's attachment
 // metadata only. The content (image base64, PDF / text data, the file's real path) stays in the runner's memory.
 import type { PendingAttachment, PendingPrompt, Thread } from '../../shared/types';
+import { t } from '../../shared/i18n';
 
 const ATTACHMENT_KINDS: ReadonlySet<string> = new Set(['image', 'pdf', 'text']);
 
@@ -31,19 +32,19 @@ export function toPublicPendingPrompt(prompt: PendingPrompt | null | undefined):
   const attachments: PendingAttachment[] = [];
   if (Array.isArray(prompt.attachments)) {
     for (const a of prompt.attachments) {
-      const m = meta(a, '첨부', 'text');
+      const m = meta(a, t('attach.fallbackName'), 'text');
       if (m) attachments.push(m);
     }
   }
   if (Array.isArray(legacy.images)) {
     legacy.images.forEach((img, i) => {
-      const m = meta(img, `이미지 ${i + 1}`, 'image');
+      const m = meta(img, t('attach.imageN', { n: i + 1 }), 'image');
       if (m) attachments.push({ ...m, kind: 'image' });
     });
   }
   if (Array.isArray(legacy.files)) {
     for (const f of legacy.files) {
-      const m = meta(f, '첨부', 'text');
+      const m = meta(f, t('attach.fallbackName'), 'text');
       if (m) attachments.push(m);
     }
   }

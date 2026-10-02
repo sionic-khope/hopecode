@@ -14,6 +14,7 @@ import { isHiddenNoteName, isMarkdownName } from '../../core/notes/notePaths';
 import { isStrictlyInside } from '../containment';
 import { run as execGit, shortError, type RunResult } from '../git/gitService';
 import { vaultRoot } from './vaultFs';
+import { t } from '../../shared/i18n';
 
 const COMMIT_MESSAGE_MAX = 5_000;
 export const NOTE_GIT_TIMEOUT_MS = 15_000;
@@ -124,17 +125,17 @@ export function createNoteGit(env: () => Record<string, string>, exec: GitRunner
 
     async commit(vault, message) {
       const text = message.trim();
-      if (!text) return { ok: false, error: '커밋 메시지를 입력하세요' };
-      if (text.length > COMMIT_MESSAGE_MAX) return { ok: false, error: '커밋 메시지가 너무 깁니다' };
+      if (!text) return { ok: false, error: t('git.enterCommitMessage') };
+      if (text.length > COMMIT_MESSAGE_MAX) return { ok: false, error: t('noteGit.messageTooLong') };
       const found = await scan(vault);
-      if (!found) return { ok: false, error: '노트 폴더가 자체 git 저장소가 아닙니다' };
-      if (found.files.length === 0) return { ok: false, error: '커밋할 노트 변경 사항이 없습니다' };
+      if (!found) return { ok: false, error: t('noteGit.notOwnRepo') };
+      if (found.files.length === 0) return { ok: false, error: t('noteGit.nothingToCommit') };
       const paths = found.files.map((f) => f.top);
       const add = await git(['add', '-A', '--', ...paths], found.root);
-      if (!add.ok) return { ok: false, error: `커밋하지 못했습니다: ${shortError(add.stderr)}` };
+      if (!add.ok) return { ok: false, error: t('git.commitFailed', { error: shortError(add.stderr) }) };
       // `--only` with paths: whatever else was staged in the repository stays out of this commit.
       const res = await git(['commit', '-q', '-m', text, '--only', '--', ...paths], found.root);
-      if (!res.ok) return { ok: false, error: `커밋하지 못했습니다: ${shortError(res.stderr || res.stdout)}` };
+      if (!res.ok) return { ok: false, error: t('git.commitFailed', { error: shortError(res.stderr || res.stdout) }) };
       const sha = await git([...PASSIVE_ARGS, 'rev-parse', 'HEAD'], found.root);
       return { ok: true, sha: sha.stdout.trim(), files: paths.length };
     },

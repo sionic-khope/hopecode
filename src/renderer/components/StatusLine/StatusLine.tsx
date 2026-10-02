@@ -9,6 +9,7 @@ import { AccountsPopover } from '../Accounts/AccountsPopover';
 import { useAppStore } from '../../store';
 import { UsageMeter } from './UsageMeter';
 import { statusLineMode, usageSourceTitle, usageWindowsFor } from './statusLineMode';
+import { useLanguage } from '../../i18n';
 import './StatusLine.css';
 
 export interface StatusLineProps {
@@ -41,6 +42,7 @@ function Divider() {
  * comes from core/poolSummary + core/format, never recomputed here. Click opens AccountsPopover.
  */
 export const StatusLine = memo(function StatusLine({ pool, accounts, activeThread, models = [], modelText: modelTextProp }: StatusLineProps) {
+  useLanguage();
   const now = useNow();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);

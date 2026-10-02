@@ -1,6 +1,7 @@
 // Pure logic behind the composer's `/` picker: which token the caret is in, ranking, what a choice does.
 import { searchPalette } from '../Palette/paletteSearch';
 import type { AcpCommandLite, SlashCommandInfo, SlashCommandSource } from '../../../shared/types';
+import { t } from '../../../shared/i18n';
 
 /** One picker row, whichever agent it came from. */
 export interface SlashItem {
@@ -79,7 +80,7 @@ export function sendsOnEnter(item: SlashItem, text: string, token: SlashToken): 
 
 export function claudeBadge(c: Pick<SlashCommandInfo, 'source' | 'plugin'>): string {
   if (c.source === 'plugin') return c.plugin ?? 'plugin';
-  if (c.source === 'builtin') return 'Claude 내장';
+  if (c.source === 'builtin') return t('slash.builtin', { agent: 'Claude' });
   return c.source;
 }
 
@@ -113,6 +114,6 @@ export function fromAcp(commands: readonly AcpCommandLite[], agentName: string):
     description: c.description,
     argumentHint: c.hint,
     source: 'builtin',
-    badge: `${agentName} 내장`,
+    badge: t('slash.builtin', { agent: agentName }),
   }));
 }

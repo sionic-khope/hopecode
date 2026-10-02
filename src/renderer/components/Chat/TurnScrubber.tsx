@@ -12,6 +12,8 @@ import {
   type TurnSource,
 } from '../../../core/turnScrubber';
 import { playSfx } from '../../sound/engine';
+import { useLanguage } from '../../i18n';
+import { t } from '../../../shared/i18n';
 
 /** Distance between tick centers while every tick fits / the closest they may get before the window kicks in. */
 export const TICK_GAP_MAX = 12;
@@ -399,7 +401,7 @@ export function TurnScrubber({ turns, scrollRef, bookmarks, running, onToggleBoo
     <nav
       ref={navRef}
       className="hc-scrubber"
-      aria-label="대화 턴"
+      aria-label={t('scrubber.aria')}
       data-testid="turn-scrubber"
       data-count={count}
       data-current={cur}
@@ -461,6 +463,7 @@ const Tick = memo(function Tick({
   refAt: number;
   refs: RefObject<(HTMLButtonElement | null)[]>;
 }) {
+  useLanguage();
   return (
     <button
       type="button"
@@ -520,6 +523,7 @@ const PreviewCard = memo(function PreviewCard({
   onJump: (index: number) => void;
   onToggleBookmark: (index: number) => void;
 }) {
+  useLanguage();
   // Only the card's turn is ever reduced to preview text (never the whole transcript per streamed delta).
   const replySource = turn.replyTexts.join('\n\n');
   const reply = useMemo(() => turnReplyPreview({ replyTexts: [replySource] }), [replySource]);
@@ -545,8 +549,8 @@ const PreviewCard = memo(function PreviewCard({
           data-sfx="none"
           tabIndex={-1}
           aria-pressed={bookmarked}
-          aria-label={bookmarked ? '북마크 해제' : '북마크'}
-          title={bookmarked ? '북마크 해제 (B)' : '북마크 (B)'}
+          aria-label={bookmarked ? t('scrubber.unbookmark') : t('scrubber.bookmark')}
+          title={`${bookmarked ? t('scrubber.unbookmark') : t('scrubber.bookmark')} (B)`}
           data-testid="turn-bookmark"
           onClick={(e) => {
             e.stopPropagation();
@@ -557,10 +561,10 @@ const PreviewCard = memo(function PreviewCard({
         </button>
       </div>
       <p className="hc-scrubber__prompt" data-testid="turn-preview-prompt">
-        {turn.prompt || '(빈 메시지)'}
+        {turn.prompt || t('scrubber.emptyMessage')}
       </p>
       <p className="hc-scrubber__reply" data-testid="turn-preview-reply" data-empty={reply === '' || undefined}>
-        {reply || (live ? '응답을 쓰는 중…' : '응답 없음')}
+        {reply || (live ? t('scrubber.replying') : t('scrubber.noReply'))}
       </p>
     </div>
   );

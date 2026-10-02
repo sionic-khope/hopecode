@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { t } from '../../../shared/i18n';
 import './common.css';
 
 export interface ModalProps {
@@ -111,7 +112,7 @@ export function Modal({
             {subtitle ? <div className="hc-modal__subtitle">{subtitle}</div> : null}
           </div>
           {dismissible ? (
-            <button type="button" className="hc-modal__close" aria-label="닫기" onClick={onClose}>
+            <button type="button" className="hc-modal__close" aria-label={t('common.close')} onClick={onClose}>
               <svg width={12} height={12} viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" aria-hidden>
                 <path d="M2.5 2.5l7 7M9.5 2.5l-7 7" />
               </svg>

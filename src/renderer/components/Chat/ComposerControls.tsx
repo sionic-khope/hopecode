@@ -12,6 +12,8 @@ import { GlyphRefresh } from '../common/glyphs';
 import { EFFORT_LABEL, type ChipChoice } from './acpChips';
 import { agentMenuState } from './agentMenuState';
 import { BoltIcon, ChevronDownSmallIcon, FolderIcon, FolderOpenIcon, PersonIcon, ShieldAlertIcon, ShieldIcon } from './icons';
+import { t, type MessageKey } from '../../../shared/i18n';
+import { useLanguage } from '../../i18n';
 
 export { EFFORT_LABEL };
 
@@ -19,26 +21,31 @@ export { EFFORT_LABEL };
 // Labels
 // ---------------------------------------------------------------------------
 
-export const PERMISSION_MODE_LABEL: Record<UiPermissionMode, string> = {
-  default: '기본',
-  plan: '계획',
-  acceptEdits: '편집 자동 승인',
-  bypassPermissions: '전체 액세스',
+const PERMISSION_MODE_KEY: Record<UiPermissionMode, MessageKey> = {
+  default: 'mode.default',
+  plan: 'mode.plan',
+  acceptEdits: 'mode.acceptEdits',
+  bypassPermissions: 'mode.bypass',
 };
 
-const PERMISSION_MODE_DESC: Record<UiPermissionMode, string> = {
-  default: '파일 변경과 명령 실행 전에 묻습니다',
-  plan: '계획만 세우고 편집·명령은 하지 않습니다',
-  acceptEdits: '파일 편집은 묻지 않고 적용합니다',
-  bypassPermissions: '모든 도구를 묻지 않고 실행합니다 (확인 필요)',
+/** Permission mode name in the current language (`기본`, `계획`, …). */
+export function permissionModeLabel(mode: UiPermissionMode): string {
+  return t(PERMISSION_MODE_KEY[mode]);
+}
+
+const PERMISSION_MODE_DESC: Record<UiPermissionMode, MessageKey> = {
+  default: 'mode.default.desc',
+  plan: 'mode.plan.desc',
+  acceptEdits: 'mode.acceptEdits.desc',
+  bypassPermissions: 'mode.bypass.desc',
 };
 
-const EFFORT_DESC: Record<EffortLevel, string> = {
-  low: '가장 빠른 응답',
-  medium: '적당한 추론',
-  high: '깊은 추론',
-  xhigh: 'High보다 깊게',
-  max: '최대 추론',
+const EFFORT_DESC: Record<EffortLevel, MessageKey> = {
+  low: 'effort.low.desc',
+  medium: 'effort.medium.desc',
+  high: 'effort.high.desc',
+  xhigh: 'effort.xhigh.desc',
+  max: 'effort.max.desc',
 };
 
 /** Levels to offer for `model`: its reported list, the full list when unknown, none when unsupported. */
@@ -65,7 +72,10 @@ export interface FolderChipProps {
   homeDir?: string | null;
 }
 
-export const NO_PROJECT_LABEL = '프로젝트 없음';
+/** Folder chip label of a chat without a project. */
+export function noProjectLabel(): string {
+  return t('folder.noProject');
+}
 
 /** One width for every composer menu (+, folder, permission, account, model). */
 export const COMPOSER_MENU_WIDTH = 288;
@@ -81,6 +91,7 @@ export const FolderChip = memo(function FolderChip({
   onOpenChange,
   homeDir = null,
 }: FolderChipProps) {
+  useLanguage();
   const ref = useRef<HTMLButtonElement>(null);
   const current = projects.find((p) => p.id === projectId) ?? null;
   const recent = [...projects].sort((a, b) => b.createdAt - a.createdAt);
@@ -89,7 +100,7 @@ export const FolderChip = memo(function FolderChip({
       ? [
           {
             key: 'recent',
-            title: '최근 프로젝트',
+            title: t('folder.recent'),
             kind: 'radio' as const,
             items: recent.map((p) => ({
               key: p.id,
@@ -108,8 +119,8 @@ export const FolderChip = memo(function FolderChip({
       items: [
         {
           key: 'scratch',
-          label: '프로젝트 없이 작업',
-          description: '앱이 만든 빈 폴더에서 시작합니다 (git 기능 없음)',
+          label: t('folder.noProjectWork'),
+          description: t('folder.noProjectWork.desc'),
           icon: <ChatBubbleGlyph />,
           checked: current === null,
           onSelect: () => onSelect(null),
@@ -119,7 +130,7 @@ export const FolderChip = memo(function FolderChip({
     {
       key: 'other',
       kind: 'action',
-      items: [{ key: 'pick', label: '다른 폴더 선택…', icon: <FolderOpenIcon />, onSelect: onPickOther }],
+      items: [{ key: 'pick', label: t('folder.pickOther'), icon: <FolderOpenIcon />, onSelect: onPickOther }],
     },
   ];
   return (
@@ -130,12 +141,12 @@ export const FolderChip = memo(function FolderChip({
         className={`hc-chip hc-chip--folder${current ? '' : ' hc-chip--scratch'}`}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={current ? `폴더: ${current.name}` : `폴더: ${NO_PROJECT_LABEL}`}
-        title={current ? tildePath(current.path, homeDir) : '프로젝트 없이 시작합니다. 폴더를 고르려면 누르세요'}
+        aria-label={t('folder.aria', { name: current ? current.name : noProjectLabel() })}
+        title={current ? tildePath(current.path, homeDir) : t('folder.noProjectTitle')}
         onClick={() => onOpenChange(!open)}
       >
         {current ? <FolderIcon /> : <ChatBubbleGlyph />}
-        <span className="hc-chip__label">{current?.name ?? NO_PROJECT_LABEL}</span>
+        <span className="hc-chip__label">{current?.name ?? noProjectLabel()}</span>
         <ChevronDownSmallIcon className="hc-chip__chevron" />
       </button>
       <Menu
@@ -143,7 +154,7 @@ export const FolderChip = memo(function FolderChip({
         onClose={() => onOpenChange(false)}
         anchorRef={ref}
         sections={sections}
-        label="폴더"
+        label={t('folder.label')}
         placement="top-start"
         width={COMPOSER_MENU_WIDTH}
       />
@@ -162,8 +173,9 @@ function ChatBubbleGlyph() {
 
 /** Started thread: folder name only (the worktree lives under it; it cannot change). */
 export function FolderTag({ name, path, homeDir = null }: { name: string; path: string; homeDir?: string | null }) {
+  useLanguage();
   return (
-    <span className="hc-chip hc-chip--static" title={tildePath(path, homeDir)} aria-label={`폴더: ${name}`}>
+    <span className="hc-chip hc-chip--static" title={tildePath(path, homeDir)} aria-label={t('folder.aria', { name })}>
       <FolderIcon />
       <span className="hc-chip__label">{name}</span>
     </span>
@@ -175,8 +187,8 @@ export function FolderTag({ name, path, homeDir = null }: { name: string; path: 
 // ---------------------------------------------------------------------------
 
 /** Codex maps the app modes onto approval_policy / sandbox_mode (plan 2.15); acceptEdits has no own value there. */
-const CODEX_MODE_NOTE: Partial<Record<UiPermissionMode, string>> = {
-  acceptEdits: 'Codex에서는 기본과 같음',
+const CODEX_MODE_NOTE: Partial<Record<UiPermissionMode, MessageKey>> = {
+  acceptEdits: 'mode.codexAcceptEditsNote',
 };
 
 export const PermissionChip = memo(function PermissionChip({
@@ -188,18 +200,19 @@ export const PermissionChip = memo(function PermissionChip({
   onChange: (mode: UiPermissionMode) => void;
   agent?: AgentKind;
 }) {
+  useLanguage();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLButtonElement>(null);
   const bypass = value === 'bypassPermissions';
   const sections: MenuSection[] = [
     {
       key: 'modes',
-      title: '권한',
+      title: t('mode.title'),
       kind: 'radio',
       items: UI_PERMISSION_MODES.map((mode) => ({
         key: mode,
-        label: PERMISSION_MODE_LABEL[mode],
-        description: (agent === 'codex' ? CODEX_MODE_NOTE[mode] : undefined) ?? PERMISSION_MODE_DESC[mode],
+        label: permissionModeLabel(mode),
+        description: t((agent === 'codex' ? CODEX_MODE_NOTE[mode] : undefined) ?? PERMISSION_MODE_DESC[mode]),
         icon: mode === 'bypassPermissions' ? <ShieldAlertIcon /> : <ShieldIcon />,
         tone: mode === 'bypassPermissions' ? ('warn' as const) : ('default' as const),
         checked: mode === value,
@@ -215,15 +228,15 @@ export const PermissionChip = memo(function PermissionChip({
         className={`hc-chip hc-chip--perm${bypass ? ' hc-chip--warn' : ''}`}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`권한: ${PERMISSION_MODE_LABEL[value]}`}
-        title={PERMISSION_MODE_DESC[value]}
+        aria-label={t('mode.aria', { mode: permissionModeLabel(value) })}
+        title={t(PERMISSION_MODE_DESC[value])}
         onClick={() => setOpen((v) => !v)}
       >
         {bypass ? <ShieldAlertIcon /> : <ShieldIcon />}
-        <span className="hc-chip__label">{PERMISSION_MODE_LABEL[value]}</span>
+        <span className="hc-chip__label">{permissionModeLabel(value)}</span>
         <ChevronDownSmallIcon className="hc-chip__chevron" />
       </button>
-      <Menu open={open} onClose={() => setOpen(false)} anchorRef={ref} sections={sections} label="권한" placement="top-start" width={COMPOSER_MENU_WIDTH} />
+      <Menu open={open} onClose={() => setOpen(false)} anchorRef={ref} sections={sections} label={t('mode.title')} placement="top-start" width={COMPOSER_MENU_WIDTH} />
     </>
   );
 });
@@ -242,13 +255,13 @@ export function accountPinSection(
   const ordered = [...accounts].sort((a, b) => a.priority - b.priority);
   return {
     key: 'accounts',
-    title: '계정 고정',
+    title: t('accountPin.title'),
     kind: 'radio',
     items: [
       {
         key: 'auto',
-        label: '자동',
-        description: '우선순위가 가장 높은 사용 가능한 계정',
+        label: t('common.auto'),
+        description: t('accountPin.auto.desc'),
         icon: <PersonIcon />,
         checked: pinnedAccountId === null,
         onSelect: () => onChange(null),
@@ -258,7 +271,7 @@ export function accountPinSection(
         label: a.alias,
         description: a.email ?? undefined,
         icon: <span className="hc-chip__dot" style={{ background: a.color }} />,
-        meta: a.id === activeAccountId ? '사용 중' : !a.enabled ? '비활성' : undefined,
+        meta: a.id === activeAccountId ? t('accountPin.inUse') : !a.enabled ? t('accountPin.disabled') : undefined,
         disabled: !a.enabled,
         checked: a.id === pinnedAccountId,
         onSelect: () => onChange(a.id),
@@ -290,6 +303,7 @@ export const ModelPicker = memo(function ModelPicker({
   onModelChange: (model: string) => void;
   onEffortChange: (effort: EffortLevel | null) => void;
 }) {
+  useLanguage();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLButtonElement>(null);
   const label = concreteModelLabel(model, models, { resolvedModel, defaultLabel });
@@ -297,7 +311,7 @@ export const ModelPicker = memo(function ModelPicker({
   const sections: MenuSection[] = [
     {
       key: 'models',
-      title: '모델',
+      title: t('model.title'),
       kind: 'radio',
       items: models.map((m) => ({
         key: m.value,
@@ -317,15 +331,15 @@ export const ModelPicker = memo(function ModelPicker({
             items: [
               {
                 key: 'default',
-                label: '기본값',
-                meta: '모델 기본',
+                label: t('model.defaultValue'),
+                meta: t('model.modelDefault'),
                 checked: effort === null,
                 onSelect: () => onEffortChange(null),
               },
               ...levels.map((level) => ({
                 key: level,
                 label: EFFORT_LABEL[level],
-                meta: EFFORT_DESC[level],
+                meta: t(EFFORT_DESC[level]),
                 checked: effort === level,
                 onSelect: () => onEffortChange(level),
               })),
@@ -343,7 +357,7 @@ export const ModelPicker = memo(function ModelPicker({
         className="hc-chip hc-chip--model"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`모델: ${label}${showEffort ? ` · ${EFFORT_LABEL[effort]}` : ''}`}
+        aria-label={t('model.aria', { model: `${label}${showEffort ? ` · ${EFFORT_LABEL[effort]}` : ''}` })}
         onClick={() => setOpen((v) => !v)}
       >
         <BoltIcon />
@@ -351,7 +365,7 @@ export const ModelPicker = memo(function ModelPicker({
         {showEffort ? <span className="hc-chip__sub">{EFFORT_LABEL[effort]}</span> : null}
         <ChevronDownSmallIcon className="hc-chip__chevron" />
       </button>
-      <Menu open={open} onClose={() => setOpen(false)} anchorRef={ref} sections={sections} label="모델" placement="top-end" width={COMPOSER_MENU_WIDTH} />
+      <Menu open={open} onClose={() => setOpen(false)} anchorRef={ref} sections={sections} label={t('model.title')} placement="top-end" width={COMPOSER_MENU_WIDTH} />
     </>
   );
 });
@@ -377,12 +391,13 @@ export const AgentChip = memo(function AgentChip({
   /** Agents the picker offers (default: all). */
   agents?: readonly AgentKind[];
 }) {
+  useLanguage();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLButtonElement>(null);
   const current = AGENTS[value];
   if (!onChange) {
     return (
-      <span className="hc-chip hc-chip--static hc-chip--agent" aria-label={`에이전트: ${current.name}`}>
+      <span className="hc-chip hc-chip--static hc-chip--agent" aria-label={t('agent.aria', { name: current.name })}>
         <AgentIcon kind={value} size={15} />
         <span className="hc-chip__label">{current.name}</span>
       </span>
@@ -393,7 +408,7 @@ export const AgentChip = memo(function AgentChip({
   const sections: MenuSection[] = [
     {
       key: 'agents',
-      title: '에이전트',
+      title: t('agent.title'),
       kind: 'radio',
       items: rows.map((row) => ({
         key: row.agent,
@@ -411,7 +426,7 @@ export const AgentChip = memo(function AgentChip({
           {
             key: 'recheck',
             kind: 'action' as const,
-            items: [{ key: 'recheck', label: '설치·로그인 상태 다시 확인', icon: <GlyphRefresh width={16} height={16} />, keepOpen: true, onSelect: onRecheck }],
+            items: [{ key: 'recheck', label: t('agent.recheck'), icon: <GlyphRefresh width={16} height={16} />, keepOpen: true, onSelect: onRecheck }],
           },
         ]
       : []),
@@ -424,14 +439,14 @@ export const AgentChip = memo(function AgentChip({
         className="hc-chip hc-chip--agent"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`에이전트: ${current.name}`}
+        aria-label={t('agent.aria', { name: current.name })}
         onClick={() => setOpen((v) => !v)}
       >
         <AgentIcon kind={value} size={15} />
         <span className="hc-chip__label">{current.name}</span>
         <ChevronDownSmallIcon className="hc-chip__chevron" />
       </button>
-      <Menu open={open} onClose={() => setOpen(false)} anchorRef={ref} sections={sections} label="에이전트" placement="top-start" width={AGENT_MENU_WIDTH} />
+      <Menu open={open} onClose={() => setOpen(false)} anchorRef={ref} sections={sections} label={t('agent.title')} placement="top-start" width={AGENT_MENU_WIDTH} />
     </>
   );
 });
@@ -466,9 +481,10 @@ export const AcpModelChip = memo(function AcpModelChip({
   /** Static chip with this tooltip (nothing to pick from yet). */
   readOnlyTitle?: string;
 }) {
+  useLanguage();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLButtonElement>(null);
-  const aria = `모델: ${modelLabel}${effortLabel ? ` · ${effortLabel}` : ''}`;
+  const aria = t('model.aria', { model: `${modelLabel}${effortLabel ? ` · ${effortLabel}` : ''}` });
   const canPick = (onModelChange && models.length > 0) || (onEffortChange && efforts.length > 0);
   if (readOnlyTitle || !canPick) {
     return (
@@ -484,7 +500,7 @@ export const AcpModelChip = memo(function AcpModelChip({
       ? [
           {
             key: 'models',
-            title: '모델',
+            title: t('model.title'),
             kind: 'radio' as const,
             items: models.map((m) => ({
               key: m.value,
@@ -530,18 +546,19 @@ export const AcpModelChip = memo(function AcpModelChip({
         {effortLabel ? <span className="hc-chip__sub">{effortLabel}</span> : null}
         <ChevronDownSmallIcon className="hc-chip__chevron" />
       </button>
-      <Menu open={open} onClose={() => setOpen(false)} anchorRef={ref} sections={sections} label="모델" placement="top-end" width={COMPOSER_MENU_WIDTH} />
+      <Menu open={open} onClose={() => setOpen(false)} anchorRef={ref} sections={sections} label={t('model.title')} placement="top-end" width={COMPOSER_MENU_WIDTH} />
     </>
   );
 });
 
 /** Hermes: the model is the agent's own system default; the app only shows what it reported. */
 export function SystemModelTag({ label, title }: { label: string; title?: string }) {
+  useLanguage();
   return (
     <span
       className="hc-chip hc-chip--model hc-chip--readonly"
-      aria-label={`모델: ${label}`}
-      title={title ? `${title}\nHermes의 시스템 기본 설정을 그대로 씁니다` : 'Hermes의 시스템 기본 설정을 그대로 씁니다. 모델은 Hermes에서 바꾸세요'}
+      aria-label={t('model.aria', { model: label })}
+      title={title ? `${title}\n${t('hermes.systemDefault')}` : t('hermes.systemDefault.change')}
       data-testid="system-model-tag"
     >
       <BoltIcon />
@@ -562,12 +579,13 @@ export const AgentModeChip = memo(function AgentModeChip({
   modes: readonly ChipChoice[];
   onChange: (modeId: string) => void;
 }) {
+  useLanguage();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLButtonElement>(null);
   const sections: MenuSection[] = [
     {
       key: 'modes',
-      title: '에이전트 모드',
+      title: t('agentMode.title'),
       kind: 'radio',
       items: modes.map((m) => ({
         key: m.value,
@@ -587,14 +605,14 @@ export const AgentModeChip = memo(function AgentModeChip({
         className="hc-chip hc-chip--perm"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`모드: ${label}`}
+        aria-label={t('agentMode.aria', { mode: label })}
         onClick={() => setOpen((v) => !v)}
       >
         <ShieldIcon />
         <span className="hc-chip__label">{label}</span>
         <ChevronDownSmallIcon className="hc-chip__chevron" />
       </button>
-      <Menu open={open} onClose={() => setOpen(false)} anchorRef={ref} sections={sections} label="에이전트 모드" placement="top-start" width={COMPOSER_MENU_WIDTH} />
+      <Menu open={open} onClose={() => setOpen(false)} anchorRef={ref} sections={sections} label={t('agentMode.title')} placement="top-start" width={COMPOSER_MENU_WIDTH} />
     </>
   );
 });

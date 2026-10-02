@@ -1149,7 +1149,8 @@
   margin-bottom: 4px;
 }
 .hc-permission__title::before {
-  content: '승인 필요';
+  /* The badge text comes from the element (translated): `data-badge`. */
+  content: attr(data-badge);
   flex: none;
   display: inline-flex;
   align-items: center;

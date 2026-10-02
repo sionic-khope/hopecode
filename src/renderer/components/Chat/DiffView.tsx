@@ -11,6 +11,7 @@ import {
   type WordRange,
 } from './diffLines';
 import { MoreButton } from './MoreButton';
+import { t } from '../../../shared/i18n';
 import './Chat.css';
 
 export interface DiffViewProps {
@@ -57,8 +58,8 @@ function Entry({ entry, onUnfold }: { entry: DiffEntry; onUnfold: (id: number) =
   if (entry.kind === 'fold') {
     const n = entry.hidden.length;
     return (
-      <button type="button" className="hc-diff__fold" aria-label={`변경 없는 ${n}줄 펼치기`} onClick={() => onUnfold(entry.id)}>
-        <span className="hc-diff__fold-label">⋯ 변경 없는 {n}줄</span>
+      <button type="button" className="hc-diff__fold" aria-label={t('diff.unfold', { count: n })} onClick={() => onUnfold(entry.id)}>
+        <span className="hc-diff__fold-label">⋯ {t('diff.unchanged', { count: n })}</span>
       </button>
     );
   }
@@ -134,8 +135,8 @@ export function DiffView({ patch, oldText, newText }: DiffViewProps) {
           {stats.add > 0 ? <span className="hc-diff__stat-add">+{stats.add}</span> : null}
           {stats.del > 0 ? <span className="hc-diff__stat-del">−{stats.del}</span> : null}
         </span>
-        <button type="button" className="hc-diff__tool" aria-pressed={wrap} onClick={toggleWrap} title="긴 줄 줄바꿈">
-          줄바꿈
+        <button type="button" className="hc-diff__tool" aria-pressed={wrap} onClick={toggleWrap} title={t('diff.wrap.title')}>
+          {t('diff.wrap')}
         </button>
       </div>
       <div className="hc-diff__scroll" data-testid="diff-scroll">

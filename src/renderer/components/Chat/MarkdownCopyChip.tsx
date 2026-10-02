@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { copyText } from '../../clipboard';
 import { playSfx } from '../../sound/engine';
 import { GlyphCheck, GlyphCopy } from '../common/glyphs';
+import { t } from '../../../shared/i18n';
 
 /**
  * Small square "MD" chip in a block's top-right corner: copies the block's markdown source (read at click time, so a
@@ -15,8 +16,8 @@ export function MarkdownCopyChip({ getText, label, className }: { getText: () =>
     <button
       type="button"
       className={['hc-mdchip', copied ? 'hc-mdchip--done' : '', className ?? ''].filter(Boolean).join(' ')}
-      aria-label={copied ? '복사됨' : label}
-      title={copied ? '복사됨' : label}
+      aria-label={copied ? t('common.copied') : label}
+      title={copied ? t('common.copied') : label}
       onClick={() => {
         const text = getText();
         if (text === '') return;
@@ -30,7 +31,7 @@ export function MarkdownCopyChip({ getText, label, className }: { getText: () =>
       }}
     >
       {copied ? <GlyphCheck width={11} height={11} /> : <GlyphCopy width={11} height={11} />}
-      <span>{copied ? '복사됨' : 'MD'}</span>
+      <span>{copied ? t('common.copied') : 'MD'}</span>
     </button>
   );
 }

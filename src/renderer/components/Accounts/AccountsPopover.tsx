@@ -4,6 +4,7 @@ import { formatResetCountdown } from '../../../core/format';
 import { effectivePercent } from '../../../core/rotationPolicy';
 import { Pill, Popover, type PillTone } from '../common';
 import { UsageMeter } from '../StatusLine/UsageMeter';
+import { t } from '../../../shared/i18n';
 import './AccountsPopover.css';
 
 export interface AccountsPopoverProps {
@@ -27,10 +28,10 @@ function accountStatusBadge(usage: AccountUsage | undefined, now: number): Statu
   if (!usage) return null;
 
   if (usage.error === 'auth' || usage.error === 'token_expired') {
-    return { tone: 'warn', label: '재로그인 필요' };
+    return { tone: 'warn', label: t('acct.reloginNeeded') };
   }
   if (usage.error === 'no_credentials') {
-    return { tone: 'warn', label: '로그인 안 됨' };
+    return { tone: 'warn', label: t('acct.notLoggedIn') };
   }
 
   const rejected = usage.rejectedUntil;
@@ -41,7 +42,7 @@ function accountStatusBadge(usage: AccountUsage | undefined, now: number): Statu
     } catch {
       countdown = null;
     }
-    return { tone: 'crit', label: countdown ? `추가 사용량 · ${countdown}` : '추가 사용량' };
+    return { tone: 'crit', label: countdown ? `${t('acct.overage')} · ${countdown}` : t('acct.overage') };
   }
   // Exhausted = 5h/wk blocked by an SDK rejection or polled at 100% (until its reset).
   const blockers = [rejected?.fiveHour, rejected?.sevenDay].filter(
@@ -61,14 +62,14 @@ function accountStatusBadge(usage: AccountUsage | undefined, now: number): Statu
     } catch {
       countdown = null;
     }
-    return { tone: 'crit', label: countdown ? `소진 · ${countdown}` : '소진' };
+    return { tone: 'crit', label: countdown ? `${t('acct.exhausted')} · ${countdown}` : t('acct.exhausted') };
   }
 
   if (usage.extraUsageEnabled) {
-    return { tone: 'warn', label: '추가 사용량 켜짐' };
+    return { tone: 'warn', label: t('acct.overageOn') };
   }
   if (usage.stale) {
-    return { tone: 'neutral', label: '오래된 데이터' };
+    return { tone: 'neutral', label: t('acct.stale') };
   }
   return null;
 }
@@ -79,16 +80,16 @@ export function AccountsPopover({ open, onClose, anchorRef, accounts, usageById,
   const enabledCount = accounts.filter((a) => a.enabled).length;
 
   return (
-    <Popover open={open} onClose={onClose} anchorRef={anchorRef} placement="top-end" width={360} aria-label="계정">
+    <Popover open={open} onClose={onClose} anchorRef={anchorRef} placement="top-end" width={360} aria-label={t('settings.accounts')}>
       <div className="hc-accounts-pop">
         <div className="hc-accounts-pop__header">
-          <span>계정</span>
+          <span>{t('settings.accounts')}</span>
           <span className="hc-accounts-pop__count">
-            {enabledCount}/{accounts.length} 활성
+            {t('acct.enabledOf', { enabled: enabledCount, total: accounts.length })}
           </span>
         </div>
         {ordered.length === 0 ? (
-          <div className="hc-accounts-pop__empty">아직 계정이 없습니다</div>
+          <div className="hc-accounts-pop__empty">{t('acct.empty')}</div>
         ) : (
           <ul className="hc-accounts-pop__list">
             {ordered.map((account) => {
@@ -105,10 +106,10 @@ export function AccountsPopover({ open, onClose, anchorRef, accounts, usageById,
                     <span className="hc-accounts-pop__alias">{account.alias}</span>
                     {inUse ? (
                       <Pill tone="accent" capsule>
-                        사용 중
+                        {t('accountPin.inUse')}
                       </Pill>
                     ) : null}
-                    {!account.enabled ? <Pill>비활성</Pill> : null}
+                    {!account.enabled ? <Pill>{t('accountPin.disabled')}</Pill> : null}
                   </div>
                   {account.email || account.plan ? (
                     <div className="hc-accounts-pop__sub">

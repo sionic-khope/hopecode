@@ -10,8 +10,11 @@ import { Composer, type ComposerHandle } from '../Chat/Composer';
 import { AcpModelChip, AgentChip, ModelPicker } from '../Chat/ComposerControls';
 import { codexEffortChoices, codexModelChoices, effortValueLabel } from '../Chat/acpChips';
 import { NoteCard } from './NoteCard';
+import { useLanguage } from '../../i18n';
+import { t, type MessageKey } from '../../../shared/i18n';
+import { tNodes } from '../../i18n';
 
-const SUGGESTIONS = ['이 주제로 학습 노트 초안을 써 줘', '2번 섹션에 예시를 더 넣어 줘', '전체를 더 짧게 정리해 줘'];
+const SUGGESTIONS: readonly MessageKey[] = ['noteChat.suggest.draft', 'noteChat.suggest.examples', 'noteChat.suggest.shorter'];
 
 const AGENT_NAME: Record<NoteAgent, string> = { 'claude-code': 'Claude Code', codex: 'Codex' };
 
@@ -21,7 +24,7 @@ export function useNoteAgentLabel(models: readonly ModelOption[], defaultModelLa
   const agent = useNotesStore((s) => s.agent);
   const claudeModel = useNotesStore((s) => s.claudeModel) ?? settings.defaultModel;
   const codexModel = useNotesStore((s) => s.codexModel) ?? settings.codexDefaultModel;
-  if (agent === 'codex') return `${AGENT_NAME.codex} · ${codexModel ? codexModelLabel(codexModel) : '기본 모델'}`;
+  if (agent === 'codex') return `${AGENT_NAME.codex} · ${codexModel ? codexModelLabel(codexModel) : t('settings.defaultModel')}`;
   return `${AGENT_NAME['claude-code']} · ${concreteModelLabel(claudeModel || 'default', models, { defaultLabel: defaultModelLabel })}`;
 }
 
@@ -109,6 +112,7 @@ export const NoteChatPanel = memo(function NoteChatPanel({
   onApply,
   onRevert,
 }: NoteChatPanelProps) {
+  useLanguage();
   const settings = useAppStore((s) => s.settings);
   const localAuth = useAppStore((s) => s.localAuth);
   const threads = useAppStore((s) => s.threads);
@@ -165,18 +169,18 @@ export const NoteChatPanel = memo(function NoteChatPanel({
 
   return (
     <div className="hc-notechat" data-testid="note-chat">
-      <ol className="hc-notechat__list" ref={listRef} aria-label="노트 대화" aria-live="polite">
+      <ol className="hc-notechat__list" ref={listRef} aria-label={t('noteChat.aria')} aria-live="polite">
         {empty ? (
           <li className="hc-notechat__empty">
             <p className="hc-notechat__empty-lede">
-              {path ? '이 노트에 대해 자유롭게 이야기하세요.' : '노트를 열면 대화할 수 있습니다.'}
+              {path ? t('noteChat.empty.withNote') : t('noteChat.empty.noNote')}
             </p>
             <p className="hc-notechat__empty-hint">
-              본문에 들어갈 내용은 <b>카드</b>로 받습니다. 카드의 <b>본문에 넣기</b>를 누르면 커서 위치나 해당 섹션에 들어갑니다. 에디터에서 글을 드래그하면 그 부분만 고칠 수 있습니다.
+              {tNodes('noteChat.hint', { card: <b>{t('noteChat.hint.card')}</b>, apply: <b>{t('noteCard.apply')}</b> })}
             </p>
             {path ? (
               <div className="hc-notechat__suggest">
-                {SUGGESTIONS.map((s) => (
+                {SUGGESTIONS.map((key) => t(key)).map((s) => (
                   <button key={s} type="button" className="hc-notechat__chip" onClick={() => composer.current?.setText(s)}>
                     {s}
                   </button>
@@ -210,7 +214,7 @@ export const NoteChatPanel = memo(function NoteChatPanel({
                   onRevert={onRevert}
                 />
               )}
-              {item.status === 'stopped' ? <span className="hc-notechat__tag">중지됨</span> : null}
+              {item.status === 'stopped' ? <span className="hc-notechat__tag">{t('noteChat.stopped')}</span> : null}
             </li>
           ),
         )}
@@ -221,7 +225,7 @@ export const NoteChatPanel = memo(function NoteChatPanel({
             ) : (
               <span className="hc-notechat__thinking">
                 <span className="hc-notechat__dot" aria-hidden />
-                생각 중…
+                {t('noteChat.thinking')}
               </span>
             )}
           </li>
@@ -230,7 +234,7 @@ export const NoteChatPanel = memo(function NoteChatPanel({
       {error ? (
         <div className="hc-notechat__error" role="alert">
           <span>{error}</span>
-          <button type="button" className="hc-notechat__error-close" aria-label="닫기" onClick={onDismissError}>
+          <button type="button" className="hc-notechat__error-close" aria-label={t('common.close')} onClick={onDismissError}>
             ×
           </button>
         </div>
@@ -242,7 +246,7 @@ export const NoteChatPanel = memo(function NoteChatPanel({
           onInterrupt={onStop}
           disabled={!path || (busy && running === null)}
           onSend={onSend}
-          placeholder={path ? '노트에 대해 묻거나, 쓰거나 고쳐 달라고 하세요' : '노트를 먼저 여세요'}
+          placeholder={path ? t('noteChat.placeholder') : t('noteChat.placeholder.noNote')}
           leading={<AgentChip value={agent} onChange={setAgent} localAuth={localAuth} onRecheck={recheckAgents} agents={NOTE_AGENTS} />}
           trailing={trailing}
         />

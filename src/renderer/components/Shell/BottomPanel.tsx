@@ -7,6 +7,7 @@ import { Button } from '../common';
 import { GlyphClose, GlyphRefresh, GlyphTerminal } from '../common/glyphs';
 import { TerminalPane } from '../Terminal/TerminalPane';
 import { getTerminalEntry, resetTerminalEntry } from '../Terminal/terminalRegistry';
+import { t } from '../../../shared/i18n';
 import './Shell.css';
 
 /** Double-click on the top edge restores this height. */
@@ -69,7 +70,7 @@ export function BottomPanel({ open, sessionId, draftProjectId, cwd, homeDir, hei
   return (
     <section
       className={`hc-bottom${open ? ' hc-bottom--open' : ''}`}
-      aria-label="하단 터미널"
+      aria-label={t('terminal.panel')}
       aria-hidden={!open}
       inert={!open}
       data-testid="bottom-panel"
@@ -80,7 +81,7 @@ export function BottomPanel({ open, sessionId, draftProjectId, cwd, homeDir, hei
           className="hc-bottom__handle"
           role="separator"
           aria-orientation="horizontal"
-          aria-label="터미널 높이 조절"
+          aria-label={t('terminal.resize')}
           aria-valuemin={TERMINAL_MIN_HEIGHT}
           aria-valuenow={height}
           tabIndex={0}
@@ -97,7 +98,7 @@ export function BottomPanel({ open, sessionId, draftProjectId, cwd, homeDir, hei
         <header className="hc-bottom__header">
           <span className="hc-bottom__title">
             <GlyphTerminal width={13} height={13} aria-hidden />
-            터미널
+            {t('terminal.title')}
           </span>
           {shownCwd ? (
             <span className="hc-bottom__cwd" title={cwd ?? undefined} data-testid="terminal-cwd">
@@ -105,10 +106,10 @@ export function BottomPanel({ open, sessionId, draftProjectId, cwd, homeDir, hei
             </span>
           ) : null}
           <span className="hc-bottom__spacer" />
-          <Button variant="plain" size="sm" icon aria-label="터미널 재시작" title="터미널 재시작" onClick={session.restart}>
+          <Button variant="plain" size="sm" icon aria-label={t('terminal.restart')} title={t('terminal.restart')} onClick={session.restart}>
             <GlyphRefresh width={13} height={13} />
           </Button>
-          <Button variant="plain" size="sm" icon aria-label="터미널 닫기" title="터미널 닫기 (⌘J)" onClick={onClose}>
+          <Button variant="plain" size="sm" icon aria-label={t('terminal.close')} title={`${t('terminal.close')} (⌘J)`} onClick={onClose}>
             <GlyphClose width={13} height={13} />
           </Button>
         </header>
@@ -228,10 +229,10 @@ function SessionTerminal({ sessionId, session }: { sessionId: string; session: S
       />
       {exited ? (
         <div className="app__terminal-exited" role="status">
-          <span>셸이 종료되었습니다{lastExitCode ? ` (코드 ${lastExitCode})` : ''}</span>
+          <span>{lastExitCode ? t('terminal.exitedCode', { code: lastExitCode }) : t('terminal.exited')}</span>
           <span aria-hidden>·</span>
           <Button variant="secondary" size="sm" onClick={restart}>
-            다시 시작
+            {t('terminal.startAgain')}
           </Button>
         </div>
       ) : null}

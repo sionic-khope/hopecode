@@ -17,6 +17,7 @@ import type { AcpLauncher, ClaudeBinary, QueryFn, ShellEnv, UsagePoller } from '
 import { claudeConfigDirFor } from '../accounts/localDefault';
 import { AcpConnection } from '../acp/acpConnection';
 import { ACP_SESSION_OPEN_TIMEOUT_MS } from '../../shared/constants';
+import { t } from '../../shared/i18n';
 
 export interface NoteAiDeps {
   query: QueryFn;
@@ -47,7 +48,7 @@ export interface NoteAiRun {
 export type NoteAiResult = { ok: true; stopped: boolean } | { ok: false; error: string; stopped: boolean };
 
 /** Error of a Codex note request that tried to use a tool (the streamed text is discarded). */
-export const TOOL_BLOCKED_ERROR = 'Codex가 도구를 쓰려고 해서 요청을 중단했습니다. 받은 내용은 버리고 노트를 그대로 두었습니다.';
+export const toolBlockedError = (): string => t('noteAi.toolBlocked');
 
 const MODEL_VALUE = /^[A-Za-z0-9._\-[\]]{1,200}$/;
 
@@ -86,7 +87,7 @@ async function runClaude(deps: NoteAiDeps, run: NoteAiRun, onDelta: (text: strin
     now: deps.now(),
   });
   const account = decision.type === 'account' ? accounts.find((a) => a.id === decision.accountId) : undefined;
-  if (!account) return { ok: false, stopped: false, error: '지금 쓸 수 있는 Claude 계정이 없습니다' };
+  if (!account) return { ok: false, stopped: false, error: t('noteAi.noClaudeAccount') };
 
   const abort = new AbortController();
   const effort = run.effort && (EFFORT_LEVELS as readonly string[]).includes(run.effort) ? run.effort : null;
@@ -130,7 +131,7 @@ async function runClaude(deps: NoteAiDeps, run: NoteAiRun, onDelta: (text: strin
         onDelta(text.full);
       } else if (m.type === 'result' && m.is_error && !stopped) {
         const errors = (m as { errors?: unknown }).errors;
-        error = Array.isArray(errors) && errors.length > 0 ? String(errors[0]) : '응답을 받지 못했습니다';
+        error = Array.isArray(errors) && errors.length > 0 ? String(errors[0]) : t('noteAi.noResponse');
       }
     }
   } catch (err) {
@@ -142,12 +143,12 @@ async function runClaude(deps: NoteAiDeps, run: NoteAiRun, onDelta: (text: strin
 }
 
 async function runCodex(deps: NoteAiDeps, run: NoteAiRun, onDelta: (text: string) => void, signal: AbortSignal): Promise<NoteAiResult> {
-  if (!deps.codexUsable()) return { ok: false, stopped: false, error: 'Codex가 설치되어 있지 않거나 로그인되어 있지 않습니다' };
+  if (!deps.codexUsable()) return { ok: false, stopped: false, error: t('noteAi.codexUnavailable') };
   const model = run.model && CODEX_MODEL_PATTERN.test(run.model) ? run.model : null;
   const effort = run.effort && (CODEX_EFFORT_LEVELS as readonly string[]).includes(run.effort) ? run.effort : null;
   // `plan` maps to codex-acp's read-only sandbox; `noTools` switches off the tools Codex has config keys for.
   const launch = await deps.codexLauncher.resolve(deps.runDir, { model, effort, permissionMode: 'plan', noTools: { mcpServers: deps.codexMcpServers() } });
-  if (!launch.ok) return { ok: false, stopped: false, error: 'Codex를 시작할 수 없습니다' };
+  if (!launch.ok) return { ok: false, stopped: false, error: t('noteAi.codexStartFailed') };
   let sessionId: string | null = null;
   let stopped = false;
   /** A tool call was seen: the turn is cancelled and nothing more reaches the editor. */
@@ -185,7 +186,7 @@ async function runCodex(deps: NoteAiDeps, run: NoteAiRun, onDelta: (text: string
       },
     },
   });
-  const blocked = (): NoteAiResult => ({ ok: false, stopped: false, error: TOOL_BLOCKED_ERROR });
+  const blocked = (): NoteAiResult => ({ ok: false, stopped: false, error: toolBlockedError() });
   const onAbort = () => {
     stopped = true;
     if (sessionId) conn.notify('session/cancel', { sessionId });

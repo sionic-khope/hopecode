@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { on } from '../api';
 import { useAppStore } from '../store';
+import { t } from '../../shared/i18n';
 
 export interface NotifyEvent {
   kind: 'turn-done' | 'permission' | 'account-switch';
@@ -12,15 +13,20 @@ export interface NotifyEvent {
 
 /** Title + body for one event (pure; the thread title makes the notification recognisable). */
 export function notificationText(event: NotifyEvent, threadTitle: string | null): { title: string; body: string } {
-  const name = threadTitle ?? '스레드';
+  const name = threadTitle ?? t('md.thread');
   switch (event.kind) {
     case 'turn-done':
-      return { title: `${name} · 완료`, body: event.body || '응답이 끝났습니다.' };
+      return { title: `${name} · ${t('notify.done')}`, body: event.body || t('notify.done.body') };
     case 'permission':
-      return { title: `${name} · 권한 요청`, body: event.body };
+      return { title: `${name} · ${t('notify.permission')}`, body: event.body };
     case 'account-switch':
-      return { title: `${name} · 계정 전환`, body: event.body };
+      return { title: `${name} · ${t('notify.accountSwitch')}`, body: event.body };
   }
+}
+
+/** Start of main's account-switch notice (`계정 전환: a → b`), in the language both processes share. */
+function switchNoticePrefix(): string {
+  return t('runner.switched').split('{')[0];
 }
 
 function shouldNotify(): boolean {
@@ -62,12 +68,12 @@ export function useNotifications(): void {
     const offs = [
       on('chat:event', ({ threadId, event }) => {
         if (event.type === 'turn-end' && event.ok) show({ kind: 'turn-done', threadId, body: lastAssistantLine(threadId) });
-        if (event.type === 'item-upsert' && event.item.type === 'notice' && event.item.text.startsWith('계정 전환')) {
+        if (event.type === 'item-upsert' && event.item.type === 'notice' && event.item.text.startsWith(switchNoticePrefix())) {
           show({ kind: 'account-switch', threadId, body: event.item.text });
         }
       }),
       on('permission:request', (req) =>
-        show({ kind: 'permission', threadId: req.threadId, body: req.title ?? `${req.displayName ?? req.toolName} 실행을 허용할까요?` }),
+        show({ kind: 'permission', threadId: req.threadId, body: req.title ?? t('notify.permission.body', { tool: req.displayName ?? req.toolName }) }),
       ),
     ];
     return () => {

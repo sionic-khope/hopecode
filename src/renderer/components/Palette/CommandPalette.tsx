@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { playSfx } from '../../sound/engine';
 import { searchPalette, type PaletteItem, type PaletteMatch } from './paletteSearch';
 import '../common/common.css';
+import { t } from '../../../shared/i18n';
 import './Palette.css';
 
 export interface PaletteCommand extends PaletteItem {
@@ -75,7 +76,7 @@ function SearchGlyph() {
  * ⌘K command palette: a search field over a ranked, keyboard-driven list. Focus lives in the input the whole time
  * (the list is driven through aria-activedescendant), so typing never stops working while you navigate.
  */
-export function CommandPalette({ open, onClose, commands, placeholder = '명령 또는 스레드 검색…' }: CommandPaletteProps): JSX.Element | null {
+export function CommandPalette({ open, onClose, commands, placeholder }: CommandPaletteProps): JSX.Element | null {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -217,7 +218,7 @@ export function CommandPalette({ open, onClose, commands, placeholder = '명령 
           {item.subtitle ? <span className="hc-palette__subtitle">{item.subtitle}</span> : null}
         </span>
         {item.shortcut ? (
-          <span className="hc-palette__keys" aria-label={`단축키 ${item.shortcut}`}>
+          <span className="hc-palette__keys" aria-label={t('palette.shortcut', { keys: item.shortcut })}>
             {shortcutKeys(item.shortcut).map((k, i) => (
               <kbd key={i} className="hc-kbd">
                 {k}
@@ -240,7 +241,7 @@ export function CommandPalette({ open, onClose, commands, placeholder = '명령 
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="명령 팔레트"
+        aria-label={t('menu.commandPalette')}
         className="hc-palette"
         data-testid="command-palette"
         onMouseDown={(e) => {
@@ -257,12 +258,12 @@ export function CommandPalette({ open, onClose, commands, placeholder = '명령 
             className="hc-palette__input"
             type="text"
             role="combobox"
-            aria-label="명령 검색"
+            aria-label={t('palette.searchAria')}
             aria-expanded="true"
             aria-autocomplete="list"
             aria-controls={listId}
             aria-activedescendant={activeIndex >= 0 ? optionId(activeIndex) : undefined}
-            placeholder={placeholder}
+            placeholder={placeholder ?? t('palette.placeholder')}
             value={query}
             autoFocus
             spellCheck={false}
@@ -275,7 +276,7 @@ export function CommandPalette({ open, onClose, commands, placeholder = '명령 
           />
         </div>
 
-        <div ref={listRef} id={listId} role="listbox" aria-label="명령" className="hc-palette__list">
+        <div ref={listRef} id={listId} role="listbox" aria-label={t('slash.aria')} className="hc-palette__list">
           {searching
             ? sections[0]?.rows.map(renderRow)
             : sections.map((section) => {
@@ -292,7 +293,7 @@ export function CommandPalette({ open, onClose, commands, placeholder = '명령 
         </div>
         {count === 0 ? (
           <div className="hc-palette__empty" role="status">
-            일치하는 항목이 없습니다
+            {t('palette.noMatch')}
           </div>
         ) : null}
 
@@ -300,17 +301,17 @@ export function CommandPalette({ open, onClose, commands, placeholder = '명령 
           <span className="hc-palette__hint">
             <kbd className="hc-kbd">↑</kbd>
             <kbd className="hc-kbd">↓</kbd>
-            이동
+            {t('palette.move')}
           </span>
           <span className="hc-palette__dot">·</span>
           <span className="hc-palette__hint">
             <kbd className="hc-kbd">⏎</kbd>
-            실행
+            {t('palette.run')}
           </span>
           <span className="hc-palette__dot">·</span>
           <span className="hc-palette__hint">
             <kbd className="hc-kbd">esc</kbd>
-            닫기
+            {t('common.close')}
           </span>
         </div>
       </div>
