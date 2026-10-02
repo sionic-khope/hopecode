@@ -1,15 +1,17 @@
-// 노트 모드 conversation answers (pure, unit-tested). The AI talks freely; text meant for the note comes in fenced
-// blocks with a `note-*` info string, shown as cards the user puts into the editor:
+// 노트 모드 conversation answers (pure, unit-tested). An answer is a chat reply in markdown; only when the user asked
+// for the note to be written or changed does it carry fenced blocks with a `note-*` info string, which the page writes
+// straight into the editor while they stream (the chat keeps a one-line result for each):
 //
 //   ```note-insert                      -> at the editor caret
 //   ```note-replace section="<heading>" -> the section under that heading
 //   ```note-replace-all                 -> the whole note
 //
-// A card body is markdown and may hold code fences of its own. Those always carry a language (the writing rules ask
-// for it), so inside a card a fence line with an info string opens a nested block and a bare fence closes the
-// innermost open block: the nested one first, then the card. Streaming answers parse the same way; a card whose
+// A block body is markdown and may hold code fences of its own. Those always carry a language (the writing rules ask
+// for it), so inside a block a fence line with an info string opens a nested block and a bare fence closes the
+// innermost open block: the nested one first, then the block. Streaming answers parse the same way; a block whose
 // closing fence has not arrived yet is `complete: false` and fills in as text comes.
 import { getLanguage, translate, type Language } from '../../shared/i18n';
+import type { NoteCardMark } from '../../shared/notes';
 
 export type NoteCardKind = 'insert' | 'replace' | 'replace-all';
 
@@ -102,7 +104,7 @@ export function parseNoteReply(text: string, streaming = false): NoteReplySegmen
   return out;
 }
 
-/** Cards of an answer in order (index = position). */
+/** Note blocks of an answer in order (index = position). An answer without any is a plain chat reply. */
 export function noteCards(text: string, streaming = false): NoteCard[] {
   return parseNoteReply(text, streaming).flatMap((s) => (s.type === 'card' ? [s.card] : []));
 }
@@ -121,11 +123,28 @@ export function cardTargetLabel(card: NoteCard, lang: Language = getLanguage()):
 }
 
 /**
- * Plain text of an answer without its cards (history in the next prompt, summaries). Card markers stay Korean in
- * any UI language: they go back into the Korean note prompt.
+ * Plain text of an answer without its note blocks (history in the next prompt, summaries): each block becomes a short
+ * marker (the note itself holds the text). Markers stay Korean in any UI language: they go back into the Korean prompt.
  */
 export function replyProse(text: string): string {
   return parseNoteReply(text)
-    .map((s) => (s.type === 'text' ? s.text : `[카드: ${cardTargetLabel(s.card, 'ko')} · ${cardTitle(s.card, 'ko')}]`))
+    .map((s) => (s.type === 'text' ? s.text : `[note 블록: ${cardTargetLabel(s.card, 'ko')} · ${cardTitle(s.card, 'ko')}]`))
     .join('\n\n');
+}
+
+/** Lines of a block body (what the result line and the document chip count). */
+export function cardLines(card: Pick<NoteCard, 'body'>): number {
+  return card.body === '' ? 0 : card.body.split('\n').length;
+}
+
+/**
+ * What the result line of a block says. `mark` is what happened to it (absent: an answer saved before blocks were
+ * written automatically, or one still streaming).
+ */
+export type NoteCardStatus = 'writing' | 'applied' | 'reverted' | 'skipped' | 'unapplied';
+
+export function cardStatus(mark: NoteCardMark | undefined, streaming: boolean): NoteCardStatus {
+  if (mark) return mark.state;
+  if (streaming) return 'writing';
+  return 'unapplied';
 }

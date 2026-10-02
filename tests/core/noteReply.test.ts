@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { cardTargetLabel, cardTitle, noteCards, parseNoteReply, replyProse } from '../../src/core/notes/noteReply';
-import { findSection, fitSelection, normalizeHeading, planCard, revertCard, type TextChange } from '../../src/core/notes/noteEdit';
+import { cardLines, cardStatus, cardTargetLabel, cardTitle, noteCards, parseNoteReply, replyProse } from '../../src/core/notes/noteReply';
+import {
+  cardTarget,
+  findSection,
+  fitSelection,
+  locateApplied,
+  normalizeHeading,
+  planCard,
+  revertCard,
+  startStream,
+  streamTo,
+  type TextChange,
+} from '../../src/core/notes/noteEdit';
 import {
   CONTEXT_BEFORE_CHARS,
   HISTORY_ITEM_MAX_CHARS,
@@ -12,6 +23,7 @@ import {
   buildNoteSystemPrompt,
 } from '../../src/core/notes/notePrompt';
 import { noteFixtureAnswer, parseNotePrompt } from '../../src/main/fixtures/noteFixture';
+import type { NoteCardMark } from '../../src/shared/notes';
 
 const apply = (doc: string, c: TextChange) => doc.slice(0, c.from) + c.insert + doc.slice(c.to);
 
@@ -94,7 +106,37 @@ describe('parseNoteReply', () => {
     expect(cardTargetLabel({ kind: 'insert', section: null, body: '', complete: true })).toBe('커서 위치에 삽입');
     expect(cardTargetLabel({ kind: 'replace', section: '2. 구조', body: '', complete: true })).toBe("섹션 '2. 구조' 교체");
     expect(cardTargetLabel({ kind: 'replace-all', section: null, body: '', complete: true })).toBe('문서 전체 교체');
-    expect(replyProse('앞.\n```note-insert\n# T\nb\n```\n뒤.')).toBe('앞.\n\n[카드: 커서 위치에 삽입 · T]\n\n뒤.');
+    expect(replyProse('앞.\n```note-insert\n# T\nb\n```\n뒤.')).toBe('앞.\n\n[note 블록: 커서 위치에 삽입 · T]\n\n뒤.');
+    expect(cardLines(card)).toBe(1);
+    expect(cardLines({ body: '' })).toBe(0);
+  });
+
+  it('an answer without note blocks is a chat reply: all of it is text (headings, tables, code included)', () => {
+    const answer = '## RL 커리큘럼\n\n| 주차 | 주제 |\n| --- | --- |\n| 1 | MDP |\n\n```python\nenv.reset()\n```\n';
+    expect(noteCards(answer)).toEqual([]);
+    expect(parseNoteReply(answer)).toEqual([{ type: 'text', text: answer.trimEnd() }]);
+    // Streaming: a chat answer is text from its first characters on.
+    expect(parseNoteReply('## RL', true)).toEqual([{ type: 'text', text: '## RL' }]);
+  });
+
+  it('an answer with note blocks lists them in order for the editor (the sentence around them stays chat)', () => {
+    const answer = ['작성했습니다.', '', '```note-insert', '# A', '```', '```note-replace section="2. 구조"', '### 2. 구조', '', 'x', '```'].join('\n');
+    expect(noteCards(answer).map((c) => [c.kind, c.section, c.complete])).toEqual([
+      ['insert', null, true],
+      ['replace', '2. 구조', true],
+    ]);
+    expect(parseNoteReply(answer)[0]).toEqual({ type: 'text', text: '작성했습니다.' });
+  });
+
+  it('result status: a mark wins; no mark is "writing" while streaming, else an earlier unapplied card', () => {
+    const applied: NoteCardMark = { state: 'applied', at: 0, inserted: 'x', original: '' };
+    expect(cardStatus(applied, false)).toBe('applied');
+    expect(cardStatus(applied, true)).toBe('applied');
+    expect(cardStatus({ state: 'reverted' }, false)).toBe('reverted');
+    expect(cardStatus({ state: 'skipped', reason: '없음' }, false)).toBe('skipped');
+    expect(cardStatus(undefined, true)).toBe('writing');
+    // Answers saved before blocks were written automatically: shown as not written, never as a button to insert.
+    expect(cardStatus(undefined, false)).toBe('unapplied');
   });
 });
 
@@ -172,11 +214,55 @@ describe('planCard / revertCard', () => {
   });
 });
 
+describe('cardTarget / streamTo / locateApplied', () => {
+  it('a block knows its place from its opening line: caret, named section, everything; an empty note takes it whole', () => {
+    expect(cardTarget(NOTE, { kind: 'insert', section: null }, 5)).toEqual({ ok: true, range: { from: 5, to: 5 }, mode: 'insert' });
+    const sec = cardTarget(NOTE, { kind: 'replace', section: '2. 구조' }, 0);
+    expect(sec.ok && sec.mode).toBe('section');
+    expect(sec.ok && NOTE.slice(sec.range.from, sec.range.to).startsWith('### 2. 구조\n')).toBe(true);
+    expect(cardTarget(NOTE, { kind: 'replace-all', section: null }, 3)).toEqual({ ok: true, range: { from: 0, to: NOTE.length }, mode: 'all' });
+    expect(cardTarget('  \n', { kind: 'insert', section: null }, 1)).toEqual({ ok: true, range: { from: 0, to: 3 }, mode: 'all' });
+    expect(cardTarget(NOTE, { kind: 'replace', section: '없는 섹션' }, 0)).toEqual({ ok: false, error: "'없는 섹션' 섹션을 노트에서 찾을 수 없습니다" });
+  });
+
+  it('streamTo appends growing text, rewrites a re-read body, and puts the original back for an empty one', () => {
+    const doc = 'aa OLD bb';
+    let state = startStream({ from: 3, to: 6 }, doc);
+    let shown = doc;
+    const step = (full: string) => {
+      const r = streamTo(state, full);
+      if (r.change) shown = apply(shown, r.change);
+      state = r.state;
+      return r.change;
+    };
+    step('N');
+    expect(shown).toBe('aa N bb');
+    step('NEW');
+    expect(shown).toBe('aa NEW bb');
+    expect(step('NEW')).toBeNull();
+    step('NOW');
+    expect(shown).toBe('aa NOW bb');
+    step('');
+    expect(shown).toBe('aa OLD bb');
+    step('X');
+    expect(shown).toBe('aa X bb');
+  });
+
+  it('locateApplied finds written text where it landed, or at its only occurrence; null once edited', () => {
+    const doc = '머리\n본문 A\n끝';
+    const at = doc.indexOf('본문 A');
+    expect(locateApplied(doc, { at, inserted: '본문 A' })).toEqual({ from: at, to: at + 4 });
+    expect(locateApplied(`앞${doc}`, { at, inserted: '본문 A' })).toEqual({ from: at + 1, to: at + 5 });
+    expect(locateApplied('본문 A 본문 A', { at: 99, inserted: '본문 A' })).toBeNull();
+    expect(locateApplied(doc, { at, inserted: '' })).toBeNull();
+  });
+});
+
 describe('note prompts', () => {
   const refs = Array.from({ length: 4 }, (_, i) => ({ path: `a/${i}.md`, excerpt: `ref ${i}` }));
 
   it('chat: reply rules, section list, the note, capped history and the request last', () => {
-    const history = Array.from({ length: 12 }, (_, i) => ({ role: i % 2 ? ('assistant' as const) : ('user' as const), text: `turn ${i} ${'x'.repeat(i === 11 ? 3000 : 1)}` }));
+    const history = Array.from({ length: 12 }, (_, i) => ({ role: i % 2 ? ('assistant' as const) : ('user' as const), text: `turn ${i} ${'x'.repeat(i === 11 ? HISTORY_ITEM_MAX_CHARS + 500 : 1)}` }));
     const p = buildNoteChatPrompt({ request: '2번 섹션 예시 더', notePath: 'a/x.md', document: NOTE, history, styleRefs: refs });
     expect(p.startsWith('## 작업 (대화)')).toBe(true);
     for (const rule of NOTE_REPLY_RULES) expect(p).toContain(rule);
@@ -209,6 +295,20 @@ describe('note prompts', () => {
     expect(clipped.length).toBeLessThan(CONTEXT_BEFORE_CHARS + 10_000);
   });
 
+  it('reply rules: chat by default, note blocks only when asked to write or change the note', () => {
+    const rules = NOTE_REPLY_RULES.join('\n');
+    expect(rules).toContain('기본은 채팅 답이다');
+    expect(rules).toContain('사용자가 노트에 쓰거나 고치라고 명시했을 때만 note 블록을 쓴다');
+    expect(rules).toContain('커리큘럼이나 목차 요청도 "노트에 넣어 달라", "작성해 달라"는 말이 없으면 채팅 답이다.');
+    expect(rules).toContain('노트가 비어 있어도 자동으로 쓰지 않는다.');
+    expect(rules).toContain('note 블록과 함께 쓰는 채팅 설명은 무엇을 했는지 1~2줄만 쓴다.');
+    expect(rules).toContain('```note-replace section="<heading 텍스트>"');
+    expect(rules).toContain('```note-replace-all');
+    expect(rules).not.toContain('카드');
+    // A whole chat answer (a curriculum) fits in the history, so "이거 노트로 작성해 줘" can point back to it.
+    expect(HISTORY_ITEM_MAX_CHARS).toBeGreaterThanOrEqual(4_000);
+  });
+
   it('the system prompt keeps the note rules and forbids tools', () => {
     const sys = buildNoteSystemPrompt();
     expect(sys).toContain('도구를 쓰지 않는다');
@@ -221,9 +321,19 @@ describe('note prompts', () => {
     expect(parseNotePrompt(inline).kind).toBe('inline-edit');
     expect(noteFixtureAnswer(inline)).toBe('FIXTURE-INLINE: 짧게 요청대로 고친 문장입니다.');
     const chat = (request: string) => noteFixtureAnswer(buildNoteChatPrompt({ request, notePath: 'a.md', document: NOTE, history: [], styleRefs: [] }));
-    expect(noteCards(chat('Redis 분산 락'))[0]).toMatchObject({ kind: 'insert', complete: true });
-    expect(noteCards(chat('2번 섹션 예시 더'))[0]).toMatchObject({ kind: 'replace', section: '2. 구조' });
-    expect(noteCards(chat('2번 섹션 예시 더'))[0].body).toContain('```java\nint example = 1;\n```');
+    // No ask to write: a chat answer with a heading and a table, no block.
+    const plain = chat('RL 6개 커리큘럼 짜 주세요');
+    expect(noteCards(plain)).toHaveLength(0);
+    expect(plain).toContain('## RL 6개 커리큘럼 짜 주세요');
+    expect(plain).toContain('| 주차 | 주제 | 목표 |');
+    expect(noteCards(chat('Redis 분산 락 노트로 작성해 줘'))[0]).toMatchObject({ kind: 'insert', complete: true });
+    expect(noteCards(chat('2번 섹션 예시 더 넣어 줘'))[0]).toMatchObject({ kind: 'replace', section: '2. 구조' });
+    expect(noteCards(chat('2번 섹션 예시 더 넣어 줘'))[0].body).toContain('```java\nint example = 1;\n```');
+    // "이거 노트로 작성해 줘" writes the last chat answer of the conversation.
+    const back = noteFixtureAnswer(
+      buildNoteChatPrompt({ request: '이거 노트로 작성해 줘', notePath: 'a.md', document: '', history: [{ role: 'user', text: 'RL 커리큘럼' }, { role: 'assistant', text: plain }], styleRefs: [] }),
+    );
+    expect(noteCards(back)[0].body).toContain('| 6 | Actor-Critic과 PPO | 안정적인 policy 학습 |');
     expect(noteCards(chat('전체를 짧게'))[0].kind).toBe('replace-all');
     expect(noteCards(chat('[chat] 왜 필요해'))).toHaveLength(0);
     const missing = noteCards(chat("'없는 섹션' 섹션 고쳐"))[0];

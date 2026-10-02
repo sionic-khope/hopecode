@@ -1,9 +1,11 @@
 // 노트 모드: nav entry (the sidebar folds away, "← 돌아가기" / Esc bring it back), vault via the dialog seam (a temp git
 // repo, never a real notes folder), editor | conversation half and half with a draggable middle, the file drawer from
 // the breadcrumb (new note, search, rename, trash) and ⌘P, autosave, Live Preview, the inline prompt over a dragged
-// selection (only the selection changes; ⌘Z puts it back), conversation turns that come back as cards ("본문에 넣기",
-// 되돌리기, a section replaced by heading, a missing section refused), a Codex tool call that ends the turn with
-// nothing kept, and a commit of the changed notes after the git opt-in (no push). Fixture mode only, window hidden.
+// selection (only the selection changes; ⌘Z puts it back), conversation turns answered in the chat (rendered in full,
+// no card) or — when asked to write — streamed straight into the editor with a result line (보기, 되돌리기, ⌘Z, a section
+// replaced by heading, a missing section refused), the document viewer, drag-select and copy in the chat, a Codex tool
+// call that ends the turn with nothing kept, and a commit of the changed notes after the git opt-in (no push). Fixture
+// mode only, window hidden.
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -64,6 +66,25 @@ async function ask(page: Page, text: string): Promise<Locator> {
   await expect(chat.getByTestId('note-chat-assistant')).toHaveCount(before + 1);
   await expect(chat.getByTestId('note-chat-running')).toHaveCount(0);
   return chat.getByTestId('note-chat-assistant').last();
+}
+
+/** Drags across all the text of `target` (a real pointer drag); returns what the page selected. */
+async function dragOver(page: Page, target: Locator): Promise<string> {
+  await target.scrollIntoViewIfNeeded();
+  const box = await target.evaluate((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const rects = [...range.getClientRects()].filter((r) => r.width > 0);
+    const first = rects[0];
+    const last = rects[rects.length - 1];
+    return { x0: first.left + 1, y0: first.top + first.height / 2, x1: last.right - 1, y1: last.top + last.height / 2 };
+  });
+  await page.mouse.move(box.x0, box.y0);
+  await page.mouse.down();
+  await page.mouse.move((box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2, { steps: 4 });
+  await page.mouse.move(box.x1, box.y1, { steps: 4 });
+  await page.mouse.up();
+  return page.evaluate(() => window.getSelection()?.toString() ?? '');
 }
 
 async function waitSaved(page: Page): Promise<void> {
@@ -209,63 +230,179 @@ test('Live Preview renders the heading line without its marks; the caret line sh
   await expect(page.locator('.cm-note-mark')).toHaveCount(0);
 });
 
-test('a conversation turn comes back as a card; 본문에 넣기 puts it at the caret, 되돌리기 takes it out', async () => {
+test('a question is answered in the chat: the whole answer renders as it streams, no card, the editor untouched', async () => {
   const { page } = run;
+  const chat = page.getByTestId('note-chat');
   await page.locator('.cm-content').click();
   await page.keyboard.press('Meta+ArrowDown');
-  const answer = await ask(page, 'Redis 분산 락');
-  // The real answer is shown (its prose and the card), not a one-line summary.
-  await expect(answer).toContainText('Redis 분산 락 노트 초안을 만들었습니다.');
-  const card = answer.getByTestId('note-card');
-  await expect(card).toHaveCount(1);
-  await expect(card).toContainText('Redis 분산 락');
-  await expect(card.getByTestId('note-card-target')).toHaveText('→ 커서 위치에 삽입');
-  // Nothing reached the editor before the user chose to.
-  await expect(page.locator('.cm-content')).not.toContainText('FIXTURE가 스트리밍으로');
-  await screenshot(page, 'v18-notes-chat-card', DIR);
+  const saved = note('Back-End/redis-lock.md');
+  const shown = await page.locator('.cm-content').innerText();
 
-  await card.getByTestId('note-card-apply').click();
-  await expect(card.getByTestId('note-card-state')).toHaveText('적용됨');
-  await expect(page.locator('.cm-content')).toContainText('FIXTURE가 스트리밍으로 쓴 본문입니다.');
+  // While it streams, the answer is already markdown in the conversation (not a card filling in).
+  await chat.locator('.hc-composer__textarea').fill('[slow] RL 6개 커리큘럼 짜 주세요. 일단 커리큘럼만');
+  await chat.getByRole('button', { name: '보내기' }).click();
+  const running = chat.getByTestId('note-chat-running');
+  await expect(running.locator('.hc-md h2')).toHaveText('[slow] RL 6개 커리큘럼 짜 주세요. 일단 커리큘럼만');
+  await expect(running.getByTestId('note-result')).toHaveCount(0);
+  await expect(running).toHaveCount(0, { timeout: 10_000 });
+
+  const answer = chat.getByTestId('note-chat-assistant').last();
+  await expect(answer.locator('.hc-md h2')).toHaveText('[slow] RL 6개 커리큘럼 짜 주세요. 일단 커리큘럼만');
+  await expect(answer.locator('.hc-md table tr')).toHaveCount(7);
+  await expect(answer.locator('.hc-md table')).toContainText('Actor-Critic과 PPO');
+  await expect(answer.getByTestId('note-result')).toHaveCount(0);
+  await expect(answer.getByTestId('note-doc-chip')).toHaveCount(0);
+  await expect(answer.getByRole('button', { name: /본문에 넣기|펼치기/ })).toHaveCount(0);
+  expect(await page.locator('.cm-content').innerText()).toBe(shown);
+  expect(note('Back-End/redis-lock.md')).toBe(saved);
+  await page.mouse.move(5, 700);
+  await screenshot(page, 'v23-notes-chat', DIR);
+});
+
+test('"노트로 작성해 줘" streams straight into the editor; the result line shows, reveals and reverts it; ⌘Z undoes it in one step', async () => {
+  const { page } = run;
+  const chat = page.getByTestId('note-chat');
+  const editor = page.locator('.cm-content');
+  const original = '# 분산 락\n\n첫 본문이다.\n\n## 둘째\n\n둘째 본문.\n';
+  expect(note('Back-End/redis-lock.md')).toBe(original);
+  await editor.click();
+  await page.keyboard.press('Meta+ArrowDown');
+
+  // Mid-stream: the range being written is marked in the editor and the result line says so.
+  await chat.locator('.hc-composer__textarea').fill('[slow] Redis 분산 락 노트로 작성해 줘');
+  await chat.getByRole('button', { name: '보내기' }).click();
+  const running = chat.getByTestId('note-chat-running');
+  await expect(running.getByTestId('note-result')).toHaveAttribute('data-status', 'writing');
+  await expect(running.getByTestId('note-result-status')).toHaveText('문서에 쓰는 중');
+  await expect(page.locator('.cm-note-mark--busy').first()).toBeVisible();
+  await expect(editor).toContainText('[slow] Redis 분산 락 노트로 작성해 줘');
+  await expect(running).toHaveCount(0, { timeout: 10_000 });
+
+  const answer = chat.getByTestId('note-chat-assistant').last();
+  const result = answer.getByTestId('note-result');
+  await expect(result).toHaveCount(1);
+  await expect(result.getByTestId('note-result-status')).toHaveText('문서에 반영함');
+  await expect(result.getByTestId('note-result-target')).toHaveText('커서 위치에 삽입');
+  await expect(result.getByTestId('note-doc-chip')).toContainText('[slow] Redis 분산 락 노트로 작성해 줘');
+  await expect(result.getByTestId('note-doc-chip')).toContainText('줄');
+  // The chat keeps a one-line sentence and the result, never the note text itself.
+  await expect(answer).toContainText('노트 초안을 만들었습니다.');
+  await expect(answer).not.toContainText('FIXTURE가 스트리밍으로 쓴 본문입니다.');
+  await expect(answer.getByRole('button', { name: '본문에 넣기' })).toHaveCount(0);
+  await expect(editor).toContainText('FIXTURE가 스트리밍으로 쓴 본문입니다.');
+  await expect(page.locator('.cm-note-mark--busy')).toHaveCount(0);
   await waitSaved(page);
   let text = note('Back-End/redis-lock.md');
-  expect(text.startsWith('# 분산 락\n\n첫 본문이다.\n\n## 둘째\n\n둘째 본문.\n\n# Redis 분산 락\n')).toBe(true);
+  expect(text.startsWith(`${original}\n# [slow] Redis 분산 락 노트로 작성해 줘\n`)).toBe(true);
   expect(text).toContain('```java\nint answer = 42;\n```');
+  await page.mouse.move(5, 700);
+  await screenshot(page, 'v23-notes-write', DIR);
 
-  await card.getByTestId('note-card-revert').click();
-  await expect(card.getByTestId('note-card-apply')).toBeVisible();
+  // 보기: the editor jumps to the written range and marks it.
+  await result.getByTestId('note-result-view').click();
+  await expect(page.locator('.cm-note-mark--flash').first()).toBeVisible();
+  await expect(page.locator('.cm-line').filter({ has: page.locator('.cm-note-mark--flash') }).first()).toContainText('Redis 분산 락 노트로 작성해 줘');
+
+  // 되돌리기 takes it out.
+  await result.getByTestId('note-result-revert').click();
+  await expect(result.getByTestId('note-result-status')).toHaveText('되돌림');
+  await expect(result.getByTestId('note-result-revert')).toHaveCount(0);
   await waitSaved(page);
-  expect(note('Back-End/redis-lock.md')).toBe('# 분산 락\n\n첫 본문이다.\n\n## 둘째\n\n둘째 본문.\n');
+  expect(note('Back-End/redis-lock.md')).toBe(original);
 
-  await page.locator('.cm-content').click();
+  // Written again, then one ⌘Z in the editor puts the note back; ⌘⇧Z brings it again.
+  await editor.click();
   await page.keyboard.press('Meta+ArrowDown');
-  await card.getByTestId('note-card-apply').click();
-  await expect(card.getByTestId('note-card-state')).toHaveText('적용됨');
+  const again = await ask(page, 'Redis 분산 락 노트로 작성해 줘');
+  await expect(again.getByTestId('note-result-status')).toHaveText('문서에 반영함');
   await waitSaved(page);
   text = note('Back-End/redis-lock.md');
   expect(text).toContain('### 2. 정리\n\n- fixture 정리입니다.\n');
+  await page.locator('.cm-line', { hasText: '둘째 본문.' }).click();
+  await page.keyboard.press('Meta+z');
+  await expect(editor).not.toContainText('FIXTURE가 스트리밍으로');
+  await waitSaved(page);
+  expect(note('Back-End/redis-lock.md')).toBe(original);
+  await page.keyboard.press('Meta+Shift+z');
+  await expect(editor).toContainText('FIXTURE가 스트리밍으로 쓴 본문입니다.');
+  await waitSaved(page);
+  expect(note('Back-End/redis-lock.md')).toBe(text);
 });
 
-test('asking from the conversation to change a section gives a replace card that swaps only that section', async () => {
+test('a document chip opens the viewer: rendered markdown, MD copy, selectable text, Esc closes it (the page stays)', async () => {
+  const { app, page } = run;
+  const chat = page.getByTestId('note-chat');
+  const chip = chat.getByTestId('note-chat-assistant').last().getByTestId('note-doc-chip');
+  await chip.click();
+  const viewer = page.getByTestId('note-doc-viewer');
+  await expect(viewer).toBeVisible();
+  await expect(viewer.getByTestId('note-doc-title')).toHaveText('Redis 분산 락 노트로 작성해 줘');
+  await expect(viewer.locator('.hc-md h1')).toHaveText('Redis 분산 락 노트로 작성해 줘');
+  await expect(viewer.locator('.hc-md h3').first()).toHaveText('1. 핵심 개념');
+  await expect(viewer.locator('.hc-md pre')).toContainText('int answer = 42;');
+  await page.mouse.move(5, 700);
+  await screenshot(page, 'v23-notes-viewer', DIR);
+
+  await app.evaluate(({ clipboard }) => clipboard.writeText(''));
+  await viewer.getByRole('button', { name: '마크다운 복사' }).click();
+  await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toContain('# Redis 분산 락 노트로 작성해 줘\n');
+  expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toContain('```java\nint answer = 42;\n```');
+
+  const selected = await dragOver(page, viewer.locator('.hc-md p').first());
+  expect(selected).toContain('공부하기 위한 노트입니다');
+
+  await page.keyboard.press('Escape');
+  await expect(viewer).toHaveCount(0);
+  await expect(page.getByTestId('notes-page')).toBeVisible();
+  await chip.click();
+  await expect(viewer).toBeVisible();
+  await viewer.getByTestId('note-doc-close').click();
+  await expect(viewer).toHaveCount(0);
+});
+
+test('"이거 노트로 작성해 줘" writes the chat answer before it into the note', async () => {
   const { page } = run;
-  const answer = await ask(page, '2번 섹션 예시 더 넣어 줘');
-  const card = answer.getByTestId('note-card');
-  await expect(card.getByTestId('note-card-target')).toHaveText("→ 섹션 '2. 정리' 교체");
-  await card.getByTestId('note-card-apply').click();
-  await expect(card.getByTestId('note-card-state')).toHaveText('적용됨');
+  const saved = note('Back-End/redis-lock.md');
+  await page.locator('.cm-content').click();
+  await page.keyboard.press('Meta+ArrowDown');
+  const answer = await ask(page, 'RL 커리큘럼 짜 줘');
+  await expect(answer.locator('.hc-md table tr')).toHaveCount(7);
+  const written = await ask(page, '이거 노트로 작성해 줘');
+  await expect(written.getByTestId('note-result-status')).toHaveText('문서에 반영함');
   await waitSaved(page);
   const text = note('Back-End/redis-lock.md');
-  expect(text).toContain('### 2. 정리\n\nFIXTURE-SECTION: 2번 섹션 예시 더 넣어 줘 요청대로 다시 쓴 섹션입니다.\n\n```java\nint example = 1;\n```\n');
+  expect(text.startsWith(saved.trimEnd())).toBe(true);
+  expect(text).toContain('# FIXTURE-NOTE');
+  expect(text).toContain('| 6 | Actor-Critic과 PPO | 안정적인 policy 학습 |');
+  // Taken back out for the tests after this one.
+  await written.getByTestId('note-result-revert').click();
+  await waitSaved(page);
+  expect(note('Back-End/redis-lock.md')).toBe(saved);
+});
+
+test('"2번 섹션 늘려 줘" replaces only that section; a section the note lacks is not written and the chat says why', async () => {
+  const { page } = run;
+  const before = note('Back-End/redis-lock.md');
+  const answer = await ask(page, '2번 섹션 예시 더 넣어서 늘려 줘');
+  const result = answer.getByTestId('note-result');
+  await expect(result.getByTestId('note-result-target')).toHaveText("섹션 '2. 정리' 교체");
+  await expect(result.getByTestId('note-result-status')).toHaveText('문서에 반영함');
+  await waitSaved(page);
+  const text = note('Back-End/redis-lock.md');
+  expect(text).toContain('### 2. 정리\n\nFIXTURE-SECTION: 2번 섹션 예시 더 넣어서 늘려 줘 요청대로 다시 쓴 섹션입니다.\n\n```java\nint example = 1;\n```\n');
   expect(text).not.toContain('- fixture 정리입니다.');
   expect(text).toContain('### 1. 핵심 개념');
-  expect(text.startsWith('# 분산 락\n\n첫 본문이다.')).toBe(true);
+  expect(text.slice(0, text.indexOf('### 2. 정리'))).toBe(before.slice(0, before.indexOf('### 2. 정리')));
 
-  // A section the note does not have: the card says so and cannot be applied.
-  const missing = (await ask(page, "'없는 섹션' 섹션 고쳐 줘")).getByTestId('note-card');
-  await expect(missing.getByTestId('note-card-error')).toContainText('찾을 수 없습니다');
-  await expect(missing.getByTestId('note-card-apply')).toBeDisabled();
+  // A section the note does not have: nothing is written, the result line says why.
+  const missing = (await ask(page, "'없는 섹션' 섹션 고쳐 줘")).getByTestId('note-result');
+  await expect(missing).toHaveAttribute('data-status', 'skipped');
+  await expect(missing.getByTestId('note-result-status')).toHaveText('반영하지 않음');
+  await expect(missing.getByTestId('note-result-error')).toContainText('찾을 수 없습니다');
+  await expect(missing.getByTestId('note-result-revert')).toHaveCount(0);
   expect(note('Back-End/redis-lock.md')).toBe(text);
-  // The conversation survives reopening the note (answers and card states).
+
+  // The conversation survives reopening the note (answers and their result lines).
   await page.keyboard.press('Meta+p');
   await page.getByTestId('note-quickopen-input').fill('intro');
   await page.getByTestId('note-quickopen-input').press('Enter');
@@ -274,7 +411,36 @@ test('asking from the conversation to change a section gives a replace card that
   await page.getByTestId('note-quickopen-input').fill('redis');
   await page.getByTestId('note-quickopen-input').press('Enter');
   await expect(page.getByTestId('notes-open-path')).toHaveText('Back-End/redis-lock.md');
-  await expect(page.getByTestId('note-chat').getByTestId('note-card-state')).toHaveCount(2);
+  const chat = page.getByTestId('note-chat');
+  await expect(chat.locator('[data-testid="note-result"][data-status="applied"]')).toHaveCount(2);
+  await expect(chat.locator('[data-testid="note-result"][data-status="reverted"]')).toHaveCount(2);
+  await expect(chat.locator('[data-testid="note-result"][data-status="skipped"]')).toHaveCount(1);
+  await expect(chat.getByRole('button', { name: '본문에 넣기' })).toHaveCount(0);
+});
+
+test('note chat text selects by dragging (user line and answer), with no click sound; the user line has an MD copy chip', async () => {
+  const { app, page } = run;
+  const chat = page.getByTestId('note-chat');
+  await page.evaluate(() => {
+    (window as unknown as { __hcSoundLog?: unknown[] }).__hcSoundLog = [];
+  });
+  const user = chat.getByTestId('note-chat-user').filter({ hasText: 'RL 커리큘럼 짜 줘' }).first();
+  expect((await dragOver(page, user.locator('.hc-notechat__bubble'))).trim()).toBe('RL 커리큘럼 짜 줘');
+  const answer = chat.getByTestId('note-chat-assistant').filter({ hasText: 'FIXTURE-CHAT: RL 커리큘럼 짜 줘' }).first();
+  expect(await dragOver(page, answer.locator('.hc-md p').first())).toContain('FIXTURE-CHAT: RL 커리큘럼 짜 줘');
+  await app.evaluate(({ clipboard }) => clipboard.writeText(''));
+  await page.keyboard.press('Meta+c');
+  await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toContain('FIXTURE-CHAT: RL 커리큘럼 짜 줘');
+  const log = await page.evaluate(() => (window as unknown as { __hcSoundLog?: { kind: string }[] }).__hcSoundLog ?? []);
+  expect(log.filter((e) => e.kind === 'select')).toEqual([]);
+
+  await user.hover();
+  const copy = user.getByRole('button', { name: '메시지 복사' });
+  await expect(copy).toBeVisible();
+  await expect(copy).toHaveText('MD');
+  await app.evaluate(({ clipboard }) => clipboard.writeText(''));
+  await copy.click();
+  await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toBe('RL 커리큘럼 짜 줘');
 });
 
 test('dragging over text opens the inline prompt; only the selection is replaced and ⌘Z restores it', async () => {
@@ -310,7 +476,7 @@ test('dragging over text opens the inline prompt; only the selection is replaced
   await expect(page.getByTestId('notes-page')).toBeVisible();
 });
 
-test('Codex: a tool call ends the turn with nothing kept; a normal turn gives a whole-note card', async () => {
+test('Codex: a tool call ends the turn with nothing kept (what streamed into the editor goes back); a normal turn rewrites the note', async () => {
   const { page } = run;
   const chat = page.getByTestId('note-chat');
   await chat.locator('.hc-chip--agent').click();
@@ -321,14 +487,24 @@ test('Codex: a tool call ends the turn with nothing kept; a normal turn gives a 
   const failed = await ask(page, '[tool] 전체 정리');
   await expect(chat.locator('.hc-notechat__error')).toContainText('도구를 쓰려고 해서');
   await expect(failed).toContainText('도구를 쓰려고 해서');
-  await expect(failed.getByTestId('note-card')).toHaveCount(0);
+  await expect(failed.getByTestId('note-result')).toHaveCount(0);
   await expect(page.getByTestId('notes-page')).not.toContainText('FAKE-SECRET-KEY');
   await expect(page.getByTestId('notes-page')).not.toContainText('CODEX-REWRITE');
+  await expect(page.locator('.cm-content')).toContainText('첫 본문이다.');
   expect(note('Back-End/redis-lock.md')).toBe(saved);
 
+  // A question gets a chat answer from Codex too.
+  const plain = await ask(page, 'RL 순서 알려 줘');
+  await expect(plain.locator('.hc-md table')).toContainText('PPO');
+  await expect(plain.getByTestId('note-result')).toHaveCount(0);
+
   const ok = await ask(page, '전체 정리');
-  await expect(ok.getByTestId('note-card-target')).toHaveText('→ 문서 전체 교체');
-  await expect(ok.getByTestId('note-card')).toContainText('CODEX-REWRITE: 전체 정리');
+  await expect(ok.getByTestId('note-result-target')).toHaveText('문서 전체 교체');
+  await expect(page.locator('.cm-content')).toContainText('CODEX-REWRITE: 전체 정리');
+  await waitSaved(page);
+  expect(note('Back-End/redis-lock.md')).toContain('CODEX-REWRITE: 전체 정리');
+  await ok.getByTestId('note-result-revert').click();
+  await waitSaved(page);
   // Back to Claude for the rest of the run.
   await chat.locator('.hc-chip--agent').click();
   await page.getByRole('menu', { name: '에이전트' }).getByRole('menuitemradio', { name: /^Claude Code/ }).click();

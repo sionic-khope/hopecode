@@ -5,8 +5,8 @@ import { isolateHistory } from '@codemirror/commands';
 import type { AppSettings, ModelOption } from '../../../shared/types';
 import type { NoteCardMark, NoteChatItem, NoteEntry, NoteGitStatus } from '../../../shared/notes';
 import { cleanNoteOutput } from '../../../core/notes/notePrompt';
-import { findSection, fitAnswer, fitSelection, planCard, revertCard, type TextChange, type TextRange } from '../../../core/notes/noteEdit';
-import type { NoteCard as NoteCardData } from '../../../core/notes/noteReply';
+import { cardTarget, fitAnswer, fitSelection, locateApplied, revertCard, type FitMode, type TextChange, type TextRange } from '../../../core/notes/noteEdit';
+import { noteCards } from '../../../core/notes/noteReply';
 import { baseName, parentOf } from '../../../core/notes/notePaths';
 import { tildePath } from '../../../core/format';
 import { invoke, on } from '../../api';
@@ -30,7 +30,7 @@ import './Notes.css';
 
 /** Autosave delay after the last keystroke. */
 export const NOTE_AUTOSAVE_MS = 800;
-/** How long a card that just landed stays marked. */
+/** How long text that just landed stays marked. */
 const FLASH_MS = 1400;
 /** Open overlays an Escape belongs to (same list as the sound hook): they close first, the page stays. */
 const OVERLAY = '.hc-popover, .hc-modal, .hc-palette, [role="menu"], [role="dialog"]';
@@ -48,9 +48,36 @@ function isUnder(path: string, dir: string): boolean {
   return path === dir || path.startsWith(`${dir}/`);
 }
 
-type ActiveRun =
-  | { requestId: string; kind: 'chat'; path: string; text: string }
-  | { requestId: string; kind: 'inline'; path: string; stream: EditorStream; atCaret: boolean };
+/** A note block of the running conversation turn, written into the editor while it streams. */
+interface ChatBlock {
+  stream: EditorStream | null;
+  mode: FitMode;
+  /** Written (or skipped): nothing more happens to it. */
+  done: boolean;
+}
+
+interface ChatRunState {
+  requestId: string;
+  kind: 'chat';
+  path: string;
+  text: string;
+  /** Note blocks by position in the answer. */
+  blocks: ChatBlock[];
+  /** What became of each block (persisted with the answer row once it is saved). */
+  marks: Record<string, NoteCardMark>;
+}
+
+type ActiveRun = ChatRunState | { requestId: string; kind: 'inline'; path: string; stream: EditorStream; atCaret: boolean };
+
+/** How a conversation turn is being taken in: still streaming, or ended this way. */
+type ChatPhase = 'streaming' | 'done' | 'stopped' | 'error';
+
+/** Text streams into the editor right now (it is locked and not saved half-way). */
+function writingIntoEditor(active: ActiveRun | null): boolean {
+  if (!active) return false;
+  if (active.kind === 'inline') return true;
+  return active.blocks.some((b) => b.stream !== null && !b.done);
+}
 
 interface InlineState {
   range: TextRange;
@@ -70,7 +97,7 @@ function engine() {
   };
 }
 
-/** One undoable change made for the user (a card going in or out). */
+/** One undoable change made for the user (written text taken back out). */
 function dispatchAiChange(view: EditorView, change: TextChange, flash: boolean): void {
   const end = change.from + change.insert.length;
   view.dispatch({
@@ -121,8 +148,6 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir, onBack
   const [inline, setInline] = useState<InlineState | null>(null);
   const [inlineChars, setInlineChars] = useState<number | null>(null);
   const [inlineError, setInlineError] = useState<string | null>(null);
-  /** Bumped when the note text settles (opened, saved, a card applied): cards re-check their target section. */
-  const [docVersion, setDocVersion] = useState(0);
   const agentLabel = useNoteAgentLabel(models, defaultModelLabel);
 
   const lastSaved = useRef<string>('');
@@ -184,8 +209,8 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir, onBack
         saveTimer.current = null;
       }
       const path = savePath.current;
-      // An inline answer streaming into the editor is not saved half-way.
-      if (!path || run.current?.kind === 'inline') return true;
+      // An answer streaming into the editor is not saved half-way.
+      if (!path || writingIntoEditor(run.current)) return true;
       if (saveVault.current !== useAppStore.getState().settings.activeNoteVault) return false;
       // `finalText`: the editor is going away and handed over its last text.
       const text = finalText ?? editor.current?.text() ?? null;
@@ -201,7 +226,6 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir, onBack
           lastSaved.current = text;
           setSave(editor.current?.text() === text ? 'saved' : 'dirty');
           setSaveError(null);
-          setDocVersion((v) => v + 1);
         }
         refreshGit();
         return true;
@@ -253,7 +277,6 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir, onBack
         setInline(null);
         setDrawerOpen(false);
         setQuickOpen(false);
-        setDocVersion((v) => v + 1);
         void loadChat(path);
         window.setTimeout(() => editor.current?.focus(), 0);
       } catch (err) {
@@ -288,23 +311,115 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir, onBack
         void refreshNoteDirs(change);
         refreshGit();
         const path = savePath.current;
-        if (!path || run.current?.kind === 'inline' || saveTimer.current !== null) return;
+        if (!path || writingIntoEditor(run.current) || saveTimer.current !== null) return;
         if (!change.all && !change.paths.includes(path)) return;
         invoke('notes:read', { path })
           .then((file) => {
-            if (savePath.current !== path || run.current?.kind === 'inline' || saveTimer.current !== null) return;
+            if (savePath.current !== path || writingIntoEditor(run.current) || saveTimer.current !== null) return;
             const current = editor.current?.text() ?? '';
             if (current !== lastSaved.current) return; // unsaved edits win
-            if (file.text !== current) {
-              editor.current?.replace(file.text);
-              setDocVersion((v) => v + 1);
-            }
+            if (file.text !== current) editor.current?.replace(file.text);
             lastSaved.current = file.text;
           })
           .catch(() => {});
       }),
     [refreshGit],
   );
+
+  /** Marks text that just landed for a moment. */
+  const flash = useCallback((range: TextRange) => {
+    const view = editor.current?.view();
+    if (!view || range.to <= range.from) return;
+    view.dispatch({ effects: setTargetRange.of({ ...range, kind: 'flash' }) });
+    if (flashTimer.current !== null) window.clearTimeout(flashTimer.current);
+    flashTimer.current = window.setTimeout(() => {
+      flashTimer.current = null;
+      const v = editor.current?.view();
+      if (v && targetOf(v.state)?.kind === 'flash') v.dispatch({ effects: setTargetRange.of(null) });
+    }, FLASH_MS);
+  }, []);
+
+  /**
+   * Writes the note blocks of a conversation turn into the editor as they stream: each block starts streaming into its
+   * place once its opening line is in (its section looked up then; a missing one is skipped with the reason) and lands
+   * as one undo step when it closes. A stopped turn drops a block still open; a failed one drops everything it wrote.
+   */
+  const pumpBlocks = useCallback(
+    (active: ChatRunState, phase: ChatPhase) => {
+      const ended = phase !== 'streaming';
+      // `closed` tells a block whose closing fence arrived from one cut off by a stop.
+      const closed = noteCards(active.text, true);
+      const cards = ended ? noteCards(active.text, false) : closed;
+      const view = editor.current?.view() ?? null;
+      const onNote = savePath.current === active.path;
+      const skip = (i: number, reason: string) => {
+        active.blocks[i] = { stream: active.blocks[i]?.stream ?? null, mode: 'insert', done: true };
+        active.marks[String(i)] = { state: 'skipped', reason };
+      };
+      for (let i = 0; i < cards.length; i++) {
+        const card = cards[i];
+        let block = active.blocks[i];
+        if (block?.done) continue;
+        const complete = phase === 'done' || (closed[i]?.complete ?? false);
+        if (!block) {
+          if (phase === 'error') break;
+          if (phase === 'stopped' && !complete) {
+            skip(i, t('noteCard.stopped'));
+            continue;
+          }
+          if (!view || !onNote) {
+            skip(i, t('noteChat.placeholder.noNote'));
+            continue;
+          }
+          closeInline(false);
+          const target = cardTarget(view.state.doc.toString(), card, view.state.selection.main.head);
+          if (!target.ok) {
+            skip(i, target.error);
+            continue;
+          }
+          block = { stream: new EditorStream(view, target.range), mode: target.mode, done: false };
+          active.blocks[i] = block;
+        }
+        const stream = block.stream;
+        if (!stream) continue;
+        if (phase === 'error' || (phase === 'stopped' && !complete)) {
+          stream.finish(null);
+          block.done = true;
+          if (phase === 'stopped') active.marks[String(i)] = { state: 'skipped', reason: t('noteCard.stopped') };
+          continue;
+        }
+        stream.show(card.body);
+        if (!complete) break;
+        const body = card.body.replace(/\s+$/, '');
+        block.done = true;
+        if (!body.trim()) {
+          stream.finish(null);
+          active.marks[String(i)] = { state: 'skipped', reason: t('noteEdit.emptyCard') };
+          continue;
+        }
+        const final = fitAnswer(body, block.mode, { original: stream.original, before: stream.before, after: stream.after });
+        const at = stream.from;
+        stream.finish(final);
+        active.marks[String(i)] = { state: 'applied', at, inserted: final, original: stream.original };
+        flash({ from: at, to: at + final.length });
+      }
+    },
+    [closeInline, flash],
+  );
+
+  /** A failed turn keeps nothing it wrote: its applied blocks come back out, last first. */
+  const unwriteBlocks = useCallback((active: ChatRunState) => {
+    const view = editor.current?.view();
+    if (!view) return;
+    const applied = Object.entries(active.marks)
+      .filter(([, m]) => m.state === 'applied')
+      .sort(([a], [b]) => Number(b) - Number(a));
+    for (const [, mark] of applied) {
+      if (mark.at === undefined || mark.inserted === undefined || mark.original === undefined) continue;
+      const change = revertCard(view.state.doc.toString(), { at: mark.at, inserted: mark.inserted, original: mark.original });
+      if (change) dispatchAiChange(view, change, false);
+    }
+  }, []);
 
   // AI stream events of the running request.
   useEffect(
@@ -315,17 +430,32 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir, onBack
         if (active.kind === 'chat') {
           if (event.type === 'delta') {
             active.text += event.text;
-            setChatRun({ text: active.text });
+            pumpBlocks(active, 'streaming');
+            setChatRun({ text: active.text, marks: { ...active.marks } });
             return;
           }
+          pumpBlocks(active, event.type === 'error' ? 'error' : event.stopped ? 'stopped' : 'done');
           run.current = null;
           setBusy(false);
           // A failed turn (an error, or a Codex turn cancelled at a tool call) keeps nothing of what streamed.
           if (event.type === 'error') {
+            unwriteBlocks(active);
             setChatRun(null);
             setAiError(event.message);
+            void loadChat(active.path);
+            return;
           }
-          void loadChat(active.path).finally(() => setChatRun(null));
+          setChatRun({ text: active.text, marks: { ...active.marks } });
+          // The answer row exists now: its blocks' marks go with it, then the saved conversation replaces the live one.
+          const itemId = event.itemId;
+          const saves = itemId
+            ? Object.entries(active.marks).map(([card, mark]) =>
+                invoke('notes:chatCard', { path: active.path, itemId, card: Number(card), mark }).catch((err: unknown) => setAiError(noteError(err))),
+              )
+            : [];
+          void Promise.all(saves)
+            .then(() => loadChat(active.path))
+            .finally(() => setChatRun(null));
           return;
         }
         if (event.type === 'delta') {
@@ -355,7 +485,7 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir, onBack
         editor.current?.focus();
         if (final !== null) scheduleSave();
       }),
-    [loadChat, scheduleSave],
+    [loadChat, scheduleSave, pumpBlocks, unwriteBlocks],
   );
 
   // ---- inline prompt ------------------------------------------------------------------------------------------
@@ -474,9 +604,9 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir, onBack
       const doc = editor.current?.text() ?? '';
       const { agent, model, effort } = engine();
       const requestId = crypto.randomUUID();
-      run.current = { requestId, kind: 'chat', path, text: '' };
+      run.current = { requestId, kind: 'chat', path, text: '', blocks: [], marks: {} };
       setBusy(true);
-      setChatRun({ text: '' });
+      setChatRun({ text: '', marks: {} });
       setAiError(null);
       setChat((items) => [...items, { id: `pending-${requestId}`, role: 'user', text, createdAt: Date.now() }]);
       try {
@@ -500,18 +630,6 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir, onBack
     if (active) void invoke('notes:aiStop', { requestId: active.requestId }).catch(() => {});
   }, []);
 
-  const cardProblem = useCallback(
-    (card: NoteCardData): string | null => {
-      if (!openPath) return t('noteChat.placeholder.noNote');
-      if (card.kind !== 'replace') return null;
-      const match = findSection(editor.current?.text() ?? '', card.section ?? '');
-      return match.ok ? null : match.error;
-    },
-    // docVersion: re-check once the text settles.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [openPath, docVersion],
-  );
-
   const markCard = useCallback((itemId: string, index: number, mark: NoteCardMark) => {
     const path = savePath.current;
     if (!path) return;
@@ -519,30 +637,23 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir, onBack
     void invoke('notes:chatCard', { path, itemId, card: index, mark }).catch((err: unknown) => setAiError(noteError(err)));
   }, []);
 
-  const applyCard = useCallback(
-    (itemId: string, index: number, card: NoteCardData) => {
+  /** 보기: the editor scrolls to where written text sits now and marks it for a moment. */
+  const revealApplied = useCallback(
+    (mark: NoteCardMark) => {
       const view = editor.current?.view();
-      if (!view || run.current) return;
-      closeInline(false);
-      const doc = view.state.doc.toString();
-      const planned = planCard(doc, card, view.state.selection.main.head);
-      if (!planned.ok) {
-        setAiError(planned.error);
+      if (!view || run.current || mark.at === undefined || mark.inserted === undefined) return;
+      const range = locateApplied(view.state.doc.toString(), { at: mark.at, inserted: mark.inserted });
+      if (!range) {
+        setAiError(t('notes.err.reveal'));
         return;
       }
-      const { change, original } = planned.plan;
-      dispatchAiChange(view, change, true);
-      if (flashTimer.current !== null) window.clearTimeout(flashTimer.current);
-      flashTimer.current = window.setTimeout(() => {
-        flashTimer.current = null;
-        const v = editor.current?.view();
-        if (v && targetOf(v.state)?.kind === 'flash') v.dispatch({ effects: setTargetRange.of(null) });
-      }, FLASH_MS);
+      closeInline(false);
+      view.dispatch({ selection: { anchor: range.from }, effects: EditorView.scrollIntoView(range.from, { y: 'start', yMargin: 48 }) });
+      flash(range);
       setAiError(null);
-      setDocVersion((v) => v + 1);
-      markCard(itemId, index, { state: 'applied', at: change.from, inserted: change.insert, original });
+      view.focus();
     },
-    [closeInline, markCard],
+    [closeInline, flash],
   );
 
   const revertApplied = useCallback(
@@ -556,7 +667,6 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir, onBack
       }
       dispatchAiChange(view, change, false);
       setAiError(null);
-      setDocVersion((v) => v + 1);
       markCard(itemId, index, { state: 'reverted' });
     },
     [markCard],
@@ -906,8 +1016,7 @@ export function NotesPage({ settings, models, defaultModelLabel, homeDir, onBack
             defaultModelLabel={defaultModelLabel}
             onSend={sendChat}
             onStop={stopRequest}
-            cardProblem={cardProblem}
-            onApply={applyCard}
+            onReveal={revealApplied}
             onRevert={revertApplied}
           />
         </section>

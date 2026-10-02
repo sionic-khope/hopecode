@@ -621,8 +621,6 @@ export const en: Messages = {
   'noteChat.suggest.shorter': 'Make the whole note shorter',
   'noteChat.empty.withNote': 'Talk freely about this note.',
   'noteChat.empty.noNote': 'Open a note to start a conversation.',
-  'noteChat.hint.card': 'cards',
-  'noteCard.apply': 'Insert into note',
   'noteChat.placeholder': 'Ask about the note, or ask to write or fix it',
   'noteChat.placeholder.noNote': 'Open a note first',
   // -- renderer: note inline
@@ -676,15 +674,22 @@ export const en: Messages = {
   'attach.remove': 'Remove {name}',
   'attach.removeFile': 'Remove attachment {name}',
   // -- renderer: note card
-  'noteCard.writing': 'Writing…',
-  'noteCard.applied': 'Applied',
   'noteCard.revert': 'Revert',
-  // -- renderer: note card
-  'noteCard.kind.insert': 'Insert',
-  'noteCard.kind.replace': 'Replace section',
-  'noteCard.kind.replaceAll': 'Replace all',
-  'noteCard.aria': 'Note card: {title}',
-  'noteCard.expand': 'Expand',
+  'noteCard.writing': 'Writing into the note',
+  'noteCard.applied': 'Written into the note',
+  'noteCard.reverted': 'Reverted',
+  'noteCard.skipped': 'Not written',
+  'noteCard.unapplied': 'Earlier draft, not written',
+  'noteCard.stopped': 'Stopped, so nothing was written',
+  'noteCard.view': 'Show',
+  'noteCard.viewTitle': 'Jump to the written range in the editor',
+  'noteCard.openDoc': 'Open in the document viewer: {title}',
+  'noteCard.aria': 'Note change: {title}',
+  'noteDoc.aria': 'Document viewer: {title}',
+  'noteDoc.copy': 'Copy markdown',
+  'notes.err.reveal': 'The written range changed since, so it cannot be found.',
+  'notes.err.revert': 'The note changed after the text went in, so it cannot be reverted automatically. Undo with ⌘Z in the editor.',
+  'noteChat.hint': 'Questions, explanations and plans are answered in the chat. Ask "write this as a note" or "fix section 2" and it goes straight into the editor; one ⌘Z undoes it. Drag over text in the editor to edit just that part.',
   // -- renderer: accounts popover
   'acct.reloginNeeded': 'Log in again',
   'acct.notLoggedIn': 'Not logged in',
@@ -768,8 +773,6 @@ export const en: Messages = {
   // -- renderer: rich messages
   'draft.base': 'Starts a new worktree in {project} from PR #{pr} {branch}',
   'draft.worktree': 'Starts a new worktree in {project}',
-  'noteChat.hint':
-    'Text meant for the note comes back as {card}. Press {apply} on a card to put it at the cursor or into its section. Drag over text in the editor to edit just that part.',
   'acct.cliLogin': 'Log in with each CLI in a terminal: {commands}. Then press Recheck above.',
   // -- renderer: project group
   'project.actions': 'Project actions',
@@ -1097,7 +1100,6 @@ export const en: Messages = {
   'notes.save.saved': 'Saved',
   'notes.save.error': 'Save failed',
   'notes.err.open': 'Could not open the note: {error}',
-  'notes.err.revert': 'The note changed after the card went in, so it cannot be reverted automatically. Undo with ⌘Z in the editor.',
   'notes.err.addVault': 'Could not register the notes folder: {error}',
   'notes.fileAria': 'Note file: {path}',
   'notes.openFile': 'Open note file',

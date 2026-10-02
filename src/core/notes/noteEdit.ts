@@ -1,6 +1,6 @@
 // 노트 모드 editor math, independent of CodeMirror (pure, unit-tested): heading sections, the changes that stream an
-// inline answer into a range, how an answer is fitted into the document, and how a conversation card is put into the
-// note (and taken back out).
+// answer into a range, how an answer is fitted into the document, and how a conversation's note block is put into the
+// note (and found or taken back out afterwards).
 import type { NoteCard } from './noteReply';
 import { t } from '../../shared/i18n';
 
@@ -200,39 +200,61 @@ export interface CardPlan {
   original: string;
 }
 
+export type CardTarget = { ok: true; range: TextRange; mode: FitMode } | { ok: false; error: string };
+
 /**
- * The change that puts a card into `doc`: insert at `caret` (an empty note takes the card as its whole text), replace
- * the named section, or replace everything. A card with no body, or a section that cannot be found, is an error.
+ * Where a note block goes in `doc`, known from its opening line alone (so it can stream in place): the caret for an
+ * insertion (an empty note takes it as its whole text), the named section, or everything. A section that cannot be
+ * found (or is ambiguous) is an error: nothing is written.
+ */
+export function cardTarget(doc: string, card: Pick<NoteCard, 'kind' | 'section'>, caret: number): CardTarget {
+  if (card.kind === 'replace-all' || doc.trim() === '') return { ok: true, range: { from: 0, to: doc.length }, mode: 'all' };
+  if (card.kind === 'replace') {
+    const match = findSection(doc, card.section ?? '');
+    if (!match.ok) return match;
+    return { ok: true, range: { from: match.range.from, to: match.range.to }, mode: 'section' };
+  }
+  const at = Math.max(0, Math.min(caret, doc.length));
+  return { ok: true, range: { from: at, to: at }, mode: 'insert' };
+}
+
+/**
+ * The change that puts a block into `doc` (see cardTarget), with its body fitted to the place. A block with no body,
+ * or a section that cannot be found, is an error.
  */
 export function planCard(doc: string, card: Pick<NoteCard, 'kind' | 'section' | 'body'>, caret: number): { ok: true; plan: CardPlan } | { ok: false; error: string } {
   const body = card.body.replace(/\s+$/, '');
   if (!body.trim()) return { ok: false, error: t('noteEdit.emptyCard') };
-  let range: TextRange;
-  let mode: FitMode;
-  if (card.kind === 'replace-all' || doc.trim() === '') {
-    range = { from: 0, to: doc.length };
-    mode = 'all';
-  } else if (card.kind === 'replace') {
-    const match = findSection(doc, card.section ?? '');
-    if (!match.ok) return match;
-    range = match.range;
-    mode = 'section';
-  } else {
-    const at = Math.max(0, Math.min(caret, doc.length));
-    range = { from: at, to: at };
-    mode = 'insert';
-  }
+  const target = cardTarget(doc, card, caret);
+  if (!target.ok) return target;
+  const { range, mode } = target;
   const original = doc.slice(range.from, range.to);
   const insert = fitAnswer(body, mode, { original, before: doc.slice(0, range.from), after: doc.slice(range.to) });
   return { ok: true, plan: { change: { from: range.from, to: range.to, insert }, original } };
 }
 
 /**
- * Takes an applied card back out: the inserted text is put back to what it replaced, where it landed when it still
- * sits there, else at its only occurrence in the note. null when the text was edited since (⌘Z still can).
+ * The change that makes a streamed span show `full` (the block body so far) and the state after it. Text that only
+ * grows is appended; anything else (the parser re-read a held line differently) rewrites the span. An empty `full`
+ * puts the original back.
  */
-export function revertCard(doc: string, applied: { at: number; inserted: string; original: string }): TextChange | null {
-  const { at, inserted, original } = applied;
+export function streamTo(state: StreamState, full: string): { change: TextChange | null; state: StreamState } {
+  if (full === state.streamed) return { change: null, state };
+  if (state.streamed !== '' && full.startsWith(state.streamed)) return streamDelta(state, full.slice(state.streamed.length));
+  if (state.streamed === '') return streamDelta(state, full);
+  const shown = full === '' ? state.original : full;
+  return {
+    change: { from: state.from, to: state.from + state.shown, insert: shown },
+    state: { ...state, streamed: full, shown: shown.length },
+  };
+}
+
+/**
+ * Where applied text sits now: at the offset it landed when it is still there, else its only occurrence in the note.
+ * null when it was edited since (or appears several times).
+ */
+export function locateApplied(doc: string, applied: { at: number; inserted: string }): TextRange | null {
+  const { at, inserted } = applied;
   if (inserted === '') return null;
   let from = -1;
   if (doc.slice(at, at + inserted.length) === inserted) from = at;
@@ -240,6 +262,14 @@ export function revertCard(doc: string, applied: { at: number; inserted: string;
     const first = doc.indexOf(inserted);
     if (first !== -1 && doc.indexOf(inserted, first + 1) === -1) from = first;
   }
-  if (from === -1) return null;
-  return { from, to: from + inserted.length, insert: original };
+  return from === -1 ? null : { from, to: from + inserted.length };
+}
+
+/**
+ * Takes applied text back out: it is put back to what it replaced (see locateApplied). null when the text was edited
+ * since (⌘Z still can).
+ */
+export function revertCard(doc: string, applied: { at: number; inserted: string; original: string }): TextChange | null {
+  const range = locateApplied(doc, applied);
+  return range ? { ...range, insert: applied.original } : null;
 }

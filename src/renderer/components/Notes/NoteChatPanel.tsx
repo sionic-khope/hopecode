@@ -1,7 +1,7 @@
-import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CodexEffortLevel, EffortLevel, ModelOption } from '../../../shared/types';
 import { NOTE_AGENTS, type NoteAgent, type NoteCardMark, type NoteChatItem } from '../../../shared/notes';
-import { parseNoteReply, type NoteCard as NoteCardData } from '../../../core/notes/noteReply';
+import { parseNoteReply } from '../../../core/notes/noteReply';
 import { codexModelLabel, concreteModelLabel } from '../../../core/modelDisplay';
 import { useAppStore } from '../../store';
 import { useNotesStore } from '../../store/notesStore';
@@ -9,10 +9,11 @@ import { AssistantText } from '../Chat/AssistantText';
 import { Composer, type ComposerHandle } from '../Chat/Composer';
 import { AcpModelChip, AgentChip, ModelPicker } from '../Chat/ComposerControls';
 import { codexEffortChoices, codexModelChoices, effortValueLabel } from '../Chat/acpChips';
-import { NoteCard } from './NoteCard';
+import { MarkdownCopyChip } from '../Chat/MarkdownCopyChip';
+import { NoteDocViewer } from './NoteDocViewer';
+import { NoteResult, type NoteDoc } from './NoteResult';
 import { useLanguage } from '../../i18n';
 import { t, type MessageKey } from '../../../shared/i18n';
-import { tNodes } from '../../i18n';
 
 const SUGGESTIONS: readonly MessageKey[] = ['noteChat.suggest.draft', 'noteChat.suggest.examples', 'noteChat.suggest.shorter'];
 
@@ -31,6 +32,8 @@ export function useNoteAgentLabel(models: readonly ModelOption[], defaultModelLa
 export interface NoteChatRun {
   /** The answer streamed so far. */
   text: string;
+  /** What became of its note blocks so far (index -> mark), as they were written into the editor. */
+  marks: Record<string, NoteCardMark>;
 }
 
 export interface NoteChatPanelProps {
@@ -38,7 +41,7 @@ export interface NoteChatPanelProps {
   items: NoteChatItem[];
   /** The conversation turn streaming right now (null otherwise). */
   running: NoteChatRun | null;
-  /** Any note request (an inline edit included) is running: cards and the composer wait. */
+  /** Any note request (an inline edit included) is running: result actions and the composer wait. */
   busy: boolean;
   error: string | null;
   onDismissError: () => void;
@@ -46,20 +49,23 @@ export interface NoteChatPanelProps {
   defaultModelLabel: string;
   onSend: (text: string) => Promise<boolean>;
   onStop: () => void;
-  /** Why a card cannot go into the open note right now (null when it can). */
-  cardProblem: (card: NoteCardData) => string | null;
-  onApply: (itemId: string, index: number, card: NoteCardData) => void;
+  /** 보기: the editor scrolls to where a written block sits now. */
+  onReveal: (mark: NoteCardMark) => void;
   onRevert: (itemId: string, index: number, mark: NoteCardMark) => void;
 }
 
+/**
+ * One answer: its chat text rendered in full (markdown, as it streams) and, for each note block, a one-line result of
+ * what was written into the editor.
+ */
 function Reply({
   text,
   streaming,
   itemId,
   marks,
   busy,
-  cardProblem,
-  onApply,
+  onOpenDoc,
+  onReveal,
   onRevert,
 }: {
   text: string;
@@ -67,36 +73,40 @@ function Reply({
   itemId: string | null;
   marks?: Record<string, NoteCardMark>;
   busy: boolean;
-  cardProblem: NoteChatPanelProps['cardProblem'];
-  onApply: NoteChatPanelProps['onApply'];
+  onOpenDoc: (doc: NoteDoc) => void;
+  onReveal: NoteChatPanelProps['onReveal'];
   onRevert: NoteChatPanelProps['onRevert'];
 }) {
   const segments = useMemo(() => parseNoteReply(text, streaming), [text, streaming]);
+  const last = segments.length - 1;
   return (
     <>
-      {segments.map((seg, i) =>
-        seg.type === 'text' ? (
-          <AssistantText key={`t${i}`} text={seg.text} />
-        ) : (
-          <NoteCard
+      {segments.map((seg, i) => {
+        if (seg.type === 'text') return <AssistantText key={`t${i}`} text={seg.text} streaming={streaming && i === last} />;
+        const mark = marks?.[String(seg.index)];
+        return (
+          <NoteResult
             key={`c${seg.index}`}
             card={seg.card}
-            mark={marks?.[String(seg.index)]}
-            problem={seg.card.complete ? cardProblem(seg.card) : null}
+            mark={mark}
+            streaming={streaming}
             busy={busy || streaming || itemId === null}
-            onApply={() => itemId && onApply(itemId, seg.index, seg.card)}
+            onOpenDoc={onOpenDoc}
+            onReveal={() => mark && onReveal(mark)}
             onRevert={() => {
-              const mark = marks?.[String(seg.index)];
               if (itemId && mark) onRevert(itemId, seg.index, mark);
             }}
           />
-        ),
-      )}
+        );
+      })}
     </>
   );
 }
 
-/** Right half: a free conversation about the open note. Note text comes back as cards the user puts into the editor. */
+/**
+ * Right half: a conversation about the open note. Answers render in full like any chat; text the user asked to be
+ * written goes straight into the editor and leaves a result line here. Documents open in a viewer over the pane.
+ */
 export const NoteChatPanel = memo(function NoteChatPanel({
   path,
   items,
@@ -108,8 +118,7 @@ export const NoteChatPanel = memo(function NoteChatPanel({
   defaultModelLabel,
   onSend,
   onStop,
-  cardProblem,
-  onApply,
+  onReveal,
   onRevert,
 }: NoteChatPanelProps) {
   useLanguage();
@@ -124,6 +133,9 @@ export const NoteChatPanel = memo(function NoteChatPanel({
   const patch = useNotesStore((s) => s.patch);
   const listRef = useRef<HTMLOListElement>(null);
   const composer = useRef<ComposerHandle>(null);
+  const [doc, setDoc] = useState<NoteDoc | null>(null);
+  // Another note, another conversation: its viewer goes.
+  useEffect(() => setDoc(null), [path]);
 
   const codexModels = useMemo(() => (agent === 'codex' ? codexModelChoices(threads, codexModel) : []), [agent, threads, codexModel]);
   const codexEfforts = useMemo(() => (agent === 'codex' ? codexEffortChoices(threads) : []), [agent, threads]);
@@ -175,9 +187,7 @@ export const NoteChatPanel = memo(function NoteChatPanel({
             <p className="hc-notechat__empty-lede">
               {path ? t('noteChat.empty.withNote') : t('noteChat.empty.noNote')}
             </p>
-            <p className="hc-notechat__empty-hint">
-              {tNodes('noteChat.hint', { card: <b>{t('noteChat.hint.card')}</b>, apply: <b>{t('noteCard.apply')}</b> })}
-            </p>
+            <p className="hc-notechat__empty-hint">{t('noteChat.hint')}</p>
             {path ? (
               <div className="hc-notechat__suggest">
                 {SUGGESTIONS.map((key) => t(key)).map((s) => (
@@ -192,7 +202,8 @@ export const NoteChatPanel = memo(function NoteChatPanel({
         {items.map((item) =>
           item.role === 'user' ? (
             <li key={item.id} className="hc-notechat__msg hc-notechat__msg--user" data-testid="note-chat-user">
-              {item.text}
+              <MarkdownCopyChip getText={() => item.text} label={t('message.copy')} className="hc-notechat__copy" />
+              <div className="hc-notechat__bubble">{item.text}</div>
             </li>
           ) : (
             <li
@@ -209,8 +220,8 @@ export const NoteChatPanel = memo(function NoteChatPanel({
                   itemId={item.id}
                   marks={item.cards}
                   busy={busy}
-                  cardProblem={cardProblem}
-                  onApply={onApply}
+                  onOpenDoc={setDoc}
+                  onReveal={onReveal}
                   onRevert={onRevert}
                 />
               )}
@@ -221,7 +232,7 @@ export const NoteChatPanel = memo(function NoteChatPanel({
         {running ? (
           <li className="hc-notechat__msg hc-notechat__msg--assistant hc-notechat__msg--running" data-testid="note-chat-running">
             {running.text.trim() ? (
-              <Reply text={running.text} streaming itemId={null} busy cardProblem={cardProblem} onApply={onApply} onRevert={onRevert} />
+              <Reply text={running.text} streaming itemId={null} marks={running.marks} busy onOpenDoc={setDoc} onReveal={onReveal} onRevert={onRevert} />
             ) : (
               <span className="hc-notechat__thinking">
                 <span className="hc-notechat__dot" aria-hidden />
@@ -239,6 +250,7 @@ export const NoteChatPanel = memo(function NoteChatPanel({
           </button>
         </div>
       ) : null}
+      {doc ? <NoteDocViewer doc={doc} onClose={() => setDoc(null)} /> : null}
       <div className="hc-notechat__compose">
         <Composer
           handleRef={composer}

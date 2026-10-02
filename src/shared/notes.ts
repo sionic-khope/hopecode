@@ -53,13 +53,19 @@ export interface NoteGitStatus {
   changed: string[];
 }
 
-/** A note card the user put into the editor (or took back out). Kept with the conversation row. */
+/**
+ * What became of a note block of an answer: written into the editor as it streamed (`applied`), taken back out
+ * (`reverted`), or not written (`skipped`: its section was not found, the run stopped, …). Kept with the conversation
+ * row. A block without a mark is from an answer saved before blocks were written automatically.
+ */
 export interface NoteCardMark {
-  state: 'applied' | 'reverted';
-  /** Applied: where the text landed and what it replaced, so "되돌리기" can find it again (absent when too large). */
+  state: 'applied' | 'reverted' | 'skipped';
+  /** Applied: where the text landed and what it replaced, so "되돌리기" / "보기" can find it again (absent when too large). */
   at?: number;
   inserted?: string;
   original?: string;
+  /** Skipped: why, as shown to the user. */
+  reason?: string;
 }
 
 export interface NoteChatItem {
@@ -92,7 +98,8 @@ export interface NoteAiStartRequest {
 
 export type NoteAiEvent =
   | { requestId: string; type: 'delta'; text: string }
-  | { requestId: string; type: 'done'; stopped: boolean }
+  /** `itemId`: the conversation row the answer was saved as (chat requests). */
+  | { requestId: string; type: 'done'; stopped: boolean; itemId?: string }
   | { requestId: string; type: 'error'; message: string };
 
 /** Payload of `notes:changed` (fs watch, debounced). */

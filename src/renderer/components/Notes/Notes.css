@@ -1057,8 +1057,7 @@ body.hc-notes-resizing .hc-notes__split::before {
   flex: 1;
 }
 .hc-noteinline__dot,
-.hc-notechat__dot,
-.hc-notecard__dot {
+.hc-notechat__dot {
   flex: none;
   width: 8px;
   height: 8px;
@@ -1095,6 +1094,7 @@ body.hc-notes-resizing .hc-notes__split::before {
 
 /* ---- AI conversation ------------------------------------------------------------------------------------------- */
 .hc-notechat {
+  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -1160,9 +1160,29 @@ body.hc-notes-resizing .hc-notes__split::before {
   min-width: 0;
   animation: hc-notes-in var(--motion-2) var(--ease-soft) both;
 }
+/* The conversation reads like a chat: every message, answer and result line selects and copies (body is
+   user-select: none app-wide); controls stay unselectable so a drag across them picks up only text. */
+.hc-notechat__list {
+  -webkit-user-select: text;
+  user-select: text;
+}
+.hc-notechat__list :is(button, [role='button'], .hc-mdchip, .hc-notechat__thinking) {
+  -webkit-user-select: none;
+  user-select: none;
+}
+.hc-notedoc__page {
+  -webkit-user-select: text;
+  user-select: text;
+}
 .hc-notechat__msg--user {
   align-self: flex-end;
-  max-width: 82%;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  max-width: 88%;
+}
+.hc-notechat__bubble {
+  min-width: 0;
   padding: 10px 14px;
   background: var(--bubble);
   box-shadow: inset 0 0 0 2px var(--line-accent);
@@ -1171,6 +1191,14 @@ body.hc-notes-resizing .hc-notes__split::before {
   line-height: var(--lh-chat);
   white-space: pre-wrap;
   word-break: break-word;
+}
+/* "MD" copy beside the user's line, shown while the row is hovered (or the chip has focus). */
+.hc-notechat__copy {
+  flex: none;
+  margin-bottom: 4px;
+}
+.hc-notechat__msg--user:hover .hc-notechat__copy {
+  opacity: 1;
 }
 .hc-notechat__msg--assistant {
   display: flex;
@@ -1229,43 +1257,147 @@ body.hc-notes-resizing .hc-notes__split::before {
   padding: var(--space-2) var(--space-6) var(--space-5);
 }
 
-/* ---- note card ------------------------------------------------------------------------------------------------- */
-.hc-notecard {
+/* ---- note result: what a note block did to the note, one short line + its document chip ---------------------- */
+.hc-noteresult {
+  --result-tone: var(--ok);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-3);
   background: var(--black);
-  box-shadow: var(--shadow-card);
-  transition: box-shadow var(--motion-2) var(--ease-soft);
+  box-shadow:
+    inset 2px 0 0 var(--result-tone),
+    0 0 0 2px var(--line);
 }
-.hc-notecard:hover {
-  box-shadow: var(--shadow-card-hover);
+.hc-noteresult--writing {
+  --result-tone: var(--select);
 }
-.hc-notecard--streaming {
-  box-shadow: 0 0 0 2px var(--line-strong);
+.hc-noteresult--reverted,
+.hc-noteresult--unapplied {
+  --result-tone: var(--line-strong);
 }
-.hc-notecard--applied {
-  box-shadow: 0 0 0 2px var(--line-strong);
+.hc-noteresult--skipped {
+  --result-tone: var(--crit);
 }
-.hc-notecard--blocked {
-  box-shadow: 0 0 0 2px var(--crit-border);
+.hc-noteresult__line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  font-size: var(--text-xs);
+  color: var(--notes-ink-dim);
 }
-.hc-notecard__head {
+/* An 8px pixel square in the status tone; blinking while the block is still being written. */
+.hc-noteresult__mark {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-right: 2px;
+  background: var(--result-tone);
+}
+.hc-noteresult--writing .hc-noteresult__mark {
+  animation: hc-notes-blink 1s var(--ease-pixel) infinite;
+}
+.hc-noteresult__status {
+  flex: none;
+  color: var(--label);
+}
+.hc-noteresult--applied .hc-noteresult__status {
+  color: var(--ok-text);
+}
+.hc-noteresult--writing .hc-noteresult__status {
+  color: var(--select);
+}
+.hc-noteresult--skipped .hc-noteresult__status {
+  color: var(--crit-text);
+}
+.hc-noteresult__sep {
+  flex: none;
+  color: var(--notes-ink-faint);
+}
+.hc-noteresult__target {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hc-noteresult__spacer {
+  flex: 1;
+}
+.hc-noteresult__act {
+  all: unset;
+  flex: none;
+  padding: 2px 8px;
+  color: var(--label);
+  font-size: var(--text-xs);
+  box-shadow: inset 0 0 0 2px var(--line-strong);
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  transition:
+    box-shadow var(--motion-1) var(--ease-soft),
+    color var(--motion-1) var(--ease-soft);
+}
+.hc-noteresult__act:hover:not(:disabled) {
+  color: var(--select);
+  box-shadow: inset 0 0 0 2px var(--frame);
+}
+.hc-noteresult__act:active:not(:disabled) {
+  transform: translate(1px, 1px);
+}
+.hc-noteresult__act:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+.hc-noteresult__act:disabled {
+  color: var(--notes-ink-faint);
+  cursor: default;
+}
+.hc-noteresult__reason {
+  margin: 0;
+  color: var(--crit-text);
+  font-size: var(--text-xs);
+  line-height: var(--lh-sm);
+}
+
+/* The document chip: a file tile like an attached .md — page icon, title, line count. Opens the viewer. */
+.hc-notedoc-chip {
+  all: unset;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-3) var(--space-3) 0;
-}
-.hc-notecard__kind {
-  flex: none;
-  padding: 0 6px;
-  background: var(--select);
-  color: var(--label-on-select);
-  font-size: var(--text-2xs);
-  font-weight: var(--weight-bold);
-}
-.hc-notecard--applied .hc-notecard__kind {
-  background: var(--line-strong);
+  max-width: 100%;
+  padding: 8px 12px;
+  background: var(--notes-paper);
+  box-shadow: inset 0 0 0 2px var(--line-strong);
   color: var(--label);
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  transition:
+    box-shadow var(--motion-1) var(--ease-soft),
+    transform var(--motion-1) var(--ease-soft);
 }
-.hc-notecard__title {
+.hc-notedoc-chip:hover:not(:disabled) {
+  box-shadow:
+    inset 0 0 0 2px var(--frame),
+    3px 3px 0 0 var(--drop);
+}
+.hc-notedoc-chip:active:not(:disabled) {
+  transform: translate(1px, 1px);
+}
+.hc-notedoc-chip:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+.hc-notedoc-chip:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.hc-notedoc-chip__icon {
+  flex: none;
+  color: var(--select);
+}
+.hc-notedoc-chip__title {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1273,91 +1405,109 @@ body.hc-notes-resizing .hc-notes__split::before {
   font-family: var(--font-display);
   font-weight: var(--weight-bold);
 }
-.hc-notecard__target {
-  padding: 4px var(--space-3) 0;
+.hc-notedoc-chip__meta {
+  flex: none;
   color: var(--notes-ink-dim);
   font-size: var(--text-xs);
 }
-.hc-notecard--blocked .hc-notecard__target {
-  color: var(--crit-text);
+.hc-notedoc-chip__meta::before {
+  content: '· ';
+  color: var(--notes-ink-faint);
 }
-.hc-notecard__preview {
-  position: relative;
-  margin: var(--space-2) var(--space-3) 0;
-  padding: var(--space-2) var(--space-3);
-  background: var(--notes-paper);
-  box-shadow: inset 2px 0 0 var(--line-strong);
-  overflow: hidden;
-}
-.hc-notecard__preview--clipped::after {
-  content: '';
+
+/* ---- document viewer: a markdown page over the conversation pane ------------------------------------------- */
+.hc-notedoc {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 28px;
-  background: linear-gradient(to bottom, transparent, var(--notes-paper));
-  pointer-events: none;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--notes-room);
+  box-shadow: inset 2px 0 0 var(--line);
+  animation: hc-notedoc-in var(--motion-2) var(--ease-soft) both;
 }
-.hc-notecard__preview--open {
-  max-height: 60vh;
-  overflow-y: auto;
+@keyframes hc-notedoc-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
 }
-.hc-notecard__raw {
-  margin: 0;
-  font-family: var(--font-mono);
-  font-size: var(--mono-sm);
-  line-height: var(--lh-mono-sm);
-  color: var(--label);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-.hc-notecard__foot {
+.hc-notedoc__bar {
+  flex: none;
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: 44px;
-  padding: var(--space-2) var(--space-3);
+  height: 48px;
+  padding: 0 var(--space-3) 0 var(--space-6);
+  border-bottom: 2px solid var(--line);
 }
-.hc-notecard__spacer {
+.hc-notedoc__icon {
+  flex: none;
+  color: var(--select);
+}
+.hc-notedoc__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-weight: var(--weight-bold);
+  color: var(--label);
+}
+.hc-notedoc__meta {
+  flex: none;
+  color: var(--notes-ink-dim);
+  font-size: var(--text-xs);
+}
+.hc-notedoc__spacer {
   flex: 1;
 }
-.hc-notecard__toggle {
+.hc-notedoc .hc-notedoc__copy {
+  opacity: 1;
+  height: 22px;
+  padding: 0 7px;
+}
+.hc-notedoc__close {
   all: unset;
-  color: var(--notes-ink-dim);
-  cursor: pointer;
-  font-size: var(--text-xs);
-}
-.hc-notecard__toggle:hover {
-  color: var(--select);
-}
-.hc-notecard__toggle:focus-visible {
-  box-shadow: var(--focus-ring);
-}
-.hc-notecard__wait {
+  flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  color: var(--select);
-  font-size: var(--text-xs);
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--notes-ink-dim);
+  cursor: pointer;
 }
-.hc-notecard__state {
-  color: var(--ok-text);
+.hc-notedoc__close:hover {
+  color: var(--label);
+  background: var(--bg-control);
 }
-.hc-notecard__state::before {
-  content: '';
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  margin-right: 6px;
-  vertical-align: 1px;
-  background: var(--ok);
+.hc-notedoc__close:focus-visible {
+  box-shadow: var(--focus-ring);
 }
-.hc-notecard__problem {
-  min-width: 0;
-  color: var(--crit-text);
-  font-size: var(--text-xs);
-  line-height: var(--lh-sm);
+.hc-notedoc__page {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-6);
+}
+.hc-notedoc__page:focus {
+  outline: none;
+}
+.hc-notedoc__paper {
+  max-width: 720px;
+  margin: 0 auto;
+}
+.hc-notedoc__paper .hc-msg-assistant {
+  font-size: 14px;
+  line-height: 24px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hc-notedoc,
+  .hc-noteresult--writing .hc-noteresult__mark {
+    animation: none;
+  }
 }
 
 /* ---- commit dialog --------------------------------------------------------------------------------------- */

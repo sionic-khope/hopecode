@@ -33,9 +33,23 @@ export function clickSfx(el: Element): 'select' | 'back' | null {
   return 'select';
 }
 
+/** Pointer travel (px) past which a press-and-release is a drag (selecting text), not a click. */
+export const DRAG_SLOP_PX = 4;
+let pressAt: { x: number; y: number } | null = null;
+
+function onPointerDown(e: PointerEvent): void {
+  pressAt = { x: e.clientX, y: e.clientY };
+}
+
+/** The click ends a drag (text being selected): it is reading, not choosing. */
+export function endsDrag(press: { x: number; y: number } | null, at: { x: number; y: number }): boolean {
+  return press !== null && Math.hypot(at.x - press.x, at.y - press.y) > DRAG_SLOP_PX;
+}
+
 function onClick(e: MouseEvent): void {
   const target = e.target instanceof Element ? e.target : null;
   if (!target) return;
+  if (endsDrag(pressAt, { x: e.clientX, y: e.clientY })) return;
   if (target.closest(SILENT_AREA)) return;
   // Clicking a modal / palette backdrop closes it.
   if (target.classList.contains('hc-modal-backdrop') || target.classList.contains('hc-palette-backdrop')) {
@@ -126,12 +140,14 @@ export function useSound(): void {
       if (s.settings.soundEnabled !== prev.settings.soundEnabled) applySoundEnabled(s.settings.soundEnabled);
       if (s.selectedThreadId !== prev.selectedThreadId || s.route !== prev.route) silence();
     });
+    document.addEventListener('pointerdown', onPointerDown, true);
     document.addEventListener('click', onClick, true);
     document.addEventListener('keydown', onKeyDown, true);
     return () => {
       silence();
       offEvents();
       offStore();
+      document.removeEventListener('pointerdown', onPointerDown, true);
       document.removeEventListener('click', onClick, true);
       document.removeEventListener('keydown', onKeyDown, true);
     };

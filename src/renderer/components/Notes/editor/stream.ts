@@ -1,10 +1,10 @@
-// Streams an inline answer into the editor: the target range is marked and the editor locked while text arrives
-// (each piece kept out of the undo history), then the final text lands as one history event, so a single ⌘Z puts the
-// note back the way it was before the request.
+// Streams an answer into the editor (an inline answer, or a note block of a conversation turn): the target range is
+// marked and the editor locked while text arrives (each piece kept out of the undo history), then the final text lands
+// as one history event, so a single ⌘Z puts the note back the way it was before the request.
 import { Annotation, Transaction } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import { isolateHistory } from '@codemirror/commands';
-import { commitStream, startStream, streamDelta, type StreamState, type TextRange } from '../../../../core/notes/noteEdit';
+import { commitStream, startStream, streamDelta, streamTo, type StreamState, type TextChange, type TextRange } from '../../../../core/notes/noteEdit';
 import { setTargetRange } from './noteTarget';
 import { readOnly, readOnlySlot } from './setup';
 
@@ -37,9 +37,24 @@ export class EditorStream {
     return this.state.streamed;
   }
 
+  get from(): number {
+    return this.state.from;
+  }
+
   delta(text: string): void {
     if (this.ended || !text) return;
     const { change, state } = streamDelta(this.state, text);
+    this.push(change, state);
+  }
+
+  /** Shows `full` in the span (a note block body as parsed so far: it usually grows, but may be re-read). */
+  show(full: string): void {
+    if (this.ended) return;
+    const { change, state } = streamTo(this.state, full);
+    if (change) this.push(change, state);
+  }
+
+  private push(change: TextChange, state: StreamState): void {
     this.state = state;
     const end = state.from + state.shown;
     this.view.dispatch({

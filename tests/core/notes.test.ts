@@ -135,8 +135,8 @@ describe('notePrompt', () => {
   });
 
   it('the fixture answers follow the kind of the prompt', () => {
-    const prompt = buildNoteChatPrompt({ request: '2번 섹션 더 자세히', notePath: 'x.md', document: '# T\n\n### 1. 개념\na\n\n### 2. 정리\nb\n', history: [], styleRefs: [] });
-    expect(parseNotePrompt(prompt)).toEqual({ kind: 'chat', request: '2번 섹션 더 자세히', headings: ['T', '1. 개념', '2. 정리'] });
+    const prompt = buildNoteChatPrompt({ request: '2번 섹션 더 자세히 고쳐 줘', notePath: 'x.md', document: '# T\n\n### 1. 개념\na\n\n### 2. 정리\nb\n', history: [], styleRefs: [] });
+    expect(parseNotePrompt(prompt)).toEqual({ kind: 'chat', request: '2번 섹션 더 자세히 고쳐 줘', headings: ['T', '1. 개념', '2. 정리'], lastAnswer: null });
     expect(noteFixtureAnswer(prompt)).toContain('```note-replace section="2. 정리"\n### 2. 정리\n\nFIXTURE-SECTION: 2번 섹션 더 자세히');
   });
 });

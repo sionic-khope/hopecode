@@ -276,7 +276,7 @@ describe('notes handlers', () => {
     await expect(h['notes:aiStart']({ ...req, kind: 'write' })).rejects.toThrow(/invalid kind/);
     await expect(h['notes:aiStart']({ ...req, selection: { from: 0, to: 1 } })).rejects.toThrow(/invalid selection/);
     expect(await h['notes:aiStart'](req)).toEqual({ ok: true });
-    await vi.waitFor(() => expect(events.at(-1)).toEqual({ requestId: 'r1', type: 'done', stopped: false }));
+    await vi.waitFor(() => expect(events.at(-1)).toMatchObject({ requestId: 'r1', type: 'done', stopped: false }));
     expect(events[0]).toEqual({ requestId: 'r1', type: 'delta', text: '# 새 노트\n' });
     const run = runAi.mock.calls[0][0];
     expect(run.prompt).toContain('<reference path="Back-End/cache.md">');
@@ -284,6 +284,8 @@ describe('notes handlers', () => {
     expect(run.prompt).toContain('- ### 1. 개념');
     expect(run.system).toContain('좋은 질문입니다');
     let chat = await h['notes:chat']({ path: 'Back-End/distlock.md' });
+    // The done event names the row the answer was saved as (its blocks' marks go there).
+    expect(events.at(-1)).toEqual({ requestId: 'r1', type: 'done', stopped: false, itemId: chat[1].id });
     expect(chat.map((c) => [c.role, c.text, c.status])).toEqual([
       ['user', '분산 락', undefined],
       ['assistant', '# 새 노트\n', 'done'],
@@ -304,6 +306,9 @@ describe('notes handlers', () => {
     expect(chat[1].cards).toEqual({ '0': mark });
     await h['notes:chatCard']({ path: 'Back-End/distlock.md', itemId: answer.id, card: 0, mark: { state: 'reverted', at: 1 } });
     expect((await h['notes:chat']({ path: 'Back-End/distlock.md' }))[1].cards).toEqual({ '0': { state: 'reverted' } });
+    // A block that was not written keeps why (capped).
+    await h['notes:chatCard']({ path: 'Back-End/distlock.md', itemId: answer.id, card: 1, mark: { state: 'skipped', reason: 'x'.repeat(500), at: 3 } });
+    expect((await h['notes:chat']({ path: 'Back-End/distlock.md' }))[1].cards?.['1']).toEqual({ state: 'skipped', reason: 'x'.repeat(300) });
     // Nothing was written into the vault by the requests.
     expect(readFileSync(join(vault, 'Back-End', 'distlock.md'), 'utf8')).toBe('# Lock\n\nbody\n');
   });

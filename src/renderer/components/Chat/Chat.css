@@ -29,6 +29,14 @@
   gap: var(--space-4);
   max-width: var(--transcript-max-w);
   margin: 0 auto;
+  /* The transcript reads like a document: user lines, answers, tool output and card text all drag-select and copy
+     (body is user-select: none app-wide). Controls stay unselectable, so a drag picks up only text. */
+  -webkit-user-select: text;
+  user-select: text;
+}
+.hc-messages__inner :is(button, [role='button'], [role='img'], .hc-mdchip, .hc-msg-actions) {
+  -webkit-user-select: none;
+  user-select: none;
 }
 .hc-messages__empty {
   height: 100%;

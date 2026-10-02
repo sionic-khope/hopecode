@@ -78,13 +78,17 @@ export interface NotesServices {
   runAi(run: NoteAiRun, onDelta: (text: string) => void, signal: AbortSignal): Promise<NoteAiResult>;
 }
 
+/** Characters of a skipped mark's reason. */
+const NOTE_MARK_REASON_MAX = 300;
+
 const isOffset = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= NOTE_MAX_BYTES;
 
 /** A card mark from the renderer, narrowed (null clears). */
 function cardMarkOf(raw: unknown): NoteCardMark | null | undefined {
   if (raw === null) return null;
-  if (!isPlainObject(raw) || (raw.state !== 'applied' && raw.state !== 'reverted')) return undefined;
+  if (!isPlainObject(raw) || (raw.state !== 'applied' && raw.state !== 'reverted' && raw.state !== 'skipped')) return undefined;
   const mark: NoteCardMark = { state: raw.state };
+  if (raw.state === 'skipped' && isString(raw.reason)) mark.reason = raw.reason.slice(0, NOTE_MARK_REASON_MAX);
   if (raw.state === 'applied' && isOffset(raw.at) && isString(raw.inserted) && isString(raw.original)) {
     if (raw.inserted.length + raw.original.length <= NOTE_MAX_BYTES * 2) Object.assign(mark, { at: raw.at, inserted: raw.inserted, original: raw.original });
   }
@@ -292,6 +296,7 @@ export function buildNotesHandlers(store: Pick<Store, 'get' | 'update'>, broadca
       if (kind === 'chat') await notes.chats.append(vault, path, { role: 'user', text: request });
       void (async () => {
         let text = '';
+        let itemId: string | undefined;
         const result = await notes.runAi(
           run,
           (delta) => {
@@ -306,9 +311,13 @@ export function buildNotesHandlers(store: Pick<Store, 'get' | 'update'>, broadca
           const row = !result.ok
             ? { role: 'assistant' as const, text: result.error, status: 'error' as const }
             : { role: 'assistant' as const, text: text.trim() ? text : result.stopped ? t('notes.chat.stopped') : t('notes.chat.empty'), status: result.stopped ? ('stopped' as const) : ('done' as const) };
-          await notes.chats.append(vault, path, row).catch(() => {});
+          itemId = (await notes.chats.append(vault, path, row).catch(() => null))?.id;
         }
-        emit(result.ok ? { requestId, type: 'done', stopped: result.stopped } : { requestId, type: 'error', message: result.error });
+        emit(
+          result.ok
+            ? { requestId, type: 'done', stopped: result.stopped, ...(itemId ? { itemId } : {}) }
+            : { requestId, type: 'error', message: result.error },
+        );
       })();
       return { ok: true };
     },

@@ -1,11 +1,14 @@
 // Scripted answers to 노트 모드 requests for fixture runs (fakeQuery; tests/fixtures/acp/fakeAcpAgent.mjs mirrors it).
 // Deterministic per prompt kind, built from the request line, so e2e can check what landed where:
 //  - inline (선택 수정 / 커서 위치 작성): the replacement text only.
-//  - chat: a sentence, then a `note-*` card picked from the request:
-//      "N번 섹션" / "'제목' 섹션"  -> note-replace of that heading (taken from the prompt's section list)
-//      "전체"                      -> note-replace-all
-//      "[chat]"                    -> no card (a plain answer)
-//      anything else               -> note-insert with a short study note on the request
+//  - chat: a chat answer by default; a `note-*` block (with a one-line sentence) only when the request asks for the
+//    note to be written or changed, the way the model is told to decide (notePrompt NOTE_REPLY_RULES):
+//      "[chat]"                              -> a one-line plain answer
+//      "N번 섹션" / "'제목' 섹션"            -> note-replace of that heading (taken from the prompt's section list)
+//      "전체"                                -> note-replace-all
+//      "작성" / "써 줘" / "넣어" / "노트로" / "문서로" -> note-insert: a short study note on the request, or — when
+//                                               the request points back ("이거", "방금") — the last chat answer
+//      anything else                         -> a chat answer in markdown (a heading, a table, a list)
 import { TASK_CHAT, TASK_INLINE_EDIT, TASK_INLINE_WRITE } from '../../core/notes/notePrompt';
 
 export type NoteFixtureKind = 'chat' | 'inline-edit' | 'inline-write';
@@ -15,6 +18,8 @@ export interface ParsedNotePrompt {
   request: string;
   /** Heading texts of the prompt's section list (`#` marks dropped). */
   headings: string[];
+  /** The last answer of the earlier conversation sent with a chat prompt (null when there is none). */
+  lastAnswer: string | null;
 }
 
 export function parseNotePrompt(prompt: string): ParsedNotePrompt {
@@ -27,7 +32,34 @@ export function parseNotePrompt(prompt: string): ParsedNotePrompt {
   const request = (kind === 'chat' ? /## 요청\n([\s\S]*)$/.exec(prompt)?.[1] : /## 요청\n([^\n]*)/.exec(prompt)?.[1])?.trim() ?? '';
   const list = /## 섹션 목록\n([\s\S]*?)\n\n/.exec(prompt)?.[1] ?? '';
   const headings = [...list.matchAll(/^\s*- #{1,6} (.*)$/gm)].map((m) => m[1].trim());
-  return { kind, request, headings };
+  const history = /## 이전 대화\n([\s\S]*?)\n\n## 요청/.exec(prompt)?.[1] ?? '';
+  const answers = [...history.matchAll(/<assistant>\n([\s\S]*?)\n<\/assistant>/g)].map((m) => m[1]);
+  return { kind, request, headings, lastAnswer: answers.at(-1) ?? null };
+}
+
+/** The request asks for the note to be written or changed (the fixture's stand-in for the model's judgement). */
+export function fixtureWrites(request: string): boolean {
+  return /작성|써 ?줘|넣어|노트로|문서로|고쳐|수정|늘려/.test(request);
+}
+
+/** A chat answer: a heading, a table and a list, the shape of a curriculum asked for in the conversation. */
+export function fixtureChatAnswer(request: string, tag: string): string {
+  return [
+    `## ${request}`,
+    '',
+    `${tag}-CHAT: ${request} 요청에 채팅으로 답합니다.`,
+    '',
+    '| 주차 | 주제 | 목표 |',
+    '| --- | --- | --- |',
+    '| 1 | MDP와 Bellman 방정식 | 상태, 행동, 보상 정의 |',
+    '| 2 | Dynamic Programming | policy / value iteration |',
+    '| 3 | Monte Carlo와 TD | 샘플 기반 추정 |',
+    '| 4 | Q-learning과 DQN | off-policy 학습 |',
+    '| 5 | Policy Gradient | REINFORCE, baseline |',
+    '| 6 | Actor-Critic과 PPO | 안정적인 policy 학습 |',
+    '',
+    '- 매주 이론 1회, 실습 1회로 진행합니다.',
+  ].join('\n');
 }
 
 /** The heading a chat request names: "N번 섹션" (the heading numbered N) or a quoted title. */
@@ -44,7 +76,7 @@ export function noteFixtureAnswer(prompt: string, tag = 'FIXTURE'): string {
   if (kind === 'inline-edit') return `${tag}-INLINE: ${request} 요청대로 고친 문장입니다.`;
   if (kind === 'inline-write') return `${tag}-WRITE: ${request} 내용을 커서 위치에 썼습니다.`;
   if (request.includes('[chat]')) return `${tag}-CHAT: ${request.replace('[chat]', '').trim()}에 대한 답입니다. 노트는 바꾸지 않았습니다.`;
-  if (/섹션/.test(request)) {
+  if (/섹션/.test(request) && fixtureWrites(request)) {
     const section = fixtureSection(request, headings);
     const title = section ?? '없음';
     return [
@@ -77,6 +109,11 @@ export function noteFixtureAnswer(prompt: string, tag = 'FIXTURE'): string {
       '```',
       '',
     ].join('\n');
+  }
+  if (!fixtureWrites(request)) return fixtureChatAnswer(request, tag);
+  const { lastAnswer } = parseNotePrompt(prompt);
+  if (lastAnswer && /이거|이 내용|방금/.test(request)) {
+    return ['이전 답을 노트로 작성했습니다.', '', '```note-insert', `# ${tag}-NOTE`, '', lastAnswer.replace(/^## .*\n\n?/, ''), '```', ''].join('\n');
   }
   return [
     `${request} 노트 초안을 만들었습니다.`,

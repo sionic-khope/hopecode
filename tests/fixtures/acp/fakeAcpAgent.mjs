@@ -229,7 +229,8 @@ function noteAnswer(prompt) {
   if (kind === 'inline-edit') return `${tag}-INLINE: ${request} 요청대로 고친 문장입니다.`;
   if (kind === 'inline-write') return `${tag}-WRITE: ${request} 내용을 커서 위치에 썼습니다.`;
   if (request.includes('[chat]')) return `${tag}-CHAT: ${request.replace('[chat]', '').trim()}에 대한 답입니다. 노트는 바꾸지 않았습니다.`;
-  if (/섹션/.test(request)) {
+  const writes = /작성|써 ?줘|넣어|노트로|문서로|고쳐|수정|늘려/.test(request);
+  if (/섹션/.test(request) && writes) {
     const n = /(\d+)번 섹션/.exec(request)?.[1];
     const title = (n ? (headings.find((h) => h.startsWith(`${n}.`)) ?? `${n}. (없음)`) : /'([^']+)'\s*섹션/.exec(request)?.[1]) ?? '없음';
     return `'${title}' 섹션을 요청대로 고쳤습니다.\n\n\`\`\`note-replace section="${title}"\n### ${title}\n\n${tag}-SECTION: ${request} 요청대로 다시 쓴 섹션입니다.\n\n\`\`\`java\nint example = 1;\n\`\`\`\n\`\`\`\n`;
@@ -237,6 +238,8 @@ function noteAnswer(prompt) {
   if (/전체/.test(request)) {
     return `문서 전체를 다시 썼습니다.\n\n\`\`\`note-replace-all\n# 전체 수정본\n\n${tag}-REWRITE: ${request} 요청대로 문서 전체를 다시 썼습니다.\n\`\`\`\n`;
   }
+  // No ask to write: a chat answer (a heading and a table), the way the model answers by default.
+  if (!writes) return `## ${request}\n\n${tag}-CHAT: ${request} 요청에 채팅으로 답합니다.\n\n| 주차 | 주제 |\n| --- | --- |\n| 1 | MDP |\n| 2 | PPO |\n`;
   return `${request} 노트 초안을 만들었습니다.\n\n\`\`\`note-insert\n# ${request}\n\n${tag}-WRITE: ${request}를 공부하기 위한 노트입니다.\n\n### 1. 핵심 개념\n\n- fixture 정의입니다.\n\`\`\`\n`;
 }
 

@@ -34,8 +34,8 @@ export const DOCUMENT_MAX_CHARS = 60_000;
 export const REQUEST_MAX_CHARS = 8_000;
 /** Earlier conversation rows sent with a chat request (newest kept). */
 export const HISTORY_MAX_ITEMS = 8;
-/** Characters of each earlier row. */
-export const HISTORY_ITEM_MAX_CHARS = 1_500;
+/** Characters of each earlier row (a chat answer "이거 노트로 작성해 줘" points at must fit whole). */
+export const HISTORY_ITEM_MAX_CHARS = 6_000;
 /** Characters of the selection an inline request rewrites. */
 export const SELECTION_MAX_CHARS = 20_000;
 /** Characters of text before / after the selection sent as its surroundings. */
@@ -141,21 +141,30 @@ function outline(doc: string): string {
     .join('\n');
 }
 
-/** The reply format of a conversation turn (parsed by core/notes/noteReply.ts). */
+/**
+ * The reply format of a conversation turn (parsed by core/notes/noteReply.ts). The model decides: a chat answer by
+ * default, note blocks only when the user asked for the note to be written or changed. The client adds no guessing of
+ * its own; a note block is written into the editor as it streams.
+ */
 export const NOTE_REPLY_RULES: readonly string[] = [
-  '대화 문장은 자유롭게 쓰되 존댓말("~합니다", "~입니다")로 짧고 담백하게 쓴다. 노트에 들어갈 본문은 대화 문장에 섞지 않고 아래 블록 안에만 쓴다.',
+  '기본은 채팅 답이다. 질문, 설명, 계획, 커리큘럼, 목차, 요약, 비교처럼 노트에 쓰라는 말이 없는 요청은 일반 마크다운(제목, 표, 리스트, 코드 블록)으로 채팅에 전부 답한다. 블록에 넣거나 일부만 보여 주지 않는다.',
+  '사용자가 노트에 쓰거나 고치라고 명시했을 때만 note 블록을 쓴다(예: "작성해 줘", "써 줘", "노트에 넣어 줘", "정리해서 문서로", "고쳐 줘", "수정해 줘", "2번 섹션 늘려 줘"). 블록 안의 본문은 에디터에 바로 반영된다.',
+  '커리큘럼이나 목차 요청도 "노트에 넣어 달라", "작성해 달라"는 말이 없으면 채팅 답이다.',
+  '노트가 비어 있어도 자동으로 쓰지 않는다. 쓰라는 요청이 있을 때만 쓴다.',
+  '"이거 노트로 작성해 줘"처럼 이전 대화의 내용을 가리키면, 이전 대화에서 답한 내용을 노트 형식에 맞춰 블록으로 쓴다.',
+  'note 블록 형식:',
   '- 커서 위치에 넣을 본문: 첫 줄 ```note-insert, 마지막 줄 ```',
   '- 섹션 하나를 바꿀 본문: 첫 줄 ```note-replace section="<heading 텍스트>", 마지막 줄 ```. heading 텍스트는 아래 "섹션 목록"에 적힌 그대로 쓴다(# 표시는 빼고). 블록 안은 그 heading 줄부터 섹션 끝까지 전체를 쓴다.',
   '- 문서 전체를 바꿀 본문: 첫 줄 ```note-replace-all, 마지막 줄 ```. 블록 안은 문서 전체다.',
   '- 블록 안 코드 블록은 반드시 언어를 쓴다(```java). 언어 없는 ``` 줄은 블록을 닫는 줄로만 쓴다.',
-  '- 사용자가 노트 작성, 추가, 수정을 요청할 때만 블록을 낸다. 질문에는 대화 문장으로만 답한다.',
-  '- 블록 앞에는 무엇을 했는지 한두 문장만 쓴다. 블록 뒤에는 덧붙이지 않는다.',
+  '- note 블록과 함께 쓰는 채팅 설명은 무엇을 했는지 1~2줄만 쓴다. 블록 뒤에는 덧붙이지 않는다. 노트 본문을 블록 밖 채팅에 다시 쓰지 않는다.',
+  '대화 문장은 존댓말("~합니다", "~입니다")로 짧고 담백하게 쓴다. 다만 채팅으로 답하는 커리큘럼, 설명, 표는 줄이거나 생략하지 않고 전부 쓴다.',
 ];
 
 /** A conversation turn about the open note. */
 export function buildNoteChatPrompt(input: NoteChatPromptInput): string {
   const parts: string[] = [];
-  parts.push(`## 작업 (${TASK_CHAT})`, '사용자와 지금 열린 노트에 대해 대화한다. 노트를 쓰거나 고쳐 달라는 요청이면 본문을 블록으로 낸다.', '');
+  parts.push(`## 작업 (${TASK_CHAT})`, '사용자와 지금 열린 노트에 대해 대화한다. 기본은 채팅 답이고, 노트에 쓰거나 고치라고 명시한 요청에만 본문을 note 블록으로 낸다.', '');
   parts.push('## 답변 형식', ...NOTE_REPLY_RULES, '');
   parts.push('## 노트 경로', input.notePath, '');
   pushStyleRefs(parts, input.styleRefs);

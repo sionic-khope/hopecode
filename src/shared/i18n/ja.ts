@@ -621,8 +621,6 @@ export const ja: Messages = {
   'noteChat.suggest.shorter': '全体をもっと短くまとめて',
   'noteChat.empty.withNote': 'このノートについて自由に話してください。',
   'noteChat.empty.noNote': 'ノートを開くと会話できます。',
-  'noteChat.hint.card': 'カード',
-  'noteCard.apply': '本文に入れる',
   'noteChat.placeholder': 'ノートについて質問するか、書いたり直したりするよう頼んでください',
   'noteChat.placeholder.noNote': '先にノートを開いてください',
   // -- renderer: note inline
@@ -676,15 +674,22 @@ export const ja: Messages = {
   'attach.remove': '{name} を取り除く',
   'attach.removeFile': '添付ファイル {name} を取り除く',
   // -- renderer: note card
-  'noteCard.writing': '作成中…',
-  'noteCard.applied': '適用済み',
   'noteCard.revert': '元に戻す',
-  // -- renderer: note card
-  'noteCard.kind.insert': '挿入',
-  'noteCard.kind.replace': 'セクション置き換え',
-  'noteCard.kind.replaceAll': '全体置き換え',
-  'noteCard.aria': 'ノートカード: {title}',
-  'noteCard.expand': '展開',
+  'noteCard.writing': 'ノートに書き込み中',
+  'noteCard.applied': 'ノートに反映済み',
+  'noteCard.reverted': '元に戻しました',
+  'noteCard.skipped': '反映していません',
+  'noteCard.unapplied': '反映されていない以前の下書き',
+  'noteCard.stopped': '中止したため反映していません',
+  'noteCard.view': '表示',
+  'noteCard.viewTitle': 'エディタで反映した範囲へ移動',
+  'noteCard.openDoc': 'ドキュメントビューアで開く: {title}',
+  'noteCard.aria': 'ノートへの反映: {title}',
+  'noteDoc.aria': 'ドキュメントビューア: {title}',
+  'noteDoc.copy': 'Markdown をコピー',
+  'notes.err.reveal': '反映した範囲がその後変わったため見つかりません。',
+  'notes.err.revert': 'テキストを反映したあとに本文が変わったため、自動では元に戻せません。エディタで ⌘Z を使って戻してください。',
+  'noteChat.hint': '質問・説明・計画にはチャットで答えます。「ノートに書いて」「2番のセクションを直して」のように頼むとエディタに直接書き込み、⌘Z 一回で元に戻せます。エディタで文をドラッグすると、その部分だけを直せます。',
   // -- renderer: accounts popover
   'acct.reloginNeeded': '再ログインが必要',
   'acct.notLoggedIn': '未ログイン',
@@ -768,8 +773,6 @@ export const ja: Messages = {
   // -- renderer: rich messages
   'draft.base': '{project} の PR #{pr} {branch} から新しい worktree で始めます',
   'draft.worktree': '{project} で新しい worktree として始めます',
-  'noteChat.hint':
-    '本文に入れる内容は{card}で受け取ります。カードの{apply}を押すと、カーソル位置か該当セクションに入ります。エディタで文をドラッグすると、その部分だけを直せます。',
   'acct.cliLogin': 'ログインはターミナルで各 CLI から行ってください: {commands}。終わったら上の再確認を押してください。',
   // -- renderer: project group
   'project.actions': 'プロジェクトの操作',
@@ -1096,7 +1099,6 @@ export const ja: Messages = {
   'notes.save.saved': '保存済み',
   'notes.save.error': '保存に失敗',
   'notes.err.open': 'ノートを開けませんでした: {error}',
-  'notes.err.revert': 'カードを入れたあとに本文が変わったため、自動では元に戻せません。エディタで ⌘Z を使って戻してください。',
   'notes.err.addVault': 'ノートフォルダを登録できませんでした: {error}',
   'notes.fileAria': 'ノートファイル: {path}',
   'notes.openFile': 'ノートファイルを開く',
